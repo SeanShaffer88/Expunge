@@ -305,7 +305,31 @@ impl App {
                                 t("No monitored installations yet. Use Monitor to record one."),
                             );
                         }
-                        for log in &self.logs.logs {
+                        // Keyboard navigation over the logs that match the filter.
+                        let shown: Vec<usize> = self
+                            .logs
+                            .logs
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, l)| {
+                                f.is_empty()
+                                    || l.name.to_lowercase().contains(&f)
+                                    || l.publisher.to_lowercase().contains(&f)
+                            })
+                            .map(|(n, _)| n)
+                            .collect();
+                        let cur =
+                            self.logs.selected.as_ref().and_then(|id| {
+                                shown.iter().position(|&n| &self.logs.logs[n].id == id)
+                            });
+                        let blocked = self.removal.is_some() || self.confirm.is_some();
+                        let nav = super::a11y::list_nav(ui.ctx(), shown.len(), cur, blocked)
+                            .map(|k| shown[k]);
+                        if let Some(n) = nav {
+                            self.logs.selected = Some(self.logs.logs[n].id.clone());
+                            self.logs.editing = false;
+                        }
+                        for (n, log) in self.logs.logs.iter().enumerate() {
                             if !f.is_empty()
                                 && !log.name.to_lowercase().contains(&f)
                                 && !log.publisher.to_lowercase().contains(&f)
@@ -336,6 +360,10 @@ impl App {
                                 })
                                 .response
                                 .interact(egui::Sense::click());
+                            super::a11y::selectable(&resp, &log.name, sel);
+                            if nav == Some(n) {
+                                resp.scroll_to_me(None);
+                            }
                             if resp.clicked() {
                                 self.logs.selected = Some(log.id.clone());
                                 self.logs.editing = false;

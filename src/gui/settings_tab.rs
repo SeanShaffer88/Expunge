@@ -9,6 +9,32 @@ use expunge_core::i18n::{self, t, tf};
 use expunge_core::noise::{self, Learned};
 use expunge_core::settings::{FileRoot, Settings};
 
+/// Keyboard shortcuts shown in Settings (keys, description).
+const SHORTCUTS: &[(&str, &str)] = &[
+    ("Tab / Shift+Tab", "Move between buttons, boxes and lists"),
+    (
+        "Enter / Space",
+        "Press the focused button or tick the focused box",
+    ),
+    (
+        "↑ ↓ Home End PgUp PgDn",
+        "Move through the program or install-log list",
+    ),
+    (
+        "Space",
+        "Tick the selected program for uninstalling several at once",
+    ),
+    ("Delete", "Uninstall the selected program"),
+    ("Esc", "Close a dialog or window, or leave a text box"),
+    ("Ctrl+1 … Ctrl+8", "Go to a page"),
+    ("Ctrl+Tab / Ctrl+Shift+Tab", "Next / previous page"),
+    ("Ctrl+F", "Search"),
+    ("F5", "Refresh"),
+    ("F10", "Go to the menu bar (then arrow keys)"),
+    ("F1", "Help for this page"),
+    ("Ctrl + / Ctrl − / Ctrl+0", "Bigger / smaller / normal text"),
+];
+
 /// Seconds between the two snapshots of the background-noise check.
 const LEARN_SECONDS: u64 = 60;
 
@@ -289,8 +315,19 @@ impl App {
                         changed = true;
                         super::theme::apply(ctx, self.settings.high_contrast);
                     }
+                });
+                ui.add_space(10.0);
+                theme::card(ui, |ui| {
+                    ui.label(RichText::new(t("Keyboard")).heading());
+                    small_muted(ui, t("Everything in Expunge can be used without a mouse. Screen readers such as Narrator and NVDA read every control."));
                     ui.add_space(4.0);
-                    small_muted(ui, t("Keyboard: Ctrl+1–8 switch pages · Ctrl+F search · F5 refresh · Delete uninstalls the selected program · F1 help."));
+                    egui::Grid::new("keys").num_columns(2).spacing([18.0, 4.0]).show(ui, |ui| {
+                        for (keys, what) in SHORTCUTS {
+                            ui.label(RichText::new(*keys).monospace().color(theme::ACCENT_TEXT));
+                            ui.label(t(what));
+                            ui.end_row();
+                        }
+                    });
                 });
                 ui.add_space(10.0);
                 theme::card(ui, |ui| {

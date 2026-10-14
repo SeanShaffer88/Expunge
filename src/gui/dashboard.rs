@@ -14,7 +14,7 @@ fn stat_tile(
     label: String,
     color: egui::Color32,
 ) -> egui::Response {
-    egui::Frame::new()
+    let resp = egui::Frame::new()
         .fill(theme::CARD)
         .corner_radius(12)
         .inner_margin(egui::Margin::symmetric(16, 14))
@@ -24,14 +24,16 @@ fn stat_tile(
                 ui.label(RichText::new(icon).size(26.0).color(color));
                 ui.add_space(6.0);
                 ui.vertical(|ui| {
-                    ui.label(RichText::new(value).size(22.0).strong());
-                    small_muted(ui, label);
+                    ui.label(RichText::new(&value).size(22.0).strong());
+                    small_muted(ui, &label);
                 });
             });
         })
         .response
         .interact(egui::Sense::click())
-        .on_hover_cursor(egui::CursorIcon::PointingHand)
+        .on_hover_cursor(egui::CursorIcon::PointingHand);
+    super::a11y::button(&resp, &format!("{value} {label}"));
+    resp
 }
 
 fn action_row(ui: &mut egui::Ui, icon: &str, title: &str, desc: &str) -> bool {
@@ -56,6 +58,7 @@ fn action_row(ui: &mut egui::Ui, icon: &str, title: &str, desc: &str) -> bool {
         .response
         .interact(egui::Sense::click())
         .on_hover_cursor(egui::CursorIcon::PointingHand);
+    super::a11y::button(&resp, &format!("{}. {}", t(title), t(desc)));
     resp.clicked()
 }
 

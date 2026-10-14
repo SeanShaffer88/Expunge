@@ -255,6 +255,9 @@ impl App {
         if !open {
             close = true;
         }
+        if flow.job.is_none() && self.confirm.is_none() && super::a11y::escape_pressed(ctx) {
+            close = true;
+        }
         if start {
             let plan = flow.plan.clone();
             let reg = self.reg.clone();

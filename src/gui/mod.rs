@@ -1,5 +1,6 @@
 //! The Expunge desktop interface (egui, rendered with DirectX 12 on Windows).
 
+mod a11y;
 mod app;
 mod backups;
 mod cleaner;

@@ -539,5 +539,19 @@
   "These changed on their own while nothing was being installed:": "Diese Einträge haben sich von selbst geändert, während nichts installiert wurde:",
   "Ignore selected": "Auswahl ignorieren",
   "Learn background noise": "Hintergrundrauschen lernen",
-  "Takes two snapshots a minute apart. Don't install or change anything meanwhile.": "Erstellt zwei Schnappschüsse im Abstand von einer Minute. Installieren oder ändern Sie währenddessen nichts."
+  "Takes two snapshots a minute apart. Don't install or change anything meanwhile.": "Erstellt zwei Schnappschüsse im Abstand von einer Minute. Installieren oder ändern Sie währenddessen nichts.",
+  "Keyboard": "Tastatur",
+  "Everything in Expunge can be used without a mouse. Screen readers such as Narrator and NVDA read every control.": "Expunge lässt sich vollständig ohne Maus bedienen. Bildschirmleser wie die Sprachausgabe und NVDA lesen jedes Steuerelement vor.",
+  "Move between buttons, boxes and lists": "Zwischen Schaltflächen, Feldern und Listen wechseln",
+  "Press the focused button or tick the focused box": "Die fokussierte Schaltfläche drücken oder das fokussierte Kästchen ankreuzen",
+  "Move through the program or install-log list": "Durch die Programm- oder Installationsprotokoll-Liste blättern",
+  "Tick the selected program for uninstalling several at once": "Das ausgewählte Programm ankreuzen, um mehrere auf einmal zu deinstallieren",
+  "Uninstall the selected program": "Das ausgewählte Programm deinstallieren",
+  "Close a dialog or window, or leave a text box": "Einen Dialog oder ein Fenster schließen oder ein Textfeld verlassen",
+  "Go to a page": "Zu einer Seite wechseln",
+  "Next / previous page": "Nächste / vorherige Seite",
+  "Search": "Suchen",
+  "Go to the menu bar (then arrow keys)": "Zur Menüleiste wechseln (dann Pfeiltasten)",
+  "Help for this page": "Hilfe zu dieser Seite",
+  "Bigger / smaller / normal text": "Text größer / kleiner / normal"
 }

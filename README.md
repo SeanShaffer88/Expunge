@@ -65,6 +65,7 @@ It is a free, GPL-licensed alternative to commercial tools like Total Uninstall 
 - **Export** install logs as an HTML report, a `.reg` undo script, a PowerShell removal script, or JSON (import them on another PC).
 
 **For everyone**
+- **Fully keyboard accessible** and screen-reader friendly (Narrator, NVDA): visible focus ring, arrow-key lists, Esc closes dialogs, shortcuts for every page.
 - **Simple and Advanced modes**, chosen on first launch. Simple mode uses plain language and only offers options that can't harm Windows or slow the PC; Advanced mode shows every technical detail and tool.
 - **Help on every page** (Help button or F1) explaining terms like *snapshot* and *leftover* in everyday words.
 - **Safety labels** on every removal item: *Safe*, *Review* or *Careful*.

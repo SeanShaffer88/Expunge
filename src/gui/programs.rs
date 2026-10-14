@@ -495,6 +495,25 @@ impl App {
 
     fn programs_table(&mut self, ui: &mut egui::Ui, visible: &[InstalledProgram]) {
         let row_h = 24.0;
+        // Keyboard: arrows/Home/End/Page keys move the selection, Space ticks it.
+        let blocked = self.wizard.is_some() || self.removal.is_some() || self.confirm.is_some();
+        let cur = self
+            .programs
+            .selected
+            .as_ref()
+            .and_then(|k| visible.iter().position(|p| &p.key == k));
+        let nav = super::a11y::list_nav(ui.ctx(), visible.len(), cur, blocked);
+        if let Some(n) = nav {
+            self.programs.selected = Some(visible[n].key.clone());
+        }
+        if let Some(n) = nav.or(cur) {
+            if super::a11y::space_pressed(ui.ctx(), blocked) {
+                let k = visible[n].key.clone();
+                if !self.programs.checked.remove(&k) {
+                    self.programs.checked.insert(k);
+                }
+            }
+        }
         let mut clicked: Option<String> = None;
         let mut double: Option<InstalledProgram> = None;
         let mut sort_click: Option<SortCol> = None;
@@ -526,7 +545,11 @@ impl App {
                 .clicked()
             };
         let (cur, asc) = (st.sort, st.ascending);
-        TableBuilder::new(ui)
+        let mut table = TableBuilder::new(ui);
+        if let Some(n) = nav {
+            table = table.scroll_to_row(n, None);
+        }
+        table
             .striped(true)
             .sense(egui::Sense::click())
             .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
@@ -581,7 +604,12 @@ impl App {
                     row.set_selected(is_sel);
                     row.col(|ui| {
                         let mut c = st.checked.contains(&p.key);
-                        if ui.checkbox(&mut c, "").changed() {
+                        let r = ui.checkbox(&mut c, "");
+                        let name = p.name.clone();
+                        r.widget_info(|| {
+                            egui::WidgetInfo::selected(egui::WidgetType::Checkbox, true, c, &name)
+                        });
+                        if r.changed() {
                             if c {
                                 st.checked.insert(p.key.clone());
                             } else {
@@ -1021,6 +1049,13 @@ impl App {
                     }
                 }
             });
+        let at_start = self
+            .wizard
+            .as_ref()
+            .is_some_and(|w| w.stage == Stage::Confirm);
+        if at_start && self.confirm.is_none() && super::a11y::escape_pressed(ctx) {
+            close = true;
+        }
         if !open || close {
             self.wizard = None;
         }

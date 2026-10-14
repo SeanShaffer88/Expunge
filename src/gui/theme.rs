@@ -184,6 +184,7 @@ pub fn nav_item(
 ) -> egui::Response {
     let (rect, resp) =
         ui.allocate_exact_size(egui::vec2(ui.available_width(), 38.0), egui::Sense::click());
+    super::a11y::selectable(&resp, label, selected);
     let painter = ui.painter_at(rect);
     let pill = rect.shrink2(egui::vec2(2.0, 2.0));
     if selected {

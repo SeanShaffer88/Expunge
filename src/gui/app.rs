@@ -69,6 +69,11 @@ pub struct App {
     pub updates: updates::UpdatesState,
     pub lab: lab::LabState,
     pub help_open: bool,
+    /// F10 was pressed: move keyboard focus to the menu bar.
+    pub focus_menu: bool,
+    /// Ctrl+Tab (false) or Ctrl+Shift+Tab (true), taken out of the input
+    /// before egui sees it, so it switches pages instead of moving focus.
+    pub ctrl_tab: Option<bool>,
     pub welcome_open: bool,
     pub focus_search: bool,
     /// Installer passed from Explorer's "Install with Expunge".
@@ -131,6 +136,8 @@ impl App {
             updates: Default::default(),
             lab: Default::default(),
             help_open: false,
+            focus_menu: false,
+            ctrl_tab: None,
             welcome_open: false,
             focus_search: false,
             pending_install: install_target,
@@ -212,7 +219,7 @@ impl App {
             )
             .show(ctx, |ui| {
                 egui::MenuBar::new().ui(ui, |ui| {
-                    ui.menu_button(t("File"), |ui| {
+                    let file = ui.menu_button(t("File"), |ui| {
                         if ui.button(t("Import install log…")).clicked() {
                             ui.close();
                             self.import_log();
@@ -231,6 +238,12 @@ impl App {
                             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                         }
                     });
+                    if std::mem::take(&mut self.focus_menu) {
+                        file.response.request_focus();
+                        ui.ctx().data_mut(|d| {
+                            d.insert_temp(egui::Id::new("expunge_keyboard_mode"), true)
+                        });
+                    }
                     ui.menu_button(t("Tools"), |ui| {
                         if ui.button(t("Install and monitor…")).clicked() {
                             ui.close();
@@ -563,7 +576,11 @@ impl App {
                 ui.add_space(10.0);
                 let mut close = false;
                 ui.horizontal(|ui| {
-                    if theme::primary_button(ui, format!("🛡 {}", t("Relaunch as Administrator"))).clicked() {
+                    let r = theme::primary_button(ui, format!("🛡 {}", t("Relaunch as Administrator")));
+                    if ui.memory(|m| m.focused().is_none()) {
+                        r.request_focus();
+                    }
+                    if r.clicked() {
                         self.relaunch_elevated(ctx);
                         close = true;
                     }
@@ -588,7 +605,13 @@ impl App {
                 ui.add_space(10.0);
                 let mut choice = None;
                 ui.horizontal(|ui| {
-                    if theme::primary_button(ui, ok).clicked() {
+                    let r = theme::primary_button(ui, ok);
+                    // Keyboard users start on the confirm button: Enter accepts,
+                    // Tab moves to Cancel, Esc cancels.
+                    if ui.memory(|m| m.focused().is_none()) {
+                        r.request_focus();
+                    }
+                    if r.clicked() {
                         choice = Some(true);
                     }
                     if ui.button(t("Cancel")).clicked() {
@@ -608,6 +631,9 @@ impl App {
             }
         }
 
+        if self.about_open && super::a11y::escape_pressed(ctx) {
+            self.about_open = false;
+        }
         if self.about_open {
             let logo = self.logo.clone();
             egui::Window::new(t("About Expunge"))
@@ -829,6 +855,7 @@ impl App {
                         })
                         .response
                         .interact(egui::Sense::click());
+                    super::a11y::selectable(&resp, &format!("{}. {}", t(title), t(body)), selected);
                     if resp.clicked() {
                         self.settings.advanced_mode = adv;
                     }
@@ -837,7 +864,11 @@ impl App {
             ui.add_space(10.0);
             small_muted(ui, t("You can change both at any time in Settings. Press F1 on any page for help."));
             ui.add_space(6.0);
-            if theme::wide_button(ui, t("Get started"), true).clicked() {
+            let start = theme::wide_button(ui, t("Get started"), true);
+            if ui.memory(|m| m.focused().is_none()) {
+                start.request_focus();
+            }
+            if start.clicked() {
                 done = true;
             }
         });
@@ -908,7 +939,34 @@ impl App {
             if i.consume_key(Modifiers::NONE, Key::F1) {
                 self.help_open = !self.help_open;
             }
+            if i.consume_key(Modifiers::NONE, Key::F10) {
+                self.focus_menu = true;
+            }
+            let ctrl_tab = self.ctrl_tab.take();
+            if let Some(back) = ctrl_tab {
+                let mut order = tabs.to_vec();
+                if self.settings.advanced_mode {
+                    order.insert(7, Tab::Lab);
+                }
+                let pos = order.iter().position(|t| *t == self.tab).unwrap_or(0);
+                let n = order.len();
+                let next = if back {
+                    (pos + n - 1) % n
+                } else {
+                    (pos + 1) % n
+                };
+                go = Some(order[next]);
+            }
         });
+        if self.help_open
+            && self.confirm.is_none()
+            && self.wizard.is_none()
+            && self.removal.is_none()
+            && !self.about_open
+            && super::a11y::escape_pressed(ctx)
+        {
+            self.help_open = false;
+        }
         if let Some(tab) = go {
             self.tab = tab;
             self.on_tab_opened(ctx, tab);
@@ -945,8 +1003,35 @@ impl App {
 }
 
 impl eframe::App for App {
+    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        raw_input.events.retain(|e| match e {
+            egui::Event::Key {
+                key: egui::Key::Tab,
+                pressed,
+                modifiers,
+                ..
+            } if modifiers.ctrl => {
+                if *pressed {
+                    self.ctrl_tab = Some(modifiers.shift);
+                }
+                false
+            }
+            _ => true,
+        });
+    }
+
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.frame += 1;
+        super::a11y::track_input_mode(ctx);
+        // Ctrl+Plus / Ctrl+Minus / Ctrl+0 zoom (built into egui): remember it.
+        let z = ctx.zoom_factor();
+        if (z - self.settings.zoom).abs() > 0.001 && !ctx.input(|i| i.pointer.any_down()) {
+            self.settings.zoom = z.clamp(0.75, 2.0);
+            if (self.settings.zoom - z).abs() > 0.001 {
+                ctx.set_zoom_factor(self.settings.zoom);
+            }
+            self.save_settings();
+        }
         if self.style_frames > 0 || self.frame.is_multiple_of(120) {
             platform::apply_window_style(theme::BORDER_RGB, true);
             self.style_frames = self.style_frames.saturating_sub(1);
@@ -978,6 +1063,7 @@ impl eframe::App for App {
         self.dialogs(ctx);
         self.welcome(ctx);
         self.shortcuts(ctx);
+        super::a11y::focus_ring(ctx, theme::ACCENT_TEXT);
     }
 
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {

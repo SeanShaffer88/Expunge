@@ -4,7 +4,6 @@ Planned for future releases, roughly in priority order. Vote or comment on the
 matching GitHub issue to move something up.
 
 ## Next
-- **Full keyboard accessibility** — every page, table, dialog and wizard usable without a mouse: logical Tab order, visible focus ring, arrow-key navigation in lists, Enter/Space/Esc everywhere, mnemonic shortcuts, and screen-reader names for every control (via egui's AccessKit support, which exposes the UI to Narrator and NVDA).
 - **Lightweight footprint and a never-blocking UI** — audit that every disk, registry, network and process operation runs off the UI thread (it already does for scans, snapshots, uninstalls and icon loading) and stream large results instead of loading them whole. Add memory and CPU budgets checked in CI: idle RAM, startup time, and snapshot throughput. Release cached icons, snapshots and scan results when their page is closed.
 - **Windows Slimmer–style cleanup** in the Junk cleaner, covering what [Auslogics Windows Slimmer](https://www.auslogics.com/en/software/windows-slimmer/) trims. Each item is explained and confirmed, with the space it frees shown first:
   - *Unneeded system files*: Windows.old and previous-upgrade leftovers, Windows logs, error reports and memory dumps, Delivery Optimization cache.

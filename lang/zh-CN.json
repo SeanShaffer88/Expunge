@@ -539,5 +539,19 @@
   "These changed on their own while nothing was being installed:": "以下内容在未安装任何程序时自行发生了变化：",
   "Ignore selected": "忽略所选项",
   "Learn background noise": "学习后台噪音",
-  "Takes two snapshots a minute apart. Don't install or change anything meanwhile.": "间隔一分钟创建两个快照。在此期间请勿安装或更改任何内容。"
+  "Takes two snapshots a minute apart. Don't install or change anything meanwhile.": "间隔一分钟创建两个快照。在此期间请勿安装或更改任何内容。",
+  "Keyboard": "键盘",
+  "Everything in Expunge can be used without a mouse. Screen readers such as Narrator and NVDA read every control.": "Expunge 的所有功能都可以不用鼠标操作。讲述人和 NVDA 等屏幕阅读器会朗读每个控件。",
+  "Move between buttons, boxes and lists": "在按钮、输入框和列表之间移动",
+  "Press the focused button or tick the focused box": "按下获得焦点的按钮或勾选获得焦点的复选框",
+  "Move through the program or install-log list": "在程序列表或安装日志列表中移动",
+  "Tick the selected program for uninstalling several at once": "勾选所选程序，以便一次卸载多个",
+  "Uninstall the selected program": "卸载所选程序",
+  "Close a dialog or window, or leave a text box": "关闭对话框或窗口，或离开文本框",
+  "Go to a page": "转到某个页面",
+  "Next / previous page": "下一页 / 上一页",
+  "Search": "搜索",
+  "Go to the menu bar (then arrow keys)": "转到菜单栏（然后使用方向键）",
+  "Help for this page": "此页面的帮助",
+  "Bigger / smaller / normal text": "放大 / 缩小 / 恢复文字大小"
 }

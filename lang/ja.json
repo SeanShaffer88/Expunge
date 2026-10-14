@@ -539,5 +539,19 @@
   "These changed on their own while nothing was being installed:": "何もインストールしていない間に、次の項目が自動的に変化しました：",
   "Ignore selected": "選択した項目を無視",
   "Learn background noise": "バックグラウンドノイズを学習",
-  "Takes two snapshots a minute apart. Don't install or change anything meanwhile.": "1 分間隔で 2 つのスナップショットを作成します。その間は何もインストールしたり変更したりしないでください。"
+  "Takes two snapshots a minute apart. Don't install or change anything meanwhile.": "1 分間隔で 2 つのスナップショットを作成します。その間は何もインストールしたり変更したりしないでください。",
+  "Keyboard": "キーボード",
+  "Everything in Expunge can be used without a mouse. Screen readers such as Narrator and NVDA read every control.": "Expunge はすべてマウスなしで操作できます。ナレーターや NVDA などのスクリーンリーダーがすべてのコントロールを読み上げます。",
+  "Move between buttons, boxes and lists": "ボタン、ボックス、リストの間を移動",
+  "Press the focused button or tick the focused box": "フォーカスのあるボタンを押す、またはボックスにチェックを入れる",
+  "Move through the program or install-log list": "プログラム一覧またはインストールログ一覧を移動",
+  "Tick the selected program for uninstalling several at once": "選択したプログラムにチェックを入れて複数をまとめてアンインストール",
+  "Uninstall the selected program": "選択したプログラムをアンインストール",
+  "Close a dialog or window, or leave a text box": "ダイアログやウィンドウを閉じる、またはテキストボックスから出る",
+  "Go to a page": "ページへ移動",
+  "Next / previous page": "次 / 前のページ",
+  "Search": "検索",
+  "Go to the menu bar (then arrow keys)": "メニューバーへ移動（その後は矢印キー）",
+  "Help for this page": "このページのヘルプ",
+  "Bigger / smaller / normal text": "文字を大きく / 小さく / 標準に"
 }

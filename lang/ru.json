@@ -539,5 +539,19 @@
   "These changed on their own while nothing was being installed:": "Это изменилось само, пока ничего не устанавливалось:",
   "Ignore selected": "Игнорировать выбранное",
   "Learn background noise": "Изучить фоновый шум",
-  "Takes two snapshots a minute apart. Don't install or change anything meanwhile.": "Делает два снимка с интервалом в минуту. В это время ничего не устанавливайте и не изменяйте."
+  "Takes two snapshots a minute apart. Don't install or change anything meanwhile.": "Делает два снимка с интервалом в минуту. В это время ничего не устанавливайте и не изменяйте.",
+  "Keyboard": "Клавиатура",
+  "Everything in Expunge can be used without a mouse. Screen readers such as Narrator and NVDA read every control.": "Expunge полностью работает без мыши. Программы чтения с экрана, такие как Экранный диктор и NVDA, озвучивают каждый элемент.",
+  "Move between buttons, boxes and lists": "Переход между кнопками, полями и списками",
+  "Press the focused button or tick the focused box": "Нажать кнопку в фокусе или отметить флажок в фокусе",
+  "Move through the program or install-log list": "Перемещение по списку программ или журналов установки",
+  "Tick the selected program for uninstalling several at once": "Отметить выбранную программу, чтобы удалить несколько сразу",
+  "Uninstall the selected program": "Удалить выбранную программу",
+  "Close a dialog or window, or leave a text box": "Закрыть диалог или окно либо выйти из текстового поля",
+  "Go to a page": "Перейти на страницу",
+  "Next / previous page": "Следующая / предыдущая страница",
+  "Search": "Поиск",
+  "Go to the menu bar (then arrow keys)": "Перейти к строке меню (затем стрелки)",
+  "Help for this page": "Справка по этой странице",
+  "Bigger / smaller / normal text": "Крупнее / мельче / обычный текст"
 }

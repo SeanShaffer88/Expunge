@@ -121,10 +121,15 @@ impl UpdatesState {
                 if ctx.input(|i| i.viewport().close_requested()) {
                     self.is_open = false;
                 }
+                // Esc closes this window, unless a confirmation is showing.
+                if self.pending.is_none() && super::a11y::escape_pressed(ctx) {
+                    self.is_open = false;
+                }
                 egui::CentralPanel::default()
                     .frame(egui::Frame::new().fill(theme::BG).inner_margin(18))
                     .show(ctx, |ui| self.body(ui, elevated));
                 self.confirm_modal(ctx);
+                super::a11y::focus_ring(ctx, theme::ACCENT_TEXT);
                 if self.list_job.is_some() || self.remove_job.is_some() {
                     ctx.request_repaint_after(std::time::Duration::from_millis(250));
                 }
