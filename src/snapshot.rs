@@ -337,6 +337,8 @@ mod tests {
                 recursive: true,
             }],
             file_exclusions: vec!["*cache".into()],
+            // The test folders live under %TEMP%, which the built-in list ignores.
+            auto_exclusions: false,
             ..Settings::default()
         }
     }
