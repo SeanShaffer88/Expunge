@@ -16,6 +16,8 @@ pub enum Sub {
     Entries,
     Services,
     Tasks,
+    /// Winlogon, Active Setup, IFEO, AppInit, Explorer extensions, WMI…
+    Other,
 }
 
 type StartupLists = (Vec<StartupEntry>, Vec<ServiceEntry>, Vec<TaskEntry>);
@@ -31,6 +33,11 @@ pub struct StartupState {
     pub show_windows_services: bool,
     pub show_microsoft_tasks: bool,
     pub filter: String,
+    /// Other autostart locations, with "target file is missing" flags.
+    pub other: Option<Vec<(expunge_core::autoruns::AutoEntry, bool)>>,
+    pub other_job: Option<Job<Vec<(expunge_core::autoruns::AutoEntry, bool)>>>,
+    pub other_checked: std::collections::BTreeSet<usize>,
+    pub show_windows_other: bool,
 }
 
 impl App {
@@ -122,6 +129,7 @@ impl App {
                             (Sub::Entries, t("Startup programs")),
                             (Sub::Services, t("Services")),
                             (Sub::Tasks, t("Scheduled tasks")),
+                            (Sub::Other, t("Other autostarts")),
                         ] {
                             if ui.selectable_label(self.startup.sub == s, label).clicked() {
                                 self.startup.sub = s;
@@ -133,6 +141,7 @@ impl App {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui.button(format!("⟳ {}", t("Refresh"))).clicked() {
                             self.refresh_startup(ctx);
+                            self.startup.other = None;
                         }
                     });
                 });
@@ -145,7 +154,163 @@ impl App {
                     Sub::Entries => self.ui_startup_entries(ui),
                     Sub::Services => self.ui_services(ui),
                     Sub::Tasks => self.ui_tasks(ui),
+                    Sub::Other => self.ui_other_autostarts(ui),
                 }
+            });
+    }
+
+    fn ui_other_autostarts(&mut self, ui: &mut egui::Ui) {
+        if let Some(r) = self.startup.other_job.as_ref().and_then(|j| j.poll()) {
+            self.startup.other_job = None;
+            self.startup.other = Some(r);
+            self.startup.other_checked.clear();
+        }
+        if self.startup.other.is_none() && self.startup.other_job.is_none() {
+            let reg = self.reg.clone();
+            self.startup.other_job = Some(Job::spawn(ui.ctx(), move |_| {
+                let ix = expunge_core::leftovers::DeepIndex::build(reg.as_ref(), None);
+                let mut list = expunge_core::autoruns::scan(reg.as_ref(), &ix);
+                list.extend(expunge_core::autoruns::wmi_consumers());
+                list.into_iter()
+                    .map(|e| {
+                        let missing = expunge_core::orphans::target_path(&e.target)
+                            .is_some_and(|p| !std::path::Path::new(&p).exists());
+                        (e, missing)
+                    })
+                    .collect()
+            }));
+        }
+        let Some(list) = self.startup.other.clone() else {
+            job_progress(ui, &t("Loading…"), 0);
+            return;
+        };
+        ui.horizontal(|ui| {
+            ui.checkbox(
+                &mut self.startup.show_windows_other,
+                t("Show Windows' own entries"),
+            );
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let n = self.startup.other_checked.len();
+                if n > 0
+                    && theme::primary_button(ui, tf("Remove {n} selected", &[("n", n.to_string())]))
+                        .clicked()
+                {
+                    let items: Vec<expunge_core::revert::PlanItem> = self
+                        .startup
+                        .other_checked
+                        .iter()
+                        .filter_map(|&i| list.get(i))
+                        .filter_map(|(e, _)| e.removal.clone().map(|a| (a, e.kind)))
+                        .map(|(action, kind)| expunge_core::revert::PlanItem {
+                            action,
+                            selected: true,
+                            exists: true,
+                            note: kind.into(),
+                        })
+                        .collect();
+                    let plan = expunge_core::revert::Plan {
+                        items,
+                        ..Default::default()
+                    };
+                    self.open_removal(super::plan::RemovalFlow::new(
+                        t("Remove autostart entries"),
+                        plan,
+                        false,
+                        false,
+                    ));
+                    self.startup.other = None;
+                }
+            });
+        });
+        small_muted(ui, t("Places programs use to start or load automatically, beyond the usual startup list: Winlogon, Active Setup, program replacements, AppInit DLLs, Explorer extensions, icon overlays, browser helpers, boot programs and WMI subscriptions."));
+        ui.add_space(4.0);
+        let f = self.startup.filter.to_lowercase();
+        let rows: Vec<usize> = (0..list.len())
+            .filter(|&i| {
+                let (e, _) = &list[i];
+                (self.startup.show_windows_other || !e.windows)
+                    && (f.is_empty()
+                        || e.name.to_lowercase().contains(&f)
+                        || e.target.to_lowercase().contains(&f)
+                        || e.kind.to_lowercase().contains(&f))
+            })
+            .collect();
+        if rows.is_empty() {
+            ui.add_space(10.0);
+            muted(ui, t("Nothing found."));
+            return;
+        }
+        TableBuilder::new(ui)
+            .striped(true)
+            .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+            .column(Column::exact(22.0))
+            .column(
+                Column::initial(170.0)
+                    .at_least(90.0)
+                    .clip(true)
+                    .resizable(true),
+            )
+            .column(
+                Column::initial(170.0)
+                    .at_least(90.0)
+                    .clip(true)
+                    .resizable(true),
+            )
+            .column(Column::remainder().at_least(150.0).clip(true))
+            .header(24.0, |mut h| {
+                h.col(|_| {});
+                for l in ["Kind", "Name", "Runs or loads"] {
+                    h.col(|ui| {
+                        ui.strong(t(l));
+                    });
+                }
+            })
+            .body(|body| {
+                body.rows(26.0, rows.len(), |mut row| {
+                    let i = rows[row.index()];
+                    let (e, missing) = &list[i];
+                    row.col(|ui| {
+                        if e.removal.is_some() {
+                            let mut c = self.startup.other_checked.contains(&i);
+                            let name = e.name.clone();
+                            let r = ui.checkbox(&mut c, "");
+                            r.widget_info(|| {
+                                egui::WidgetInfo::selected(
+                                    egui::WidgetType::Checkbox,
+                                    true,
+                                    c,
+                                    &name,
+                                )
+                            });
+                            if r.changed() {
+                                if c {
+                                    self.startup.other_checked.insert(i);
+                                } else {
+                                    self.startup.other_checked.remove(&i);
+                                }
+                            }
+                        }
+                    });
+                    row.col(|ui| {
+                        ui.add(egui::Label::new(t(e.kind)).truncate());
+                    });
+                    row.col(|ui| {
+                        if *missing {
+                            ui.label(RichText::new("⚠").color(theme::WARN))
+                                .on_hover_text(t("The file it runs no longer exists"));
+                        }
+                        ui.add(egui::Label::new(&e.name).truncate());
+                    });
+                    row.col(|ui| {
+                        ui.add(
+                            egui::Label::new(
+                                RichText::new(&e.target).monospace().color(theme::MUTED),
+                            )
+                            .truncate(),
+                        )
+                        .on_hover_text(format!("{}\n{}", e.target, e.location));
+                    });
+                });
             });
     }
 

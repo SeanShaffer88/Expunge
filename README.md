@@ -62,7 +62,7 @@ It is a free, GPL-licensed alternative to commercial tools like Total Uninstall 
 
 **Tools**
 - **Windows Updates** window (Advanced mode): list installed updates and uninstall individual ones (uses DISM, which works for modern cumulative updates; permanent servicing-stack updates are labelled).
-- **Startup manager**: Run keys and Startup folders (Task Manager-compatible enable/disable), services, scheduled tasks.
+- **Startup manager**: Run keys and Startup folders (Task Manager-compatible enable/disable), services and drivers, scheduled tasks, plus (Advanced) every other autostart location: Winlogon, Active Setup, program replacements, AppInit DLLs, Explorer extensions, icon overlays, browser helpers, boot programs and WMI subscriptions.
 - **Junk cleaner**: temp files, crash and memory dumps, Windows logs, Delivery Optimization and Windows Update downloads, shader and browser caches, Prefetch, Recycle Bin.
 - **Deep cleanup** (Advanced): previous Windows installation (Windows.old), outdated Windows components (DISM), files of turned-off features, and old restore points, each analyzed first and confirmed separately.
 - **"Which program created this?"** — search any file or registry path across all monitored installs.

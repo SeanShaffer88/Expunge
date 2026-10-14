@@ -462,6 +462,16 @@ fn demo_programs(r: &MemRegistry) {
         }
         r.put(k);
     }
+    // A few extra autostarts for the Startup page's "Other autostarts".
+    r.put(
+        KeyData::new("HKLM\\SOFTWARE\\Microsoft\\Active Setup\\Installed Components\\{9D1D3F1E-0000-4C11-9C3B-DEMO00000001}")
+            .with(RegValue::string("", "Old Toolbar Helper"))
+            .with(RegValue::string("StubPath", "\"C:\\Program Files\\OldToolbar\\setup.exe\" /peruser")),
+    );
+    r.put(
+        KeyData::new("HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\notepad.exe")
+            .with(RegValue::string("Debugger", "\"C:\\Program Files\\Notepad++\\notepad++.exe\" -notepadStyleCmdline -z")),
+    );
 }
 
 #[cfg(windows)]
