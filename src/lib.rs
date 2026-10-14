@@ -25,6 +25,7 @@ pub mod revert;
 pub mod settings;
 pub mod shell;
 pub mod silent;
+pub mod slimmer;
 pub mod snapshot;
 pub mod startup;
 pub mod store;

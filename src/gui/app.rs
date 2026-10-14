@@ -36,6 +36,8 @@ pub enum Confirm {
     CancelMonitoring,
     /// Turn an optional Windows feature on (true) or off.
     SetFeature(String, bool),
+    /// Run one deep (Windows) cleanup.
+    DeepClean(expunge_core::slimmer::DeepItem),
 }
 
 pub struct ConfirmDialog {
@@ -272,6 +274,7 @@ impl App {
             Confirm::DeleteBackup(id) => self.delete_backup(&id),
             Confirm::CleanJunk => self.start_clean(),
             Confirm::SetFeature(name, enable) => self.set_feature(name, enable),
+            Confirm::DeepClean(item) => self.start_deep(item),
             Confirm::DeleteStartup(i) => self.delete_startup(i),
             Confirm::DeleteTask(i) => self.delete_task(i),
             Confirm::ResetSettings => {

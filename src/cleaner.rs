@@ -86,6 +86,32 @@ pub fn categories() -> Vec<Category> {
             false,
             false,
         ),
+        c(
+            "windows_logs",
+            vec![
+                "%SystemRoot%\\Logs\\CBS",
+                "%SystemRoot%\\Logs\\DISM",
+                "%SystemRoot%\\Logs\\MoSetup",
+                "%SystemRoot%\\Logs\\WindowsUpdate",
+                "%SystemRoot%\\Panther",
+                "%SystemRoot%\\inf\\setupapi.*.log",
+            ],
+            true,
+            false,
+        ),
+        c(
+            "memory_dumps",
+            vec!["%SystemRoot%\\MEMORY.DMP", "%SystemRoot%\\Minidump", "%SystemRoot%\\LiveKernelReports"],
+            true,
+            true,
+        ),
+        c(
+            "delivery_optimization",
+            vec!["%SystemRoot%\\ServiceProfiles\\NetworkService\\AppData\\Local\\Microsoft\\Windows\\DeliveryOptimization\\Cache"],
+            true,
+            true,
+        ),
+        c("prefetch", vec!["%SystemRoot%\\Prefetch\\*.pf"], true, false),
         c("recycle_bin", vec![], false, false),
     ]
 }
@@ -102,6 +128,7 @@ pub fn is_advanced(id: &str) -> bool {
             | "chrome_cache"
             | "edge_cache"
             | "firefox_cache"
+            | "prefetch"
     )
 }
 

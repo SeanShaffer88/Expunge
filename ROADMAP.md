@@ -6,15 +6,6 @@ listed in the [README](README.md#features).
 
 ## Next
 
-**Cleaner**
-- **Windows Slimmer–style cleanup** in the Junk cleaner, covering what [Auslogics Windows Slimmer](https://www.auslogics.com/en/software/windows-slimmer/) trims. Each item is explained and confirmed, with the space it frees shown first, and a restore point is offered before deep cleaning:
-  - *Unneeded system files*: Windows.old and previous-upgrade leftovers, Windows logs, error reports and memory dumps, Prefetch, Delivery Optimization cache.
-  - *Windows Update files*: downloaded update packages and update cache.
-  - *Outdated Windows libraries*: superseded component-store (WinSxS) versions, removed with Windows' own DISM component cleanup.
-  - *Disabled system components*: remove the stored files of optional Windows features that are turned off.
-  - *Old System Restore points*: delete all but the newest.
-  - *Unneeded apps*: suggest pre-installed Store apps that can be removed (already removable from the Programs page).
-
 **Startup**
 - **Complete autostart coverage** — in addition to Run keys, Startup folders, services and scheduled tasks: Winlogon, Active Setup, shell and Explorer extensions, context-menu handlers, Image File Execution Options, AppInit DLLs, WMI event subscriptions, and kernel drivers (start type changeable, with Safe / Review / Careful labels; drivers and Windows services stay Advanced-only).
 

@@ -1,5 +1,6 @@
 //! Cleaner page: temporary files, caches, crash dumps, Recycle Bin.
 
+use super::app::Confirm as DeepConfirm;
 use super::app::{App, Confirm};
 use super::theme;
 use super::widgets::*;
@@ -8,9 +9,15 @@ use egui::RichText;
 use expunge_core::cleaner::{self, Category, ScanResult};
 use expunge_core::i18n::{t, tf};
 use expunge_core::model::human_size;
+use expunge_core::slimmer::{self, Analysis, DeepItem};
 
 pub struct CleanerState {
     pub cats: Vec<(Category, bool, Option<ScanResult>)>,
+    /// Deep cleanup: analysis per item (same order as `DeepItem::ALL`).
+    pub deep: Vec<Option<Result<Analysis, String>>>,
+    pub deep_job: Option<Job<Vec<Result<Analysis, String>>>>,
+    pub deep_run: Option<(DeepItem, Job<Result<(), String>>)>,
+    pub deep_restore_point: bool,
     pub scan_job: Option<Job<Vec<ScanResult>>>,
     pub clean_job: Option<Job<Vec<ScanResult>>>,
     pub freed: Option<u64>,
@@ -26,6 +33,10 @@ impl Default for CleanerState {
                     (c, on, None)
                 })
                 .collect(),
+            deep: vec![None; DeepItem::ALL.len()],
+            deep_job: None,
+            deep_run: None,
+            deep_restore_point: true,
             scan_job: None,
             clean_job: None,
             freed: None,
@@ -64,6 +75,22 @@ fn cat_text(id: &str) -> (&'static str, &'static str) {
         "firefox_cache" => (
             "Firefox cache",
             "Cached web content (not history, passwords or cookies)",
+        ),
+        "windows_logs" => (
+            "Windows setup and update logs",
+            "Logs from Windows Update, servicing and upgrades",
+        ),
+        "memory_dumps" => (
+            "System memory dumps",
+            "Large files Windows writes after a crash (blue screen)",
+        ),
+        "delivery_optimization" => (
+            "Delivery Optimization cache",
+            "Update pieces Windows keeps to share with other PCs",
+        ),
+        "prefetch" => (
+            "Prefetch data",
+            "Start-up hints; programs open a little slower until Windows rebuilds them",
         ),
         "recycle_bin" => (
             "Recycle Bin",
@@ -107,7 +134,159 @@ impl App {
         }));
     }
 
+    fn analyze_deep(&mut self) {
+        if self.cleaner.deep_job.is_some() {
+            return;
+        }
+        self.cleaner.deep_job = Some(Job::spawn(&self.ctx, |pr| {
+            DeepItem::ALL
+                .iter()
+                .map(|i| {
+                    pr.set_phase(t(i.title()));
+                    slimmer::analyze(*i).map_err(|e| e.to_string())
+                })
+                .collect()
+        }));
+    }
+
+    pub fn start_deep(&mut self, item: DeepItem) {
+        if self.cleaner.deep_run.is_some() {
+            return;
+        }
+        let rp = self.cleaner.deep_restore_point && item != DeepItem::RestorePoints;
+        let job = Job::spawn(&self.ctx, move |pr| {
+            if rp {
+                pr.set_phase(t("Creating a restore point…"));
+                let _ = expunge_core::updates::create_restore_point("Before Expunge deep cleanup");
+            }
+            slimmer::clean(item, &|s| pr.set_phase(s)).map_err(|e| e.to_string())
+        });
+        self.cleaner.deep_run = Some((item, job));
+    }
+
+    /// Deep cleanup card (Advanced mode).
+    fn ui_deep(&mut self, ui: &mut egui::Ui) {
+        theme::card(ui, |ui| {
+            ui.label(RichText::new(t("Deep cleanup")).heading());
+            small_muted(ui, t("One-time cleanups of Windows itself, using Windows' own tools. Each one is explained and confirmed separately and can't be undone."));
+            ui.add_space(6.0);
+            if !self.elevated {
+                theme::warning_banner(ui, t("Run Expunge as Administrator to use deep cleanup."));
+                return;
+            }
+            if let Some((item, job)) = &self.cleaner.deep_run {
+                job_progress(
+                    ui,
+                    &format!("{} — {}", t(item.title()), job.progress.phase()),
+                    0,
+                );
+                ui.ctx()
+                    .request_repaint_after(std::time::Duration::from_millis(500));
+                return;
+            }
+            let analyzing = self.cleaner.deep_job.is_some();
+            ui.horizontal(|ui| {
+                if ui
+                    .add_enabled(
+                        !analyzing,
+                        egui::Button::new(format!("🔍 {}", t("Analyze"))),
+                    )
+                    .clicked()
+                {
+                    self.analyze_deep();
+                }
+                ui.checkbox(
+                    &mut self.cleaner.deep_restore_point,
+                    t("Create a restore point first"),
+                );
+            });
+            if let Some(job) = &self.cleaner.deep_job {
+                job_progress(
+                    ui,
+                    &tf("Analyzing {name}…", &[("name", job.progress.phase())]),
+                    0,
+                );
+            }
+            ui.add_space(4.0);
+            let mut run: Option<DeepItem> = None;
+            for (i, item) in DeepItem::ALL.iter().enumerate() {
+                ui.separator();
+                ui.horizontal(|ui| {
+                    ui.vertical(|ui| {
+                        ui.set_max_width(ui.available_width() - 190.0);
+                        ui.label(RichText::new(t(item.title())).strong());
+                        small_muted(ui, t(item.description()));
+                    });
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        match &self.cleaner.deep[i] {
+                            Some(Ok(a)) if a.applicable => {
+                                if ui.button(t("Clean up")).clicked() {
+                                    run = Some(*item);
+                                }
+                                let size = a.bytes.map(human_size);
+                                let text = match (size, a.count) {
+                                    (Some(s), _) => s,
+                                    (None, Some(n)) => tf("{n} items", &[("n", n.to_string())]),
+                                    _ => String::new(),
+                                };
+                                ui.label(RichText::new(text).strong().color(theme::WARN));
+                            }
+                            Some(Ok(_)) => {
+                                ui.label(
+                                    RichText::new(format!("✔ {}", t("Nothing to clean")))
+                                        .color(theme::OK),
+                                );
+                            }
+                            Some(Err(e)) => {
+                                ui.label(RichText::new("⚠").color(theme::WARN))
+                                    .on_hover_text(e);
+                            }
+                            None => {}
+                        }
+                    });
+                });
+            }
+            ui.separator();
+            ui.horizontal(|ui| {
+                ui.vertical(|ui| {
+                    ui.set_max_width(ui.available_width() - 190.0);
+                    ui.label(RichText::new(t("Unneeded apps")).strong());
+                    small_muted(ui, t("Pre-installed Store apps you don't use can be removed from the Programs page."));
+                });
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button(t("Show Store apps")).clicked() {
+                        self.tab = super::app::Tab::Programs;
+                        self.programs.view = super::programs::View::Store;
+                        if self.programs.store_apps.is_empty() && self.programs.store_job.is_none() {
+                            self.programs.store_job = Some(Job::spawn(&self.ctx, |_| expunge_core::programs::list_store_apps()));
+                        }
+                    }
+                });
+            });
+            if let Some(item) = run {
+                self.ask(
+                    "Run this cleanup?",
+                    format!("{}\n\n{}", t(item.title()), t(item.description())),
+                    "Clean up",
+                    DeepConfirm::DeepClean(item),
+                );
+            }
+        });
+    }
+
     pub fn poll_cleaner(&mut self) {
+        if let Some(r) = self.cleaner.deep_job.as_ref().and_then(|j| j.poll()) {
+            self.cleaner.deep_job = None;
+            self.cleaner.deep = r.into_iter().map(Some).collect();
+        }
+        if let Some(r) = self.cleaner.deep_run.as_ref().and_then(|(_, j)| j.poll()) {
+            let (item, _) = self.cleaner.deep_run.take().unwrap();
+            match r {
+                Ok(()) => self.set_status(tf("{name}: done.", &[("name", t(item.title()))])),
+                Err(e) => self.set_status(format!("{}: {e}", t(item.title()))),
+            }
+            self.analyze_deep();
+        }
         if let Some(r) = self.cleaner.scan_job.as_ref().and_then(|j| j.poll()) {
             self.cleaner.scan_job = None;
             for ((_, _, res), s) in self.cleaner.cats.iter_mut().zip(r) {
@@ -164,6 +343,10 @@ impl App {
                         *on = false;
                     }
                     ui.add_space(6.0);
+                }
+                if advanced {
+                    ui.add_space(8.0);
+                    self.ui_deep(ui);
                 }
             });
             ui.add_space(6.0);
