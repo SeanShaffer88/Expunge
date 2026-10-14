@@ -168,6 +168,25 @@ impl InstalledProgram {
         p.is_absolute() && !system_tool && !p.exists()
     }
 
+    /// Where to load this program's icon from: (file, icon index).
+    pub fn icon_source(&self) -> Option<(String, i32)> {
+        if let Some(loc) = parse_icon_location(&self.display_icon) {
+            return Some(loc);
+        }
+        // Fall back to the uninstaller, which usually carries the app's icon.
+        if self.is_msi || self.uninstall_string.is_empty() {
+            return None;
+        }
+        let (prog, _) =
+            crate::util::split_command_line(&crate::platform::expand_env(&self.uninstall_string));
+        let lower = prog.to_lowercase();
+        (lower.ends_with(".exe")
+            && !["msiexec", "rundll32", "cmd.exe"]
+                .iter()
+                .any(|t| lower.contains(t)))
+        .then_some((prog, 0))
+    }
+
     pub fn has_quiet_uninstall(&self) -> bool {
         !self.quiet_uninstall_string.is_empty() || (self.is_msi && !self.product_code.is_empty())
     }
@@ -183,6 +202,29 @@ pub fn dir_size(path: &str) -> u64 {
         .filter_map(|e| e.metadata().ok())
         .map(|m| m.len())
         .sum()
+}
+
+/// Parse a `DisplayIcon` value like `"C:\\App\\app.exe",0`, `C:\\App\\app.ico`
+/// or `%ProgramFiles%\\App\\app.exe,-101` into (path, index).
+pub fn parse_icon_location(s: &str) -> Option<(String, i32)> {
+    let s = crate::platform::expand_env(s.trim());
+    if s.is_empty() {
+        return None;
+    }
+    let (path, index) = match s.rsplit_once(',') {
+        Some((p, i)) if i.trim().parse::<i32>().is_ok() => {
+            (p.to_string(), i.trim().parse().unwrap())
+        }
+        _ => (s.clone(), 0),
+    };
+    let path = path.trim().trim_matches('"').trim().to_string();
+    let lower = path.to_lowercase();
+    if path.is_empty()
+        || !(lower.ends_with(".exe") || lower.ends_with(".ico") || lower.ends_with(".dll"))
+    {
+        return None;
+    }
+    Some((path, index))
 }
 
 pub fn extract_guid(s: &str) -> Option<String> {
@@ -385,6 +427,39 @@ mod tests {
         assert_eq!(foo.size_kb, 2048);
         assert_eq!(list_programs(&reg, true).len(), 3);
         assert!(to_csv(&list).contains("\"Bar MSI\""));
+    }
+
+    #[test]
+    fn icon_locations() {
+        assert_eq!(
+            parse_icon_location("\"C:\\A b\\app.exe\",0"),
+            Some(("C:\\A b\\app.exe".into(), 0))
+        );
+        assert_eq!(
+            parse_icon_location("C:\\A\\app.exe,-101"),
+            Some(("C:\\A\\app.exe".into(), -101))
+        );
+        assert_eq!(
+            parse_icon_location("C:\\A\\app.ico"),
+            Some(("C:\\A\\app.ico".into(), 0))
+        );
+        assert_eq!(
+            parse_icon_location("C:\\A,B\\app.exe"),
+            Some(("C:\\A,B\\app.exe".into(), 0))
+        );
+        assert_eq!(parse_icon_location(""), None);
+        assert_eq!(parse_icon_location("C:\\A\\readme.txt"), None);
+        let p = InstalledProgram {
+            uninstall_string: "\"C:\\A\\unins000.exe\" /x".into(),
+            ..Default::default()
+        };
+        assert_eq!(p.icon_source(), Some(("C:\\A\\unins000.exe".into(), 0)));
+        let m = InstalledProgram {
+            uninstall_string: "MsiExec.exe /X{1}".into(),
+            is_msi: true,
+            ..Default::default()
+        };
+        assert_eq!(m.icon_source(), None);
     }
 
     #[test]

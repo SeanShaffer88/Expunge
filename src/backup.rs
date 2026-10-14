@@ -271,7 +271,7 @@ pub fn backup_to_reg(b: &Backup) -> String {
         return body;
     }
     format!(
-        "Windows Registry Editor Version 5.00\r\n\r\n; Expunge backup {} — {}\r\n; Created {}. Double-click (as administrator) to restore these registry entries.\r\n\r\n{body}",
+        "Windows Registry Editor Version 5.00\r\n\r\n; Expunge backup {} — {}\r\n; Created {}. Double-click (as Administrator) to restore these registry entries.\r\n\r\n{body}",
         b.id, b.title, b.created
     )
 }

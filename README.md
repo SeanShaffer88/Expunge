@@ -29,7 +29,7 @@ It is a free, GPL-licensed alternative to commercial tools like Total Uninstall 
 ## Features
 
 **Install monitoring**
-- **Install and monitor** — pick an installer; Expunge snapshots, runs it, and records every change.
+- **Install and monitor** — pick an installer, or just right-click it in Explorer → **Install with Expunge**; Expunge snapshots, runs it, and records every change.
 - **Manual monitoring** for anything else (Microsoft Store, winget, scripts, portable apps).
 - Monitoring **survives restarts**, so installers that need a reboot are captured correctly.
 - Review the capture before saving and drop background noise with one click.
@@ -42,7 +42,7 @@ It is a free, GPL-licensed alternative to commercial tools like Total Uninstall 
 - Locked files are scheduled for deletion at the next restart.
 
 **Classic uninstaller (for programs that weren't monitored)**
-- Lists desktop programs (64-bit, 32-bit, per-user) and Microsoft Store apps.
+- Lists desktop programs (64-bit, 32-bit, per-user) with their icons, plus Microsoft Store apps.
 - Runs the vendor uninstaller, then scans for leftovers: folders, shortcuts, registry keys, autostart entries, App Paths, services.
 - **Batch uninstall** several programs in one go, with one combined leftover scan.
 - **Quiet uninstall** where supported, and **forced removal** when the uninstaller is broken.
@@ -77,7 +77,7 @@ It is a free, GPL-licensed alternative to commercial tools like Total Uninstall 
 **And**
 - Dark interface with a native red Windows 11 window border.
 - **9 languages**: English, Español, Deutsch, Français, Português (Brasil), Italiano, Русский, 简体中文, 日本語 — add more without recompiling (see [Translating](docs/TRANSLATING.md)).
-- Admin check at every launch, with one-click relaunch as administrator.
+- Admin check at every launch, with one-click relaunch as Administrator.
 - **No dependencies**: a single native exe; no .NET, no Visual C++ runtime, nothing to download.
 - Installer **or** portable mode.
 - Full **command line** for scripting.
@@ -91,7 +91,7 @@ Get the latest version from the [Releases page](https://github.com/SeanShaffer88
 | `Expunge-Setup-x.y.z.exe` | Installer: Program Files, Start menu, Apps & features entry |
 | `Expunge-x.y.z-portable.zip` | Portable: unzip anywhere; data stays next to the exe |
 
-Requirements: Windows 11 (or Windows 10), 64-bit. Run as administrator for full functionality — Expunge offers to relaunch itself elevated.
+Requirements: Windows 11 (or Windows 10), 64-bit. Run as Administrator for full functionality — Expunge offers to relaunch itself elevated.
 
 ## How to use it
 

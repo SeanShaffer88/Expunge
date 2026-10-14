@@ -187,7 +187,7 @@ pub fn remove_update(u: &UpdateEntry) -> anyhow::Result<RemoveOutcome> {
     match code {
         0 => Ok(RemoveOutcome::Removed),
         3010 | 1641 => Ok(RemoveOutcome::RestartRequired),
-        740 => anyhow::bail!("administrator rights are required"),
+        740 => anyhow::bail!("Administrator rights are required"),
         _ => anyhow::bail!("removal failed (code {code}): {out}"),
     }
 }

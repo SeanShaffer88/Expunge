@@ -6,6 +6,18 @@ All notable changes to Expunge are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Install with Expunge** in the right-click menu of `.exe` and `.msi` files: installs under monitoring in one step. Added for all users by Setup, or per user from Settings (portable). Relaunching as administrator keeps the installer.
+- Program icons in the program list and details.
+
+### Changed
+- Darker red accent (#6B0700) across the interface and window border; red text uses a lighter shade of it for readability.
+- "Administrator" is capitalized throughout.
+- Backups also export registry entries as a double-clickable `.reg` file; optional Recycle Bin.
+
+### Fixed
+- Cleaner wildcard paths that mix `/` and `\` on Windows.
+
 ## [0.1.0] - 2026-10-14
 
 First public release.

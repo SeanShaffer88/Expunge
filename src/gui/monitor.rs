@@ -228,7 +228,7 @@ impl App {
                 Phase::Installing => {
                     ui.add_space(30.0);
                     ui.vertical_centered(|ui| {
-                        ui.label(RichText::new("⏺").size(36.0).color(theme::ACCENT));
+                        ui.label(RichText::new("⏺").size(36.0).color(theme::ACCENT_TEXT));
                         ui.heading(tf("Monitoring: {name}", &[("name", self.monitor.name.clone())]));
                         small_muted(ui, tf("Started {name}", &[("name", self.monitor.started.clone())]));
                         ui.add_space(10.0);

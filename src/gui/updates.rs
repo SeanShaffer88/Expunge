@@ -142,7 +142,7 @@ impl UpdatesState {
         if !elevated {
             theme::warning_banner(
                 ui,
-                t("Run Expunge as administrator to see all updates and remove them."),
+                t("Run Expunge as Administrator to see all updates and remove them."),
             );
             ui.add_space(6.0);
         }

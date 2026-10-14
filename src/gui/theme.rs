@@ -2,14 +2,17 @@
 
 use egui::{Color32, CornerRadius, Stroke, Visuals};
 
-pub const ACCENT: Color32 = Color32::from_rgb(229, 57, 53);
-pub const ACCENT_DIM: Color32 = Color32::from_rgb(120, 32, 32);
+pub const ACCENT: Color32 = Color32::from_rgb(0x6B, 0x07, 0x00); // #6B0700
+pub const ACCENT_DIM: Color32 = Color32::from_rgb(0x4A, 0x05, 0x00);
+/// Lighter shade of the accent for red text and small icons on the dark
+/// background, where #6B0700 itself would be too dark to read.
+pub const ACCENT_TEXT: Color32 = Color32::from_rgb(0xE0, 0x5A, 0x45);
 /// Native window border colour (RGB).
-pub const BORDER_RGB: (u8, u8, u8) = (229, 57, 53);
+pub const BORDER_RGB: (u8, u8, u8) = (0x6B, 0x07, 0x00);
 
 pub const OK: Color32 = Color32::from_rgb(76, 201, 128);
 pub const WARN: Color32 = Color32::from_rgb(255, 170, 80);
-pub const BAD: Color32 = Color32::from_rgb(255, 99, 105);
+pub const BAD: Color32 = ACCENT_TEXT;
 pub const MUTED: Color32 = Color32::from_rgb(168, 158, 163);
 pub const ADDED: Color32 = OK;
 pub const CHANGED: Color32 = WARN;
@@ -22,7 +25,7 @@ const PANEL: Color32 = SIDEBAR;
 const WIDGET: Color32 = Color32::from_rgb(46, 40, 43);
 const HOVER: Color32 = Color32::from_rgb(60, 51, 55);
 pub const LINE: Color32 = Color32::from_rgb(52, 45, 48);
-pub const NAV_SELECTED: Color32 = Color32::from_rgb(92, 34, 38);
+pub const NAV_SELECTED: Color32 = ACCENT;
 const TEXT: Color32 = Color32::from_rgb(236, 230, 233);
 
 pub fn apply(ctx: &egui::Context, high_contrast: bool) {
@@ -34,7 +37,7 @@ pub fn apply(ctx: &egui::Context, high_contrast: bool) {
     v.faint_bg_color = Color32::from_rgb(22, 22, 25);
     v.extreme_bg_color = Color32::from_rgb(12, 12, 14);
     v.code_bg_color = Color32::from_rgb(30, 30, 34);
-    v.hyperlink_color = Color32::from_rgb(255, 128, 120);
+    v.hyperlink_color = ACCENT_TEXT;
     v.selection.bg_fill = ACCENT_DIM;
     // Selected text stays white so it is readable on the red highlight.
     v.selection.stroke = Stroke::new(1.0_f32, Color32::WHITE);
@@ -54,7 +57,7 @@ pub fn apply(ctx: &egui::Context, high_contrast: bool) {
     v.widgets.inactive.corner_radius = r;
     v.widgets.hovered.bg_fill = HOVER;
     v.widgets.hovered.weak_bg_fill = HOVER;
-    v.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, ACCENT);
+    v.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, ACCENT_TEXT);
     v.widgets.hovered.corner_radius = r;
     v.widgets.active.bg_fill = ACCENT_DIM;
     v.widgets.active.weak_bg_fill = ACCENT_DIM;
@@ -68,7 +71,7 @@ pub fn apply(ctx: &egui::Context, high_contrast: bool) {
         let edge = Stroke::new(1.5_f32, Color32::from_rgb(200, 190, 195));
         v.widgets.noninteractive.bg_stroke = edge;
         v.widgets.inactive.bg_stroke = edge;
-        v.widgets.hovered.bg_stroke = Stroke::new(2.0_f32, ACCENT);
+        v.widgets.hovered.bg_stroke = Stroke::new(2.0_f32, ACCENT_TEXT);
         v.widgets.active.bg_stroke = Stroke::new(2.0_f32, Color32::WHITE);
         v.selection.stroke = Stroke::new(2.0_f32, Color32::WHITE);
         v.window_stroke = Stroke::new(2.0_f32, ACCENT);
@@ -144,17 +147,17 @@ pub fn card<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
 /// A red warning banner.
 pub fn warning_banner(ui: &mut egui::Ui, text: impl Into<String>) {
     egui::Frame::new()
-        .fill(Color32::from_rgb(64, 20, 24))
-        .stroke(Stroke::new(1.0_f32, Color32::from_rgb(170, 60, 64)))
+        .fill(Color32::from_rgb(0x2C, 0x06, 0x03))
+        .stroke(Stroke::new(1.0_f32, ACCENT))
         .corner_radius(CornerRadius::same(8))
         .inner_margin(egui::Margin::symmetric(14, 10))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.horizontal_wrapped(|ui| {
-                ui.label(egui::RichText::new("⚠").color(Color32::from_rgb(255, 150, 150)));
+                ui.label(egui::RichText::new("⚠").color(ACCENT_TEXT));
                 ui.label(
                     egui::RichText::new(text.into())
-                        .color(Color32::from_rgb(255, 170, 170))
+                        .color(Color32::from_rgb(0xF2, 0xB8, 0xAE))
                         .strong(),
                 );
             });
@@ -188,11 +191,7 @@ pub fn nav_item(
     } else if resp.hovered() {
         painter.rect_filled(pill, CornerRadius::same(18), Color32::from_rgb(40, 34, 37));
     }
-    let icon_color = if selected {
-        Color32::from_rgb(255, 140, 136)
-    } else {
-        TEXT
-    };
+    let icon_color = if selected { Color32::WHITE } else { TEXT };
     painter.text(
         egui::pos2(rect.left() + 26.0, rect.center().y),
         egui::Align2::CENTER_CENTER,
@@ -208,14 +207,20 @@ pub fn nav_item(
         if selected { Color32::WHITE } else { TEXT },
     );
     if let Some(b) = badge {
-        let galley = painter.layout_no_wrap(b, egui::FontId::proportional(11.0), Color32::WHITE);
+        // On the selected (red) pill the badge flips to white so it stays visible.
+        let (fill, text) = if selected {
+            (Color32::WHITE, ACCENT)
+        } else {
+            (ACCENT, Color32::WHITE)
+        };
+        let galley = painter.layout_no_wrap(b, egui::FontId::proportional(11.0), text);
         let w = galley.size().x + 12.0;
         let br = egui::Rect::from_center_size(
             egui::pos2(rect.right() - 12.0 - w / 2.0, rect.center().y),
             egui::vec2(w, 18.0),
         );
-        painter.rect_filled(br, CornerRadius::same(9), ACCENT);
-        painter.galley(br.center() - galley.size() / 2.0, galley, Color32::WHITE);
+        painter.rect_filled(br, CornerRadius::same(9), fill);
+        painter.galley(br.center() - galley.size() / 2.0, galley, text);
     }
     resp.on_hover_cursor(egui::CursorIcon::PointingHand)
 }

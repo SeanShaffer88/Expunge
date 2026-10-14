@@ -70,12 +70,20 @@ pub struct App {
     pub help_open: bool,
     pub welcome_open: bool,
     pub focus_search: bool,
+    /// Installer passed from Explorer's "Install with Expunge".
+    pub pending_install: Option<String>,
+    /// Arguments to pass on when relaunching as Administrator.
+    pub launch_args: Vec<String>,
     pub wizard: Option<programs::Wizard>,
     pub removal: Option<plan::RemovalFlow>,
 }
 
 impl App {
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(
+        cc: &eframe::CreationContext<'_>,
+        install_target: Option<String>,
+        launch_args: Vec<String>,
+    ) -> Self {
         let store = Store::open().unwrap_or_else(|_| {
             Store::at(&std::env::temp_dir().join("Expunge")).expect("data folder")
         });
@@ -119,6 +127,8 @@ impl App {
             help_open: false,
             welcome_open: false,
             focus_search: false,
+            pending_install: install_target,
+            launch_args,
             wizard: None,
             removal: None,
         };
@@ -241,7 +251,7 @@ impl App {
                         }
                         ui.separator();
                         ui.add_enabled_ui(!self.elevated, |ui| {
-                            if ui.button(t("Restart as administrator")).clicked() {
+                            if ui.button(t("Restart as Administrator")).clicked() {
                                 ui.close();
                                 self.relaunch_elevated(ctx);
                             }
@@ -309,7 +319,7 @@ impl App {
                                 )
                                 .frame(false),
                             )
-                            .on_hover_text(t("Restart as administrator"))
+                            .on_hover_text(t("Restart as Administrator"))
                             .clicked()
                         {
                             self.admin_prompt = true;
@@ -326,7 +336,7 @@ impl App {
     }
 
     pub fn relaunch_elevated(&mut self, ctx: &egui::Context) {
-        if platform::relaunch_elevated() {
+        if platform::relaunch_elevated(&self.launch_args) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         } else {
             self.set_status(t("Elevation was cancelled."));
@@ -403,7 +413,7 @@ impl App {
                 }
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
                     if !self.elevated
-                        && theme::nav_item(ui, "🛡", &t("Run as administrator"), false, None)
+                        && theme::nav_item(ui, "🛡", &t("Run as Administrator"), false, None)
                             .clicked()
                     {
                         self.admin_prompt = true;
@@ -535,7 +545,7 @@ impl App {
                 });
                 ui.add_space(6.0);
                 ui.label(t(
-                    "Expunge is not running as administrator. It needs admin rights to work effectively: \
+                    "Expunge is not running as Administrator. It needs admin rights to work effectively: \
                      to monitor and undo installations system-wide, remove programs installed for all users, \
                      manage services and Windows updates, and clean protected folders.",
                 ));
@@ -544,7 +554,7 @@ impl App {
                 ui.add_space(10.0);
                 let mut close = false;
                 ui.horizontal(|ui| {
-                    if theme::primary_button(ui, format!("🛡 {}", t("Relaunch as administrator"))).clicked() {
+                    if theme::primary_button(ui, format!("🛡 {}", t("Relaunch as Administrator"))).clicked() {
                         self.relaunch_elevated(ctx);
                         close = true;
                     }
@@ -600,7 +610,7 @@ impl App {
                     ui.vertical_centered(|ui| {
                         let tex = logo.clone();
                         ui.add(egui::Image::new(&tex).fit_to_exact_size(egui::vec2(96.0, 96.0)));
-                        ui.heading(RichText::new("Expunge").color(theme::ACCENT).strong());
+                        ui.heading(RichText::new("Expunge").color(theme::ACCENT_TEXT).strong());
                         ui.label(tf(
                             "Version {n}",
                             &[("n", expunge_core::APP_VERSION.to_string())],
@@ -768,7 +778,7 @@ impl App {
                 ("💾", "Undo anything", "Everything removed is backed up first and can be restored."),
             ] {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(icon).size(20.0).color(theme::ACCENT));
+                    ui.label(RichText::new(icon).size(20.0).color(theme::ACCENT_TEXT));
                     ui.vertical(|ui| {
                         ui.label(RichText::new(t(title)).strong());
                         small_muted(ui, t(body));
@@ -818,6 +828,27 @@ impl App {
             self.save_settings();
             self.admin_prompt = !self.elevated;
         }
+    }
+
+    /// Start monitoring an installer handed over by Explorer, once the
+    /// welcome and admin dialogs are out of the way.
+    fn start_pending_install(&mut self, ctx: &egui::Context) {
+        if self.pending_install.is_none() || self.welcome_open || self.admin_prompt {
+            return;
+        }
+        let path = self.pending_install.take().unwrap();
+        self.tab = Tab::Monitor;
+        if self.monitor.is_active() {
+            self.set_status(t(
+                "Another installation is already being monitored. Finish or cancel it first.",
+            ));
+            return;
+        }
+        let name = std::path::Path::new(&path)
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+        self.begin_monitoring(ctx, name, path);
     }
 
     /// Keyboard shortcuts.
@@ -902,6 +933,7 @@ impl eframe::App for App {
             self.style_frames = self.style_frames.saturating_sub(1);
         }
         self.poll_jobs(ctx);
+        self.start_pending_install(ctx);
 
         self.menu_bar(ctx);
         self.status_bar(ctx);

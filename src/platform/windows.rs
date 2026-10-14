@@ -299,12 +299,24 @@ pub fn shell_open(target: &str) {
     }
 }
 
-/// Restart Expunge elevated. Returns true if the new process launched.
-pub fn relaunch_elevated() -> bool {
+/// Restart Expunge elevated with the given arguments. Returns true if the new
+/// process launched.
+pub fn relaunch_elevated(args: &[String]) -> bool {
     let exe = std::env::current_exe()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
-    shell_execute_wait(&exe, "", true).is_ok()
+    let params = args
+        .iter()
+        .map(|a| {
+            if a.contains(' ') || a.is_empty() {
+                format!("\"{a}\"")
+            } else {
+                a.clone()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    shell_execute_wait(&exe, &params, true).is_ok()
 }
 
 /// Attach to the parent console so CLI output is visible from cmd/PowerShell
@@ -464,4 +476,95 @@ pub fn recycle(path: &Path) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Extract an icon from an .exe, .dll or .ico as RGBA pixels.
+pub fn icon_rgba(path: &str, index: i32, size: u32) -> Option<(u32, u32, Vec<u8>)> {
+    use windows_sys::Win32::Graphics::Gdi::{
+        CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits, BITMAPINFO, BITMAPINFOHEADER,
+        BI_RGB, DIB_RGB_COLORS,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        DestroyIcon, GetIconInfo, PrivateExtractIconsW, HICON, ICONINFO,
+    };
+    if !Path::new(path).exists() {
+        return None;
+    }
+    let wpath = wide(path);
+    let mut hicon: HICON = std::ptr::null_mut();
+    let mut id = 0u32;
+    unsafe {
+        let n = PrivateExtractIconsW(
+            wpath.as_ptr(),
+            index,
+            size as i32,
+            size as i32,
+            &mut hicon,
+            &mut id,
+            1,
+            0,
+        );
+        if n == 0 || n == u32::MAX || hicon.is_null() {
+            return None;
+        }
+        let mut info: ICONINFO = std::mem::zeroed();
+        if GetIconInfo(hicon, &mut info) == 0 {
+            DestroyIcon(hicon);
+            return None;
+        }
+        let dc = CreateCompatibleDC(std::ptr::null_mut());
+        let mut bmi: BITMAPINFO = std::mem::zeroed();
+        bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+        bmi.bmiHeader.biWidth = size as i32;
+        bmi.bmiHeader.biHeight = -(size as i32); // top-down
+        bmi.bmiHeader.biPlanes = 1;
+        bmi.bmiHeader.biBitCount = 32;
+        bmi.bmiHeader.biCompression = BI_RGB;
+        let mut px = vec![0u8; (size * size * 4) as usize];
+        let ok = !info.hbmColor.is_null()
+            && GetDIBits(
+                dc,
+                info.hbmColor,
+                0,
+                size,
+                px.as_mut_ptr() as *mut _,
+                &mut bmi,
+                DIB_RGB_COLORS,
+            ) != 0;
+        let has_alpha = px.chunks_exact(4).any(|p| p[3] != 0);
+        if ok && !has_alpha {
+            // Old-style icon without alpha: derive transparency from the mask.
+            let mut mask = vec![0u8; (size * size * 4) as usize];
+            if GetDIBits(
+                dc,
+                info.hbmMask,
+                0,
+                size,
+                mask.as_mut_ptr() as *mut _,
+                &mut bmi,
+                DIB_RGB_COLORS,
+            ) != 0
+            {
+                for (p, m) in px.chunks_exact_mut(4).zip(mask.chunks_exact(4)) {
+                    p[3] = if m[0] == 0 { 255 } else { 0 };
+                }
+            }
+        }
+        DeleteDC(dc);
+        if !info.hbmColor.is_null() {
+            DeleteObject(info.hbmColor);
+        }
+        if !info.hbmMask.is_null() {
+            DeleteObject(info.hbmMask);
+        }
+        DestroyIcon(hicon);
+        if !ok {
+            return None;
+        }
+        // BGRA -> RGBA
+        for p in px.chunks_exact_mut(4) {
+            p.swap(0, 2);
+        }
+        Some((size, size, px))
+    }
 }

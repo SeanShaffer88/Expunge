@@ -218,6 +218,19 @@ pub fn delete_file(path: &std::path::Path) -> std::io::Result<()> {
     }
 }
 
+/// A file's icon as RGBA pixels (width, height, data), if it has one.
+pub fn icon_rgba(path: &str, index: i32, size: u32) -> Option<(u32, u32, Vec<u8>)> {
+    #[cfg(windows)]
+    {
+        windows::icon_rgba(path, index, size)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (path, index, size);
+        None
+    }
+}
+
 /// Move a file or folder to the Recycle Bin.
 pub fn recycle(path: &std::path::Path) -> Result<()> {
     #[cfg(windows)]
@@ -497,13 +510,14 @@ pub fn open_in_regedit(path: &str) -> Result<()> {
 }
 
 /// Restart elevated; true if the new instance started.
-pub fn relaunch_elevated() -> bool {
+pub fn relaunch_elevated(args: &[String]) -> bool {
     #[cfg(windows)]
     {
-        windows::relaunch_elevated()
+        windows::relaunch_elevated(args)
     }
     #[cfg(not(windows))]
     {
+        let _ = args;
         false
     }
 }

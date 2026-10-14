@@ -296,7 +296,7 @@ pub fn to_html(log: &InstallLog) -> String {
         r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Expunge – {name}</title>
 <style>
-:root{{color-scheme:dark;--bg:#111113;--fg:#ededef;--mut:#a0a0ab;--card:#19191c;--line:#2e2e33;--acc:#e5484d;--add:#3dd68c;--mod:#ffa057;--del:#ff6369}}
+:root{{color-scheme:dark;--bg:#111113;--fg:#ededef;--mut:#a0a0ab;--card:#19191c;--line:#2e2e33;--acc:#6B0700;--add:#3dd68c;--mod:#ffa057;--del:#e05a45}}
 body{{border-top:3px solid var(--acc)}}
 body{{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 "Segoe UI",system-ui,sans-serif}}
 main{{max-width:1100px;margin:0 auto;padding:24px 16px}}

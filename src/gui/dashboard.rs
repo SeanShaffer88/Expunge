@@ -42,7 +42,7 @@ fn action_row(ui: &mut egui::Ui, icon: &str, title: &str, desc: &str) -> bool {
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
-                ui.label(RichText::new(icon).size(20.0).color(theme::ACCENT));
+                ui.label(RichText::new(icon).size(20.0).color(theme::ACCENT_TEXT));
                 ui.add_space(8.0);
                 ui.vertical(|ui| {
                     ui.label(RichText::new(t(title)).strong());
@@ -64,13 +64,13 @@ impl App {
         egui::CentralPanel::default().frame(theme::content_frame()).show(ctx, |ui| {
             egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                 if !self.elevated {
-                    theme::warning_banner(ui, t("Expunge is not running as administrator. Some removals will fail. Use \"Run as administrator\" in the left column."));
+                    theme::warning_banner(ui, t("Expunge is not running as Administrator. Some removals will fail. Use \"Run as Administrator\" in the left column."));
                     ui.add_space(10.0);
                 }
                 if self.monitor.is_active() {
                     theme::card(ui, |ui| {
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new("⏺").size(22.0).color(theme::ACCENT));
+                            ui.label(RichText::new("⏺").size(22.0).color(theme::ACCENT_TEXT));
                             ui.vertical(|ui| {
                                 ui.label(RichText::new(tf("Monitoring: {name}", &[("name", self.monitor.name.clone())])).strong());
                                 small_muted(ui, t("Finish monitoring when the installation is complete."));
@@ -91,7 +91,7 @@ impl App {
                 let backup_bytes: u64 = self.backups.list.iter().map(|b| b.bytes()).sum();
                 let mut go: Option<(Tab, Option<super::programs::View>)> = None;
                 ui.columns(4, |cols| {
-                    if stat_tile(&mut cols[0], "📦", programs.to_string(), t("Programs installed"), theme::ACCENT).clicked() {
+                    if stat_tile(&mut cols[0], "📦", programs.to_string(), t("Programs installed"), theme::ACCENT_TEXT).clicked() {
                         go = Some((Tab::Programs, Some(super::programs::View::All)));
                     }
                     if stat_tile(&mut cols[1], "⏺", monitored.to_string(), t("Monitored"), theme::OK).clicked() {

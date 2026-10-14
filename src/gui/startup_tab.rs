@@ -364,7 +364,7 @@ impl App {
         if rows.is_empty() && !self.elevated {
             theme::warning_banner(
                 ui,
-                t("Scheduled tasks can only be read when Expunge runs as administrator."),
+                t("Scheduled tasks can only be read when Expunge runs as Administrator."),
             );
         }
         let mut toggle: Option<(usize, bool)> = None;

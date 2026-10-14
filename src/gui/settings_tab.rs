@@ -165,6 +165,34 @@ impl App {
                     self.save_settings();
                 }
                 ui.add_space(10.0);
+                theme::card(ui, |ui| {
+                    ui.label(RichText::new(t("Explorer integration")).heading());
+                    ui.add_space(4.0);
+                    let reg = self.reg.clone();
+                    let machine = expunge_core::shell::is_registered(reg.as_ref(), true);
+                    let mut user = expunge_core::shell::is_registered(reg.as_ref(), false);
+                    if machine {
+                        ui.label(format!("✔ {}", t("\"Install with Expunge\" is in the right-click menu for all users (added by Setup).")));
+                    } else if ui
+                        .checkbox(&mut user, t("Add \"Install with Expunge\" to the right-click menu of installers"))
+                        .changed()
+                    {
+                        let res = if user {
+                            let exe = std::env::current_exe().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
+                            expunge_core::shell::register(reg.as_ref(), &exe, &t("Install with Expunge"), false)
+                        } else {
+                            expunge_core::shell::unregister(reg.as_ref(), false)
+                        };
+                        if let Err(e) = res {
+                            self.set_status(e.to_string());
+                        }
+                    }
+                    small_muted(
+                        ui,
+                        t("Right-click any .exe or .msi installer to install it under monitoring. On Windows 11 it is under \"Show more options\"."),
+                    );
+                });
+                ui.add_space(10.0);
                 if !self.settings.advanced_mode {
                     theme::card(ui, |ui| {
                         small_muted(ui, t("Switch to Advanced mode to change what snapshots capture."));

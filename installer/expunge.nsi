@@ -43,6 +43,12 @@ VIAddVersionKey /LANG=1033 "ProductVersion" "${VERSION}"
 !include "LogicLib.nsh"
 !include "FileFunc.nsh"
 
+!macro AddShellVerb EXT
+  WriteRegStr HKLM "Software\Classes\SystemFileAssociations\${EXT}\shell\ExpungeInstall" "MUIVerb" "Install with Expunge"
+  WriteRegStr HKLM "Software\Classes\SystemFileAssociations\${EXT}\shell\ExpungeInstall" "Icon" '"$INSTDIR\Expunge.exe",0'
+  WriteRegStr HKLM "Software\Classes\SystemFileAssociations\${EXT}\shell\ExpungeInstall\command" "" '"$INSTDIR\Expunge.exe" --monitor-install "%1"'
+!macroend
+
 !define MUI_ICON "..\assets\expunge.ico"
 !define MUI_UNICON "..\assets\expunge.ico"
 !define MUI_ABORTWARNING
@@ -110,6 +116,12 @@ Section "Expunge" SecMain
   WriteRegDWORD HKLM "${UNINST_KEY}" "EstimatedSize" $0
 SectionEnd
 
+Section "Right-click: Install with Expunge" SecShell
+  ; Adds "Install with Expunge" to the context menu of .exe and .msi files.
+  !insertmacro AddShellVerb ".exe"
+  !insertmacro AddShellVerb ".msi"
+SectionEnd
+
 Section "Desktop shortcut" SecDesktop
   CreateShortcut "$DESKTOP\${APP}.lnk" "$INSTDIR\Expunge.exe"
 SectionEnd
@@ -122,6 +134,8 @@ Section "Uninstall"
   Delete "$SMPROGRAMS\${APP}.lnk"
   Delete "$DESKTOP\${APP}.lnk"
   DeleteRegKey HKLM "${UNINST_KEY}"
+  DeleteRegKey HKLM "Software\Classes\SystemFileAssociations\.exe\shell\ExpungeInstall"
+  DeleteRegKey HKLM "Software\Classes\SystemFileAssociations\.msi\shell\ExpungeInstall"
   ; Install logs and backups in %LOCALAPPDATA%\Expunge are kept on purpose:
   ; they may be needed to undo earlier removals.
 SectionEnd

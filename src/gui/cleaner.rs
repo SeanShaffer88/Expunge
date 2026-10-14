@@ -146,7 +146,7 @@ impl App {
                             });
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 if locked {
-                                    theme::badge(ui, t("Needs administrator"), theme::WARN);
+                                    theme::badge(ui, t("Needs Administrator"), theme::WARN);
                                 } else if let Some(r) = res {
                                     let color = if r.bytes > 100 * 1024 * 1024 { theme::WARN } else { theme::MUTED };
                                     ui.label(RichText::new(human_size(r.bytes)).strong().color(color));

@@ -152,7 +152,7 @@ pub fn run(args: Vec<String>) -> i32 {
 fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
     let cmd = args.first().map(String::as_str).unwrap_or("--help");
     if !matches!(cmd, "--help" | "-h" | "help" | "--version" | "-V") && !platform::is_elevated() {
-        eprintln!("warning: not running as administrator; system-wide changes may fail.");
+        eprintln!("warning: not running as Administrator; system-wide changes may fail.");
     }
     let reg = platform::system_registry();
     match cmd {

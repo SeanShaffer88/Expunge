@@ -110,7 +110,7 @@ fn install_fonts(ctx: &egui::Context) {
     ctx.set_fonts(fonts);
 }
 
-pub fn run() -> eframe::Result<()> {
+pub fn run(install_target: Option<String>, launch_args: Vec<String>) -> eframe::Result<()> {
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("Expunge")
         .with_inner_size([1180.0, 760.0])
@@ -130,7 +130,7 @@ pub fn run() -> eframe::Result<()> {
         options,
         Box::new(|cc| {
             install_fonts(&cc.egui_ctx);
-            Ok(Box::new(app::App::new(cc)))
+            Ok(Box::new(app::App::new(cc, install_target, launch_args)))
         }),
     )
 }

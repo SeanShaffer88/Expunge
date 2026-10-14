@@ -15,13 +15,15 @@ mod gui;
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if !args.is_empty() {
+    // "Install with Expunge" from Explorer opens the window, not the CLI.
+    let install_target = expunge_core::shell::monitor_target(&args);
+    if !args.is_empty() && install_target.is_none() {
         #[cfg(windows)]
         expunge_core::platform::windows::attach_parent_console();
         expunge_core::i18n::set_language("");
         std::process::exit(cli::run(args));
     }
-    if let Err(e) = gui::run() {
+    if let Err(e) = gui::run(install_target, args) {
         #[cfg(windows)]
         {
             let msg = format!("Expunge could not start its window: {e}\n\nThis usually means the graphics driver is missing or broken.");

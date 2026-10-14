@@ -44,6 +44,10 @@ pub struct ProgramsState {
     pub job: Option<Job<(Vec<InstalledProgram>, HashSet<String>)>>,
     pub store_job: Option<Job<Vec<InstalledProgram>>>,
     pub size_job: Option<Job<HashMap<String, u64>>>,
+    /// Program icons by registry key (loaded in the background).
+    pub icons: HashMap<String, egui::TextureHandle>,
+    pub icon_job: Option<Job<Vec<(String, egui::ColorImage)>>>,
+    pub icons_requested: HashSet<String>,
     pub restore_job: Option<Job<Result<(), String>>>,
     pub filter: String,
     pub view: View,
@@ -160,6 +164,7 @@ impl App {
             self.programs.broken = broken;
             let n = self.programs.list.len();
             self.set_status(tf("{n} programs installed", &[("n", n.to_string())]));
+            self.load_icons(ctx);
             // Measure folders for programs that don't report their size.
             let todo: Vec<(String, String)> = self
                 .programs
@@ -198,6 +203,48 @@ impl App {
             self.programs.size_job = None;
             self.programs.sizes.extend(sizes);
         }
+        if let Some(icons) = self.programs.icon_job.as_ref().and_then(|j| j.poll()) {
+            self.programs.icon_job = None;
+            for (key, img) in icons {
+                let tex =
+                    ctx.load_texture(format!("icon:{key}"), img, egui::TextureOptions::LINEAR);
+                self.programs.icons.insert(key, tex);
+            }
+        }
+    }
+
+    /// Extract icons for programs we haven't seen yet, off the UI thread.
+    fn load_icons(&mut self, ctx: &egui::Context) {
+        if self.programs.icon_job.is_some() {
+            return;
+        }
+        let todo: Vec<(String, String, i32)> = self
+            .programs
+            .list
+            .iter()
+            .filter(|p| !self.programs.icons_requested.contains(&p.key))
+            .filter_map(|p| {
+                p.icon_source()
+                    .map(|(path, idx)| (p.key.clone(), path, idx))
+            })
+            .collect();
+        for p in &self.programs.list {
+            self.programs.icons_requested.insert(p.key.clone());
+        }
+        if todo.is_empty() {
+            return;
+        }
+        self.programs.icon_job = Some(Job::spawn(ctx, move |_| {
+            todo.into_iter()
+                .filter_map(|(key, path, idx)| {
+                    let (w, h, rgba) = platform::icon_rgba(&path, idx, 32)?;
+                    Some((
+                        key,
+                        egui::ColorImage::from_rgba_unmultiplied([w as usize, h as usize], &rgba),
+                    ))
+                })
+                .collect()
+        }));
     }
 
     fn size_of(&self, p: &InstalledProgram) -> u64 {
@@ -463,12 +510,27 @@ impl App {
                     });
                     row.col(|ui| {
                         if log_for(logs, p).is_some() {
-                            ui.label(RichText::new("⏺").color(theme::ACCENT))
+                            ui.label(RichText::new("⏺").color(theme::ACCENT_TEXT))
                                 .on_hover_text(t("Monitored: precise uninstall available"));
                         }
                         if st.broken.contains(&p.key) {
                             ui.label(RichText::new("⚠").color(theme::WARN))
                                 .on_hover_text(t("Broken entry: uninstaller or folder is missing"));
+                        }
+                        match st.icons.get(&p.key) {
+                            Some(tex) => {
+                                ui.add(
+                                    egui::Image::new(tex).fit_to_exact_size(egui::vec2(18.0, 18.0)),
+                                );
+                            }
+                            None => {
+                                ui.add_sized(
+                                    [18.0, 18.0],
+                                    egui::Label::new(
+                                        RichText::new("📦").color(theme::MUTED).small(),
+                                    ),
+                                );
+                            }
                         }
                         ui.add(egui::Label::new(&p.name).truncate().selectable(false));
                     });
@@ -519,14 +581,19 @@ impl App {
 
     fn program_details(&mut self, ui: &mut egui::Ui, p: &InstalledProgram) {
         ui.add_space(6.0);
-        ui.heading(RichText::new(&p.name).strong());
+        ui.horizontal(|ui| {
+            if let Some(tex) = self.programs.icons.get(&p.key) {
+                ui.add(egui::Image::new(tex).fit_to_exact_size(egui::vec2(32.0, 32.0)));
+            }
+            ui.add(egui::Label::new(RichText::new(&p.name).heading().strong()).wrap());
+        });
         ui.horizontal_wrapped(|ui| {
             theme::badge(ui, t(p.source.label()), theme::MUTED);
             if p.is_msi {
                 theme::badge(ui, "MSI", theme::MUTED);
             }
             if log_for(&self.logs.logs, p).is_some() {
-                theme::badge(ui, t("Monitored"), theme::ACCENT);
+                theme::badge(ui, t("Monitored"), theme::ACCENT_TEXT);
             }
             if self.programs.broken.contains(&p.key) {
                 theme::badge(ui, t("Broken entry"), theme::WARN);
@@ -604,7 +671,7 @@ impl App {
             ui.add_space(10.0);
             let id = log.id.clone();
             egui::Frame::group(ui.style()).show(ui, |ui| {
-                ui.label(RichText::new(format!("⏺ {}", t("Monitored installation"))).color(theme::ACCENT).strong());
+                ui.label(RichText::new(format!("⏺ {}", t("Monitored installation"))).color(theme::ACCENT_TEXT).strong());
                 small_muted(ui, t("Expunge recorded this installation, so it can remove exactly what was added."));
                 if ui.link(t("View install log")).clicked() {
                     self.logs.selected = Some(id);
@@ -784,7 +851,7 @@ impl App {
                                 ui.horizontal(|ui| {
                                     ui.label(RichText::new(format!("• {}", p.name)).strong());
                                     if log_for(&self.logs.logs, p).is_some() {
-                                        theme::badge(ui, t("Monitored"), theme::ACCENT);
+                                        theme::badge(ui, t("Monitored"), theme::ACCENT_TEXT);
                                     }
                                 });
                             }
