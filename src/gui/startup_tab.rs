@@ -113,17 +113,22 @@ impl App {
         egui::CentralPanel::default()
             .frame(theme::content_frame())
             .show(ctx, |ui| {
+                if !self.settings.advanced_mode {
+                    self.startup.sub = Sub::Entries;
+                }
                 ui.horizontal(|ui| {
-                    for (s, label) in [
-                        (Sub::Entries, t("Startup programs")),
-                        (Sub::Services, t("Services")),
-                        (Sub::Tasks, t("Scheduled tasks")),
-                    ] {
-                        if ui.selectable_label(self.startup.sub == s, label).clicked() {
-                            self.startup.sub = s;
+                    if self.settings.advanced_mode {
+                        for (s, label) in [
+                            (Sub::Entries, t("Startup programs")),
+                            (Sub::Services, t("Services")),
+                            (Sub::Tasks, t("Scheduled tasks")),
+                        ] {
+                            if ui.selectable_label(self.startup.sub == s, label).clicked() {
+                                self.startup.sub = s;
+                            }
                         }
+                        ui.separator();
                     }
-                    ui.separator();
                     search_box(ui, &mut self.startup.filter, "Filter", 200.0);
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui.button(format!("⟳ {}", t("Refresh"))).clicked() {

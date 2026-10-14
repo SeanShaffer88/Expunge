@@ -12,6 +12,7 @@ pub mod backup;
 pub mod cleaner;
 pub mod i18n;
 pub mod leftovers;
+pub mod lint;
 pub mod model;
 pub mod platform;
 pub mod programs;

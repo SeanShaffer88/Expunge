@@ -303,7 +303,107 @@ pub fn system_registry() -> Box<dyn Registry> {
     }
     #[cfg(not(windows))]
     {
-        Box::new(MemRegistry::new())
+        let r = MemRegistry::new();
+        if std::env::var("EXPUNGE_DEMO").is_ok() {
+            demo_programs(&r);
+        }
+        Box::new(r)
+    }
+}
+
+/// Sample programs for UI development on non-Windows machines.
+#[cfg(not(windows))]
+fn demo_programs(r: &MemRegistry) {
+    let root = "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall";
+    let apps = [
+        (
+            "7-Zip 24.08 (x64)",
+            "Igor Pavlov",
+            "24.08",
+            "20260611",
+            5_800,
+        ),
+        (
+            "Audacity 3.7.1",
+            "Audacity Team",
+            "3.7.1",
+            "20260702",
+            98_000,
+        ),
+        ("Discord", "Discord Inc.", "1.0.9172", "20260915", 0),
+        (
+            "Git",
+            "The Git Development Community",
+            "2.47.0",
+            "20260820",
+            340_000,
+        ),
+        ("GIMP 3.0.2", "The GIMP Team", "3.0.2", "20260530", 410_000),
+        (
+            "Mozilla Firefox (x64 en-US)",
+            "Mozilla",
+            "131.0.3",
+            "20261008",
+            255_000,
+        ),
+        (
+            "Notepad++ (64-bit x64)",
+            "Notepad++ Team",
+            "8.7",
+            "20260901",
+            15_000,
+        ),
+        ("OBS Studio", "OBS Project", "31.0.0", "20260722", 420_000),
+        (
+            "Old Toolbar Helper",
+            "Unknown Corp",
+            "1.2",
+            "20190101",
+            1_200,
+        ),
+        (
+            "Python 3.13.0 (64-bit)",
+            "Python Software Foundation",
+            "3.13.0",
+            "20261001",
+            110_000,
+        ),
+        ("Steam", "Valve Corporation", "2.10.91.91", "20260415", 0),
+        (
+            "VLC media player",
+            "VideoLAN",
+            "3.0.21",
+            "20260610",
+            165_000,
+        ),
+        (
+            "Visual Studio Code",
+            "Microsoft Corporation",
+            "1.94.2",
+            "20261010",
+            380_000,
+        ),
+    ];
+    for (i, (name, publisher, ver, date, kb)) in apps.iter().enumerate() {
+        let mut k = KeyData::new(&format!("{root}\\App{i}"))
+            .with(RegValue::string("DisplayName", name))
+            .with(RegValue::string("Publisher", publisher))
+            .with(RegValue::string("DisplayVersion", ver))
+            .with(RegValue::string("InstallDate", date))
+            .with(RegValue::string(
+                "UninstallString",
+                &format!("C:\\Program Files\\App{i}\\uninstall.exe"),
+            ));
+        if name.starts_with("Old") {
+            k = k.with(RegValue::string(
+                "InstallLocation",
+                "/nonexistent/OldToolbar",
+            ));
+        }
+        if *kb > 0 {
+            k = k.with(RegValue::dword("EstimatedSize", *kb));
+        }
+        r.put(k);
     }
 }
 

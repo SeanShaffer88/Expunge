@@ -24,6 +24,10 @@ First public release.
 - "Which program created this?" search across install logs.
 - Export install logs as HTML report, `.reg` undo script, PowerShell removal script or JSON; import logs.
 - Dashboard with status and quick actions.
+- Simple and Advanced interface modes, first-run welcome, page help (F1), safety labels on removal items.
+- Accessibility: keyboard shortcuts, high-contrast option, adjustable text size, screen-reader support.
+- Installer Lab for developers: installer lint, uninstaller test with residue report, named snapshots and comparison.
+- CLI `lint` and `test-uninstall` commands and `--json` output for CI pipelines.
 - Dark interface with a native red Windows 11 window border and left-hand navigation.
 - Translations: English, Spanish, German, French, Portuguese (Brazil), Italian, Russian, Simplified Chinese, Japanese; external `lang/*.json` files supported.
 - Admin-rights check at every launch with relaunch as administrator.

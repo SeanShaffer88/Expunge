@@ -19,6 +19,7 @@ pub enum Tab {
     Backups,
     Startup,
     Cleaner,
+    Lab,
     Settings,
 }
 
@@ -65,17 +66,22 @@ pub struct App {
     pub cleaner: cleaner::CleanerState,
     pub settings_ui: settings_tab::SettingsState,
     pub updates: updates::UpdatesState,
+    pub lab: lab::LabState,
+    pub help_open: bool,
+    pub welcome_open: bool,
+    pub focus_search: bool,
     pub wizard: Option<programs::Wizard>,
     pub removal: Option<plan::RemovalFlow>,
 }
 
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        theme::apply(&cc.egui_ctx);
         let store = Store::open().unwrap_or_else(|_| {
             Store::at(&std::env::temp_dir().join("Expunge")).expect("data folder")
         });
         let settings = store.load_settings();
+        let first_run_done = settings.first_run_done;
+        theme::apply(&cc.egui_ctx, settings.high_contrast);
         i18n::set_language(&settings.language);
         cc.egui_ctx.set_zoom_factor(settings.zoom.clamp(0.75, 2.0));
         let reg: Arc<dyn Registry> = Arc::from(platform::system_registry());
@@ -95,7 +101,7 @@ impl App {
             tab: Tab::Dashboard,
             status: String::new(),
             elevated,
-            admin_prompt: !elevated,
+            admin_prompt: !elevated && first_run_done,
             about_open: false,
             style_frames: 30,
             frame: 0,
@@ -109,6 +115,10 @@ impl App {
             cleaner: Default::default(),
             settings_ui: Default::default(),
             updates: Default::default(),
+            lab: Default::default(),
+            help_open: false,
+            welcome_open: false,
+            focus_search: false,
             wizard: None,
             removal: None,
         };
@@ -116,6 +126,7 @@ impl App {
         app.reload_backups();
         app.refresh_programs(&cc.egui_ctx);
         app.monitor.resume_pending(&app.store);
+        app.welcome_open = !app.settings.first_run_done;
         app
     }
 
@@ -383,6 +394,13 @@ impl App {
                     self.updates.open(ctx);
                     self.style_frames = 30;
                 }
+                if self.settings.advanced_mode
+                    && theme::nav_item(ui, "🛠", &t("Installer Lab"), self.tab == Tab::Lab, None)
+                        .clicked()
+                {
+                    self.tab = Tab::Lab;
+                    self.reload_logs();
+                }
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
                     if !self.elevated
                         && theme::nav_item(ui, "🛡", &t("Run as administrator"), false, None)
@@ -421,8 +439,13 @@ impl App {
                 "Programs, services and tasks that start with Windows",
             ),
             Tab::Cleaner => ("Cleaner", "Free space taken by temporary files and caches"),
+            Tab::Lab => (
+                "Installer Lab",
+                "Tools for developers: lint installers, test uninstallers, compare snapshots",
+            ),
             Tab::Settings => ("Settings", ""),
         };
+        let help = page_help(self.tab);
         egui::TopBottomPanel::top("page_header")
             .show_separator_line(false)
             .frame(
@@ -435,7 +458,34 @@ impl App {
                         bottom: 0,
                     }),
             )
-            .show(ctx, |ui| theme::page_title(ui, &t(title), &t(sub)));
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.vertical(|ui| theme::page_title(ui, &t(title), &t(sub)));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                        ui.add_space(4.0);
+                        let label = if self.help_open {
+                            format!("✖ {}", t("Close help"))
+                        } else {
+                            format!("❓ {}", t("Help"))
+                        };
+                        if ui
+                            .button(label)
+                            .on_hover_text(t("What is this page for?"))
+                            .clicked()
+                        {
+                            self.help_open = !self.help_open;
+                        }
+                    });
+                });
+                if self.help_open {
+                    theme::card(ui, |ui| {
+                        for line in help {
+                            ui.label(t(line));
+                        }
+                    });
+                    ui.add_space(8.0);
+                }
+            });
     }
 
     pub fn on_tab_opened(&mut self, ctx: &egui::Context, tab: Tab) {
@@ -577,6 +627,7 @@ impl App {
         self.poll_backups();
         self.poll_removal();
         self.updates.poll();
+        self.poll_lab();
         if let Some(job) = &self.programs.restore_job {
             if let Some(r) = job.poll() {
                 self.programs.restore_job = None;
@@ -627,6 +678,222 @@ pub fn logo_image() -> egui::ColorImage {
     }
 }
 
+/// Plain-language explanation of each page, shown by the Help button.
+fn page_help(tab: Tab) -> &'static [&'static str] {
+    match tab {
+        Tab::Dashboard => &[
+            "The dashboard shows how many programs are installed, which ones Expunge recorded, and anything that needs attention.",
+            "Click a tile or a quick action to jump straight to it.",
+        ],
+        Tab::Programs => &[
+            "This is the list of programs installed on this PC. Select one to see its details, or double-click it to uninstall.",
+            "Uninstall first runs the program's own uninstaller, then Expunge looks for anything left behind (leftovers) and shows you before removing it.",
+            "Tick several programs to uninstall them one after another. \"Broken\" lists entries whose files are already gone.",
+            "Everything Expunge removes is backed up first, so you can undo it on the Backups page.",
+        ],
+        Tab::Monitor => &[
+            "Monitoring means Expunge takes a \"before\" picture of your system, you install a program, and Expunge takes an \"after\" picture.",
+            "The difference is exactly what the installation added or changed. Expunge saves it as an install log.",
+            "Later, Expunge can use that log to remove the program completely and precisely — even things its own uninstaller would forget.",
+        ],
+        Tab::Logs => &[
+            "Each install log lists everything one monitored installation added or changed: files, folders, registry entries, services and tasks.",
+            "Use \"Which program created this?\" to find out which program a file or registry entry belongs to.",
+            "You can export a log as a readable report, or as scripts that undo the installation on another PC.",
+        ],
+        Tab::Backups => &[
+            "Before Expunge deletes or changes anything, it copies it here.",
+            "If something stops working after a removal, click Restore to put everything back exactly as it was.",
+        ],
+        Tab::Startup => &[
+            "These programs start automatically when Windows starts. Fewer startup programs means Windows starts faster.",
+            "Turning an entry off is safe and reversible: it stays in the list and you can turn it back on.",
+            "In Advanced mode you can also manage services (background programs) and scheduled tasks.",
+        ],
+        Tab::Cleaner => &[
+            "Programs and Windows leave temporary files behind. They are safe to delete and are recreated when needed.",
+            "Click Scan to see how much space each kind uses, choose what to clean, then click Clean.",
+        ],
+        Tab::Lab => &[
+            "Installer lint reviews a recorded installation and points out packaging problems, with advice on fixing them.",
+            "Uninstaller test runs a program's own uninstaller and reports exactly what it left behind — useful for testing your own installers.",
+            "Snapshot compare lets you capture the system at any moment and compare any two captures. Everything is also available from the command line (expunge --help).",
+        ],
+        Tab::Settings => &[
+            "Simple mode keeps the interface focused and plain. Advanced mode shows technical details, services, tasks and the Installer Lab.",
+            "The monitoring scope decides which parts of the system snapshots look at. The defaults suit almost everyone.",
+        ],
+    }
+}
+
+impl App {
+    /// First-run welcome: language, mode, and what Expunge does.
+    fn welcome(&mut self, ctx: &egui::Context) {
+        if !self.welcome_open {
+            return;
+        }
+        let mut done = false;
+        egui::Modal::new(egui::Id::new("welcome")).show(ctx, |ui| {
+            ui.set_max_width(560.0);
+            ui.horizontal(|ui| {
+                ui.add(egui::Image::new(&self.logo).fit_to_exact_size(egui::vec2(48.0, 48.0)));
+                ui.vertical(|ui| {
+                    ui.heading(RichText::new(t("Welcome to Expunge")).strong());
+                    small_muted(ui, t("Remove programs completely — and only what belongs to them."));
+                });
+            });
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                ui.label(t("Language"));
+                let current = self
+                    .languages
+                    .iter()
+                    .find(|(c, _)| *c == self.settings.language)
+                    .map(|(_, n)| n.clone())
+                    .unwrap_or_else(|| t("Windows default"));
+                egui::ComboBox::from_id_salt("welcome_lang").selected_text(current).show_ui(ui, |ui| {
+                    let mut changed = ui.selectable_value(&mut self.settings.language, String::new(), t("Windows default")).changed();
+                    for (code, name) in &self.languages {
+                        changed |= ui.selectable_value(&mut self.settings.language, code.clone(), name).changed();
+                    }
+                    if changed {
+                        i18n::set_language(&self.settings.language);
+                    }
+                });
+            });
+            ui.add_space(10.0);
+            for (icon, title, body) in [
+                ("🗑", "Uninstall completely", "Remove programs plus the leftovers their uninstallers forget."),
+                ("📡", "Monitor installations", "Record what an installer changes so it can be undone precisely later."),
+                ("💾", "Undo anything", "Everything removed is backed up first and can be restored."),
+            ] {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(icon).size(20.0).color(theme::ACCENT));
+                    ui.vertical(|ui| {
+                        ui.label(RichText::new(t(title)).strong());
+                        small_muted(ui, t(body));
+                    });
+                });
+                ui.add_space(4.0);
+            }
+            ui.add_space(8.0);
+            ui.label(RichText::new(t("How do you want Expunge to look?")).strong());
+            ui.columns(2, |cols| {
+                for (i, (adv, title, body)) in [
+                    (false, "Simple", "Plain language, fewer technical details. Recommended if you're not sure."),
+                    (true, "Advanced", "All details: registry keys, services, scheduled tasks and the Installer Lab for developers."),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    let selected = self.settings.advanced_mode == adv;
+                    let resp = egui::Frame::new()
+                        .fill(if selected { theme::NAV_SELECTED } else { theme::CARD })
+                        .corner_radius(12)
+                        .inner_margin(12)
+                        .show(&mut cols[i], |ui| {
+                            ui.set_width(ui.available_width());
+                            ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                                ui.label(RichText::new(t(title)).strong());
+                                small_muted(ui, t(body));
+                            });
+                        })
+                        .response
+                        .interact(egui::Sense::click());
+                    if resp.clicked() {
+                        self.settings.advanced_mode = adv;
+                    }
+                }
+            });
+            ui.add_space(10.0);
+            small_muted(ui, t("You can change both at any time in Settings. Press F1 on any page for help."));
+            ui.add_space(6.0);
+            if theme::wide_button(ui, t("Get started"), true).clicked() {
+                done = true;
+            }
+        });
+        if done {
+            self.welcome_open = false;
+            self.settings.first_run_done = true;
+            self.save_settings();
+            self.admin_prompt = !self.elevated;
+        }
+    }
+
+    /// Keyboard shortcuts.
+    fn shortcuts(&mut self, ctx: &egui::Context) {
+        use egui::{Key, Modifiers};
+        let tabs = [
+            Tab::Dashboard,
+            Tab::Programs,
+            Tab::Monitor,
+            Tab::Logs,
+            Tab::Backups,
+            Tab::Startup,
+            Tab::Cleaner,
+            Tab::Settings,
+        ];
+        let mut go: Option<Tab> = None;
+        ctx.input_mut(|i| {
+            for (n, key) in [
+                Key::Num1,
+                Key::Num2,
+                Key::Num3,
+                Key::Num4,
+                Key::Num5,
+                Key::Num6,
+                Key::Num7,
+                Key::Num8,
+            ]
+            .iter()
+            .enumerate()
+            {
+                if i.consume_key(Modifiers::CTRL, *key) {
+                    go = Some(tabs[n]);
+                }
+            }
+            if i.consume_key(Modifiers::CTRL, Key::F) {
+                self.focus_search = true;
+            }
+            if i.consume_key(Modifiers::NONE, Key::F1) {
+                self.help_open = !self.help_open;
+            }
+        });
+        if let Some(tab) = go {
+            self.tab = tab;
+            self.on_tab_opened(ctx, tab);
+        }
+        let typing = ctx.wants_keyboard_input();
+        if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F5)) {
+            match self.tab {
+                Tab::Programs | Tab::Dashboard => self.refresh_programs(ctx),
+                Tab::Startup => self.refresh_startup(ctx),
+                Tab::Logs => self.reload_logs(),
+                Tab::Backups => self.reload_backups(),
+                _ => {}
+            }
+        }
+        if !typing
+            && self.tab == Tab::Programs
+            && self.wizard.is_none()
+            && self.removal.is_none()
+            && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Delete))
+        {
+            if let Some(key) = self.programs.selected.clone() {
+                let all: Vec<_> = self
+                    .programs
+                    .list
+                    .iter()
+                    .chain(self.programs.store_apps.iter())
+                    .filter(|p| p.key == key)
+                    .cloned()
+                    .collect();
+                self.start_uninstall(all, false);
+            }
+        }
+    }
+}
+
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.frame += 1;
@@ -648,6 +915,7 @@ impl eframe::App for App {
             Tab::Backups => self.ui_backups(ctx),
             Tab::Startup => self.ui_startup(ctx),
             Tab::Cleaner => self.ui_cleaner(ctx),
+            Tab::Lab => self.ui_lab(ctx),
             Tab::Settings => self.ui_settings(ctx),
         }
         self.ui_wizard(ctx);
@@ -657,6 +925,8 @@ impl eframe::App for App {
             self.style_frames = self.style_frames.max(5);
         }
         self.dialogs(ctx);
+        self.welcome(ctx);
+        self.shortcuts(ctx);
     }
 
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {

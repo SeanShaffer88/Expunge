@@ -269,7 +269,7 @@ impl App {
             .frame(theme::side_frame())
             .show_separator_line(false)
             .resizable(true)
-            .default_width(340.0)
+            .default_width(310.0)
             .min_width(260.0)
             .show(ctx, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| match &selected {
@@ -287,7 +287,18 @@ impl App {
             .frame(theme::content_frame())
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    search_box(ui, &mut self.programs.filter, "Search programs", 260.0);
+                    let r = search_box(ui, &mut self.programs.filter, "Search programs", 260.0);
+                    if self.focus_search {
+                        r.request_focus();
+                        self.focus_search = false;
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button(format!("⟳ {}", t("Refresh"))).clicked() {
+                            self.refresh_programs(ctx);
+                        }
+                    });
+                });
+                ui.horizontal(|ui| {
                     let views = [
                         (View::All, t("All")),
                         (View::Monitored, t("Monitored")),
@@ -316,9 +327,6 @@ impl App {
                         }
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button(format!("⟳ {}", t("Refresh"))).clicked() {
-                            self.refresh_programs(ctx);
-                        }
                         let n = self.programs.checked.len();
                         if n > 0 {
                             if theme::primary_button(
@@ -395,7 +403,7 @@ impl App {
             .sense(egui::Sense::click())
             .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
             .column(Column::exact(22.0))
-            .column(Column::remainder().at_least(220.0).clip(true))
+            .column(Column::remainder().at_least(160.0).clip(true))
             .column(
                 Column::initial(170.0)
                     .at_least(80.0)
@@ -409,7 +417,7 @@ impl App {
                     .resizable(true),
             )
             .column(Column::initial(92.0).at_least(60.0).resizable(true))
-            .column(Column::initial(80.0).at_least(60.0).resizable(true))
+            .column(Column::initial(92.0).at_least(70.0).resizable(true))
             .header(row_h, |mut h| {
                 h.col(|_| {});
                 h.col(|ui| {
@@ -543,10 +551,10 @@ impl App {
                     },
                 );
                 field(ui, "Location", &p.install_location);
-                if p.source != Source::Store {
+                if p.source != Source::Store && self.settings.advanced_mode {
                     field(ui, "Uninstaller", &p.uninstall_string);
                     field(ui, "Registry key", &p.key);
-                } else {
+                } else if self.settings.advanced_mode {
                     field(ui, "Package", &p.key);
                 }
                 if !p.comments.is_empty() {
@@ -576,7 +584,10 @@ impl App {
             if !p.install_location.is_empty() && ui.button(t("Open folder")).clicked() {
                 platform::shell_open(&p.install_location);
             }
-            if p.source != Source::Store && ui.button(t("Open in Registry Editor")).clicked() {
+            if p.source != Source::Store
+                && self.settings.advanced_mode
+                && ui.button(t("Open in Registry Editor")).clicked()
+            {
                 if let Err(e) = platform::open_in_regedit(&p.key) {
                     self.set_status(e.to_string());
                 }

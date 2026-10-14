@@ -1,9 +1,11 @@
 //! Command-line interface for scripting and IT use.
 
 use expunge_core::backup::{list_backups, restore_backup, BackupWriter};
+use expunge_core::lint;
 use expunge_core::model::{human_size, InstallLog};
 use expunge_core::platform::{self, Registry};
 use expunge_core::revert::{build_plan, execute_plan, ExecOptions};
+use expunge_core::revert::{residue, residue_markdown};
 use expunge_core::snapshot::{
     detect_program, diff, filter_changes, load_snapshot, save_snapshot, take_snapshot, Progress,
 };
@@ -23,8 +25,15 @@ USAGE:
   expunge snapshot <file.snap>              Save a snapshot of the system
   expunge diff <before.snap> <after.snap> [--name NAME]
                                             Compare two snapshots, save a log
-  expunge logs                              List saved install logs
-  expunge programs                          List installed programs
+  expunge logs [--json]                     List saved install logs
+  expunge programs [--all] [--json]         List installed programs
+  expunge lint <log-id> [--json] [--strict] Check an installation for packaging
+                                            problems (exit 2 on errors, or on
+                                            warnings with --strict)
+  expunge test-uninstall <log-id> [--quiet] [--no-run] [--timeout SECS] [--json]
+                                            Run the program's own uninstaller and
+                                            report what it left behind (exit 2
+                                            if anything remains)
   expunge revert <log-id> [--dry-run] [--remove-unlogged] [--no-backup]
                                             Undo an installation precisely
   expunge export <log-id> <html|json|reg|ps1> <output-file>
@@ -32,7 +41,14 @@ USAGE:
   expunge restore <backup-id>               Undo a removal from its backup
   expunge --version | --help
 
-Exit codes: 0 success, 1 error, 2 finished with some failures.";
+  monitor and diff also accept --json to print the saved log's summary.
+
+Exit codes: 0 success, 1 error, 2 finished with failures / findings.
+
+Typical CI use (installer QA):
+  expunge monitor --name MyApp --no-prompt --json -- dist\\MyApp-Setup.exe /S
+  expunge lint <log-id> --strict
+  expunge test-uninstall <log-id> --quiet";
 
 fn arg_value(args: &[String], flag: &str) -> Option<String> {
     args.iter()
@@ -81,7 +97,7 @@ fn save_new_log(
     log.changes = changes;
     store.save_log(&log)?;
     let st = log.changes.stats();
-    println!(
+    eprintln!(
         "Saved install log {} for \"{}\": {} files, {} folders, {} keys, {} values added, {} changed ({})",
         log.id,
         log.name,
@@ -109,6 +125,18 @@ fn snapshot_now(
         s.files.len()
     );
     Ok(s)
+}
+
+fn log_summary_json(l: &InstallLog) -> serde_json::Value {
+    serde_json::json!({
+        "id": l.id,
+        "name": l.name,
+        "publisher": l.publisher,
+        "version": l.version,
+        "created": l.created,
+        "uninstall_key": l.uninstall_key,
+        "stats": l.changes.stats(),
+    })
 }
 
 pub fn run(args: Vec<String>) -> i32 {
@@ -147,7 +175,10 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
             let before = load_snapshot(&PathBuf::from(a))?;
             let after = load_snapshot(&PathBuf::from(b))?;
             let name = arg_value(&args, "--name").unwrap_or_default();
-            save_new_log(&store()?, &name, "", diff(&before, &after))?;
+            let log = save_new_log(&store()?, &name, "", diff(&before, &after))?;
+            if has(&args, "--json") {
+                println!("{}", log_summary_json(&log));
+            }
         }
         "monitor" => {
             let sep = args.iter().position(|a| a == "--").ok_or_else(|| {
@@ -181,7 +212,15 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                 let _ = std::io::stdin().read_line(&mut s);
             }
             let after = snapshot_now(reg.as_ref(), &st)?;
-            save_new_log(&st, &name, &installer[0], diff(&before, &after))?;
+            let log = save_new_log(&st, &name, &installer[0], diff(&before, &after))?;
+            if has(&args, "--json") {
+                println!("{}", log_summary_json(&log));
+            }
+        }
+        "logs" if has(&args, "--json") => {
+            let v: Vec<serde_json::Value> =
+                store()?.list_logs().iter().map(log_summary_json).collect();
+            println!("{}", serde_json::to_string_pretty(&v)?);
         }
         "logs" => {
             for l in store()?.list_logs() {
@@ -195,6 +234,82 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                     human_size(st.bytes_added)
                 );
             }
+        }
+        "programs" if has(&args, "--json") => {
+            let list = programs::list_programs(reg.as_ref(), has(&args, "--all"));
+            println!("{}", serde_json::to_string_pretty(&list)?);
+        }
+        "lint" => {
+            let id = args
+                .get(1)
+                .ok_or_else(|| anyhow::anyhow!("missing log id"))?;
+            let log = store()?.load_log(id)?;
+            let findings = lint::lint(&log);
+            let (e, w, i) = lint::counts(&findings);
+            if has(&args, "--json") {
+                println!("{}", serde_json::to_string_pretty(&findings)?);
+            } else {
+                for f in &findings {
+                    println!(
+                        "{} {} {}",
+                        f.code,
+                        f.severity.label().to_uppercase(),
+                        f.title
+                    );
+                    for it in f.items.iter().take(20) {
+                        println!("    {it}");
+                    }
+                }
+                println!("{e} errors, {w} warnings, {i} notes");
+            }
+            let fail = e > 0 || (has(&args, "--strict") && w > 0);
+            return Ok(if fail { 2 } else { 0 });
+        }
+        "test-uninstall" => {
+            let id = args
+                .get(1)
+                .ok_or_else(|| anyhow::anyhow!("missing log id"))?;
+            let log = store()?.load_log(id)?;
+            if !has(&args, "--no-run") {
+                let key = reg.read_key(&log.uninstall_key).ok_or_else(|| {
+                    anyhow::anyhow!("no uninstall entry registered for this program (use --no-run to only check)")
+                })?;
+                let quiet = key.get_string("QuietUninstallString");
+                let cmd = if has(&args, "--quiet") && quiet.is_some() {
+                    quiet
+                } else {
+                    key.get_string("UninstallString")
+                }
+                .ok_or_else(|| anyhow::anyhow!("the uninstall entry has no UninstallString"))?;
+                eprintln!("Running {cmd}");
+                let child = platform::spawn_command_line(&platform::expand_env(&cmd))?;
+                let code = child.wait();
+                eprintln!("Uninstaller exited with code {code}; waiting for it to finish…");
+                let timeout: u64 = arg_value(&args, "--timeout")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(600);
+                let start = std::time::Instant::now();
+                while reg.exists(&log.uninstall_key) && start.elapsed().as_secs() < timeout {
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                }
+            }
+            let left = residue(&log.changes, reg.as_ref());
+            if has(&args, "--json") {
+                let items: Vec<serde_json::Value> = left
+                    .items
+                    .iter()
+                    .map(|i| serde_json::json!({ "category": i.action.category(), "item": i.action.describe(), "action": i.action }))
+                    .collect();
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(
+                        &serde_json::json!({ "program": log.name, "clean": left.items.is_empty(), "left_behind": items })
+                    )?
+                );
+            } else {
+                print!("{}", residue_markdown(&log.name, &left));
+            }
+            return Ok(if left.items.is_empty() { 0 } else { 2 });
         }
         "programs" => {
             for p in programs::list_programs(reg.as_ref(), has(&args, "--all")) {

@@ -115,6 +115,24 @@ impl App {
                         changed |= r.drag_stopped() || r.lost_focus();
                     });
                     small_muted(ui, t("Translations live in the lang folder; you can add or improve languages without rebuilding."));
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        ui.label(t("Interface mode"));
+                        changed |= ui
+                            .radio_value(&mut self.settings.advanced_mode, false, t("Simple"))
+                            .on_hover_text(t("Plain language, fewer technical details. Recommended if you're not sure."))
+                            .changed();
+                        changed |= ui
+                            .radio_value(&mut self.settings.advanced_mode, true, t("Advanced"))
+                            .on_hover_text(t("All details: registry keys, services, scheduled tasks and the Installer Lab for developers."))
+                            .changed();
+                    });
+                    if ui.checkbox(&mut self.settings.high_contrast, t("High contrast (brighter text, stronger outlines)")).changed() {
+                        changed = true;
+                        super::theme::apply(ctx, self.settings.high_contrast);
+                    }
+                    ui.add_space(4.0);
+                    small_muted(ui, t("Keyboard: Ctrl+1–8 switch pages · Ctrl+F search · F5 refresh · Delete uninstalls the selected program · F1 help."));
                 });
                 ui.add_space(10.0);
                 theme::card(ui, |ui| {
@@ -143,6 +161,14 @@ impl App {
                     self.save_settings();
                 }
                 ui.add_space(10.0);
+                if !self.settings.advanced_mode {
+                    theme::card(ui, |ui| {
+                        small_muted(ui, t("Switch to Advanced mode to change what snapshots capture."));
+                        if ui.button(t("Reset everything to defaults")).clicked() {
+                            self.ask("Reset settings?", t("All settings except the language go back to their defaults."), "Reset", Confirm::ResetSettings);
+                        }
+                    });
+                } else {
                 theme::card(ui, |ui| {
                     ui.label(RichText::new(t("Monitoring scope")).heading());
                     small_muted(ui, t("What snapshots capture. One entry per line; %VARIABLES% and * wildcards work."));
@@ -167,6 +193,7 @@ impl App {
                         }
                     });
                 });
+                }
                 ui.add_space(10.0);
                 theme::card(ui, |ui| {
                     ui.label(RichText::new(t("Data")).heading());

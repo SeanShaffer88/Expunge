@@ -25,10 +25,10 @@ pub const LINE: Color32 = Color32::from_rgb(52, 45, 48);
 pub const NAV_SELECTED: Color32 = Color32::from_rgb(92, 34, 38);
 const TEXT: Color32 = Color32::from_rgb(236, 230, 233);
 
-pub fn apply(ctx: &egui::Context) {
+pub fn apply(ctx: &egui::Context, high_contrast: bool) {
     ctx.options_mut(|o| o.theme_preference = egui::ThemePreference::Dark);
     let mut v = Visuals::dark();
-    v.override_text_color = Some(TEXT);
+    v.override_text_color = Some(if high_contrast { Color32::WHITE } else { TEXT });
     v.window_fill = PANEL;
     v.panel_fill = BG;
     v.faint_bg_color = Color32::from_rgb(22, 22, 25);
@@ -36,14 +36,15 @@ pub fn apply(ctx: &egui::Context) {
     v.code_bg_color = Color32::from_rgb(30, 30, 34);
     v.hyperlink_color = Color32::from_rgb(255, 128, 120);
     v.selection.bg_fill = ACCENT_DIM;
-    v.selection.stroke = Stroke::new(1.0_f32, ACCENT);
+    // Selected text stays white so it is readable on the red highlight.
+    v.selection.stroke = Stroke::new(1.0_f32, Color32::WHITE);
     v.window_stroke = Stroke::new(1.0_f32, ACCENT_DIM);
     v.window_corner_radius = CornerRadius::same(12);
     v.menu_corner_radius = CornerRadius::same(6);
     v.warn_fg_color = WARN;
     v.error_fg_color = BAD;
 
-    let r = CornerRadius::same(8);
+    let r = CornerRadius::same(3);
     v.widgets.noninteractive.bg_fill = PANEL;
     v.widgets.noninteractive.weak_bg_fill = PANEL;
     v.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, LINE);
@@ -62,6 +63,16 @@ pub fn apply(ctx: &egui::Context) {
     v.widgets.open.bg_fill = HOVER;
     v.widgets.open.weak_bg_fill = HOVER;
     v.widgets.open.corner_radius = r;
+    if high_contrast {
+        // Stronger outlines and focus rings for low-vision users.
+        let edge = Stroke::new(1.5_f32, Color32::from_rgb(200, 190, 195));
+        v.widgets.noninteractive.bg_stroke = edge;
+        v.widgets.inactive.bg_stroke = edge;
+        v.widgets.hovered.bg_stroke = Stroke::new(2.0_f32, ACCENT);
+        v.widgets.active.bg_stroke = Stroke::new(2.0_f32, Color32::WHITE);
+        v.selection.stroke = Stroke::new(2.0_f32, Color32::WHITE);
+        v.window_stroke = Stroke::new(2.0_f32, ACCENT);
+    }
     ctx.set_visuals_of(egui::Theme::Dark, v);
 
     ctx.style_mut_of(egui::Theme::Dark, |s| {
@@ -108,14 +119,13 @@ pub fn wide_button(ui: &mut egui::Ui, text: impl Into<String>, enabled: bool) ->
     } else {
         (WIDGET, MUTED)
     };
-    ui.add_enabled(
-        enabled,
-        egui::Button::new(egui::RichText::new(text.into()).color(color).strong())
-            .fill(fill)
-            .stroke(Stroke::NONE)
-            .corner_radius(CornerRadius::same(18))
-            .min_size(egui::vec2(w, 36.0)),
-    )
+    let button = egui::Button::new(egui::RichText::new(text.into()).color(color).strong())
+        .fill(fill)
+        .stroke(Stroke::NONE)
+        .corner_radius(CornerRadius::same(18));
+    // add_sized centres the label inside the full-width pill.
+    ui.add_enabled_ui(enabled, |ui| ui.add_sized([w, 36.0], button))
+        .inner
 }
 
 /// A rounded card, like the panels in the main pages.

@@ -8,7 +8,7 @@ use super::Job;
 use egui::RichText;
 use expunge_core::backup::{ActionResult, BackupWriter};
 use expunge_core::i18n::{t, tf};
-use expunge_core::revert::{execute_plan, ExecOptions, Plan};
+use expunge_core::revert::{execute_plan, ExecOptions, Plan, Risk};
 
 pub struct RemovalFlow {
     pub title: String,
@@ -136,6 +136,16 @@ pub fn plan_ui(ui: &mut egui::Ui, flow: &mut RemovalFlow) {
                             } else {
                                 RichText::new(text).color(theme::MUTED).strikethrough()
                             };
+                            let risk = expunge_core::revert::risk(item);
+                            let rc = match risk {
+                                Risk::Safe => theme::OK,
+                                Risk::Review => theme::WARN,
+                                Risk::Careful => theme::BAD,
+                            };
+                            ui.add(egui::Label::new(
+                                RichText::new(t(risk.label())).small().strong().color(rc),
+                            ))
+                            .on_hover_text(t(risk.explanation()));
                             ui.add(egui::Label::new(rt).truncate())
                                 .on_hover_text(item.action.describe());
                             if !item.note.is_empty() {

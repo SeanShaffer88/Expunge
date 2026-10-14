@@ -283,12 +283,16 @@ impl App {
             .resizable(true)
             .default_width(300.0)
             .show(ctx, |ui| {
-                search_box(
+                let r = search_box(
                     ui,
                     &mut self.logs.filter,
                     "Search logs",
                     ui.available_width() - 30.0,
                 );
+                if self.focus_search {
+                    r.request_focus();
+                    self.focus_search = false;
+                }
                 ui.add_space(6.0);
                 let f = self.logs.filter.to_lowercase();
                 egui::ScrollArea::vertical()
@@ -470,9 +474,18 @@ impl App {
                 }
             }
             ui.add_space(8.0);
+            let advanced = self.settings.advanced_mode;
             let cs = &mut self.logs.logs[idx].changes;
             egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-                theme::card(ui, |ui| changes_ui(ui, cs, false));
+                theme::card(ui, |ui| {
+                    if advanced {
+                        changes_ui(ui, cs, false);
+                    } else {
+                        egui::CollapsingHeader::new(t("Show technical details"))
+                            .default_open(false)
+                            .show(ui, |ui| changes_ui(ui, cs, false));
+                    }
+                });
             });
         });
     }

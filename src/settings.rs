@@ -45,6 +45,12 @@ pub struct Settings {
     pub show_system_components: bool,
     /// Show Microsoft Store apps in the program list.
     pub show_store_apps: bool,
+    /// Advanced mode shows technical details and developer tools.
+    pub advanced_mode: bool,
+    /// Brighter text and stronger outlines.
+    pub high_contrast: bool,
+    /// The welcome screen has been completed.
+    pub first_run_done: bool,
 }
 
 impl Default for Settings {
@@ -62,6 +68,9 @@ impl Default for Settings {
             confirm_actions: true,
             show_system_components: false,
             show_store_apps: false,
+            advanced_mode: false,
+            high_contrast: false,
+            first_run_done: false,
         }
     }
 }

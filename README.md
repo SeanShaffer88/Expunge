@@ -19,7 +19,12 @@ Most uninstallers run the vendor's uninstaller and then *guess* what was left be
 
 **Expunge closes that gap.** It snapshots the system before and after an installation, saves the exact list of files, folders, registry keys and values, services and scheduled tasks that changed, and later turns that record into a precise, reversible removal plan. Everything it deletes is backed up first, so every removal can be undone.
 
-It is a free, GPL-licensed alternative to commercial tools like Total Uninstall Pro.
+It is a free, GPL-licensed alternative to commercial tools like Total Uninstall Pro — friendly enough for someone new to computers, and deep enough for developers testing their own installers.
+
+<p align="center">
+  <img src="docs/screenshots/dashboard.png" alt="Expunge dashboard" width="49%">
+  <img src="docs/screenshots/programs.png" alt="Expunge program list" width="49%">
+</p>
 
 ## Features
 
@@ -55,6 +60,18 @@ It is a free, GPL-licensed alternative to commercial tools like Total Uninstall 
 - **Junk cleaner**: temp files, crash dumps, shader caches, Windows Update downloads, browser caches, Recycle Bin.
 - **"Which program created this?"** — search any file or registry path across all monitored installs.
 - **Export** install logs as an HTML report, a `.reg` undo script, a PowerShell removal script, or JSON (import them on another PC).
+
+**For everyone**
+- **Simple and Advanced modes**, chosen on first launch: plain language and a focused interface, or every technical detail.
+- **Help on every page** (Help button or F1) explaining terms like *snapshot* and *leftover* in everyday words.
+- **Safety labels** on every removal item: *Safe*, *Review* or *Careful*.
+- **Accessible**: screen-reader support, adjustable text size, high-contrast option, full keyboard shortcuts (Ctrl+1–8 pages, Ctrl+F search, F5 refresh, Delete uninstall, F1 help).
+
+**For developers — Installer Lab**
+- **Installer lint**: reviews a recorded installation for packaging mistakes (missing or incomplete uninstall entry, files in System32, per-user data from per-machine installs, PATH edits, autostart, services, scheduled tasks, shell extensions, file associations, firewall rules, changed shared values) with advice for each. Export as Markdown.
+- **Uninstaller test**: runs your program's own uninstaller and reports exactly what it left behind or failed to restore — then cleans it up if you want.
+- **Snapshot compare**: take named snapshots any time and diff any two.
+- **CI-ready CLI**: `lint` and `test-uninstall` commands with exit codes and `--json` output for build pipelines.
 
 **And**
 - Dark interface with a native red Windows 11 window border.
@@ -93,6 +110,14 @@ expunge export <log-id> reg undo.reg
 expunge backups
 expunge restore <backup-id>
 expunge --help
+```
+
+Installer QA in a build pipeline:
+
+```
+expunge monitor --name MyApp --no-prompt --json -- dist\MyApp-Setup.exe /S
+expunge lint <log-id> --strict          # exit 2 on errors/warnings
+expunge test-uninstall <log-id> --quiet # exit 2 if anything was left behind
 ```
 
 ## Building from source

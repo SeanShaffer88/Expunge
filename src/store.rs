@@ -49,7 +49,7 @@ impl Store {
     }
 
     pub fn at(root: &Path) -> Result<Store> {
-        for d in ["logs", "backups", "pending"] {
+        for d in ["logs", "backups", "pending", "snapshots"] {
             std::fs::create_dir_all(root.join(d))
                 .with_context(|| format!("create {}", root.join(d).display()))?;
         }
@@ -65,6 +65,40 @@ impl Store {
     pub fn backups_dir(&self) -> PathBuf {
         self.root.join("backups")
     }
+    pub fn snapshots_dir(&self) -> PathBuf {
+        self.root.join("snapshots")
+    }
+
+    /// Named snapshots taken from the Installer Lab: (name, path, modified).
+    pub fn list_snapshots(&self) -> Vec<(String, PathBuf, String)> {
+        let mut v: Vec<(String, PathBuf, String)> = std::fs::read_dir(self.snapshots_dir())
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter(|e| e.path().extension().is_some_and(|x| x == "snap"))
+            .map(|e| {
+                let name = e
+                    .path()
+                    .file_stem()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+                let when = e
+                    .metadata()
+                    .and_then(|m| m.modified())
+                    .map(|t| {
+                        chrono::DateTime::<chrono::Local>::from(t)
+                            .format("%Y-%m-%d %H:%M")
+                            .to_string()
+                    })
+                    .unwrap_or_default();
+                (name, e.path(), when)
+            })
+            .collect();
+        v.sort_by(|a, b| b.2.cmp(&a.2));
+        v
+    }
+
     fn pending_dir(&self) -> PathBuf {
         self.root.join("pending")
     }
