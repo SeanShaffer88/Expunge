@@ -389,6 +389,40 @@ pub fn lint(log: &InstallLog) -> Vec<Finding> {
         shared,
     );
 
+    // Executables the installer added that aren't properly signed
+    // (only checked while the files still exist).
+    let mut unsigned = Vec::new();
+    let mut broken = Vec::new();
+    for f in cs.files_added.iter().filter(|f| !f.is_dir).take(2000) {
+        let lower = f.path.to_lowercase();
+        if !(lower.ends_with(".exe") || lower.ends_with(".msi") || lower.ends_with(".sys")) {
+            continue;
+        }
+        match crate::trust::check_file(&f.path) {
+            crate::trust::Trust::Unsigned => unsigned.push(f.path.clone()),
+            crate::trust::Trust::Invalid { reason, .. } => {
+                broken.push(format!("{}  ({reason})", f.path))
+            }
+            _ => {}
+        }
+    }
+    find(
+        &mut out,
+        "EXP030",
+        Severity::Warning,
+        "Executables are not digitally signed",
+        "Unsigned programs trigger SmartScreen warnings and can't be traced to their publisher. Sign them with a code-signing certificate.",
+        unsigned,
+    );
+    find(
+        &mut out,
+        "EXP031",
+        Severity::Error,
+        "Executables have a broken signature",
+        "These files are signed, but the signature does not verify. They may have been modified after signing.",
+        broken,
+    );
+
     out.sort_by(|a, b| b.severity.cmp(&a.severity).then(a.code.cmp(b.code)));
     out
 }

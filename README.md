@@ -47,6 +47,7 @@ It is a free, GPL-licensed alternative to commercial tools like Total Uninstall 
 - **Batch uninstall** several programs in one go, with one combined leftover scan.
 - **Quiet uninstall** where supported, and **forced removal** when the uninstaller is broken.
 - **Broken entry finder** for programs whose uninstaller or folder no longer exists.
+- **Trust info**: shows who digitally signed each program, and flags unsigned programs and broken signatures (possible tampering).
 - Real folder sizes for programs that don't report one.
 
 **Safety first**

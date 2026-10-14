@@ -13,6 +13,7 @@ use expunge_core::model::{fold, human_size, InstallLog};
 use expunge_core::platform::{self, ChildProcess};
 use expunge_core::programs::{self, InstalledProgram, Source};
 use expunge_core::revert::{build_plan, Action, Plan, PlanItem};
+use expunge_core::trust::{self, Trust};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::time::Instant;
 
@@ -22,6 +23,7 @@ pub enum View {
     All,
     Monitored,
     Broken,
+    Unsigned,
     Store,
 }
 
@@ -48,6 +50,9 @@ pub struct ProgramsState {
     pub icons: HashMap<String, egui::TextureHandle>,
     pub icon_job: Option<Job<Vec<(String, egui::ColorImage)>>>,
     pub icons_requested: HashSet<String>,
+    /// Digital-signature status by registry key (checked in the background).
+    pub trust: HashMap<String, Trust>,
+    pub trust_job: Option<Job<Vec<(String, Trust)>>>,
     pub restore_job: Option<Job<Result<(), String>>>,
     pub filter: String,
     pub view: View,
@@ -112,6 +117,33 @@ impl Wizard {
     }
 }
 
+/// Small shield showing a program's signature status, with details on hover.
+fn trust_glyph(ui: &mut egui::Ui, t_: Option<&Trust>) {
+    let (sym, color, tip) = match t_ {
+        Some(Trust::Signed { signer }) => (
+            "🛡",
+            theme::OK,
+            tf("Signed by {name}", &[("name", signer.clone())]),
+        ),
+        Some(Trust::Unsigned) => ("🛡", theme::WARN, t("Not digitally signed")),
+        Some(Trust::Invalid { signer, reason }) => {
+            let who = if signer.is_empty() {
+                String::new()
+            } else {
+                format!(" ({signer})")
+            };
+            (
+                "✖",
+                theme::BAD,
+                format!("{}{who}: {}", t("Signature problem"), t(reason)),
+            )
+        }
+        _ => return,
+    };
+    ui.label(RichText::new(sym).color(color).small())
+        .on_hover_text(tip);
+}
+
 /// Merge plan items, dropping duplicates.
 pub fn merge_plans(into: &mut Plan, other: Plan) {
     let mut seen: HashSet<String> = into
@@ -165,6 +197,7 @@ impl App {
             let n = self.programs.list.len();
             self.set_status(tf("{n} programs installed", &[("n", n.to_string())]));
             self.load_icons(ctx);
+            self.check_trust(ctx);
             // Measure folders for programs that don't report their size.
             let todo: Vec<(String, String)> = self
                 .programs
@@ -203,6 +236,10 @@ impl App {
             self.programs.size_job = None;
             self.programs.sizes.extend(sizes);
         }
+        if let Some(results) = self.programs.trust_job.as_ref().and_then(|j| j.poll()) {
+            self.programs.trust_job = None;
+            self.programs.trust.extend(results);
+        }
         if let Some(icons) = self.programs.icon_job.as_ref().and_then(|j| j.poll()) {
             self.programs.icon_job = None;
             for (key, img) in icons {
@@ -211,6 +248,29 @@ impl App {
                 self.programs.icons.insert(key, tex);
             }
         }
+    }
+
+    /// Verify each program's digital signature, off the UI thread.
+    fn check_trust(&mut self, ctx: &egui::Context) {
+        if self.programs.trust_job.is_some() {
+            return;
+        }
+        let todo: Vec<InstalledProgram> = self
+            .programs
+            .list
+            .iter()
+            .filter(|p| !self.programs.trust.contains_key(&p.key))
+            .cloned()
+            .collect();
+        if todo.is_empty() {
+            return;
+        }
+        let reg = self.reg.clone();
+        self.programs.trust_job = Some(Job::spawn(ctx, move |_| {
+            todo.iter()
+                .map(|p| (p.key.clone(), trust::check_program(p, reg.as_ref())))
+                .collect()
+        }));
     }
 
     /// Extract icons for programs we haven't seen yet, off the UI thread.
@@ -267,6 +327,10 @@ impl App {
             .filter(|p| match st.view {
                 View::Monitored => log_for(&self.logs.logs, p).is_some(),
                 View::Broken => st.broken.contains(&p.key),
+                View::Unsigned => matches!(
+                    st.trust.get(&p.key),
+                    Some(Trust::Unsigned | Trust::Invalid { .. })
+                ),
                 _ => true,
             })
             .filter(|p| {
@@ -354,6 +418,23 @@ impl App {
                             tf(
                                 "Broken ({n})",
                                 &[("n", self.programs.broken.len().to_string())],
+                            ),
+                        ),
+                        (
+                            View::Unsigned,
+                            tf(
+                                "Unsigned ({n})",
+                                &[(
+                                    "n",
+                                    self.programs
+                                        .trust
+                                        .values()
+                                        .filter(|t| {
+                                            matches!(t, Trust::Unsigned | Trust::Invalid { .. })
+                                        })
+                                        .count()
+                                        .to_string(),
+                                )],
                             ),
                         ),
                         (View::Store, t("Store apps")),
@@ -532,6 +613,7 @@ impl App {
                                 );
                             }
                         }
+                        trust_glyph(ui, st.trust.get(&p.key));
                         ui.add(egui::Label::new(&p.name).truncate().selectable(false));
                     });
                     row.col(|ui| {
@@ -618,6 +700,21 @@ impl App {
                     },
                 );
                 field(ui, "Location", &p.install_location);
+                if let Some(tr) = self.programs.trust.get(&p.key) {
+                    let text = match tr {
+                        Trust::Signed { signer } => {
+                            tf("Signed by {name}", &[("name", signer.clone())])
+                        }
+                        Trust::Invalid { signer, reason } if !signer.is_empty() => {
+                            format!("{} — {} ({signer})", t("Signature problem"), t(reason))
+                        }
+                        Trust::Invalid { reason, .. } => {
+                            format!("{} — {}", t("Signature problem"), t(reason))
+                        }
+                        other => t(other.label()),
+                    };
+                    field(ui, "Digital signature", &text);
+                }
                 if p.source != Source::Store && self.settings.advanced_mode {
                     field(ui, "Uninstaller", &p.uninstall_string);
                     field(ui, "Registry key", &p.key);
@@ -628,6 +725,13 @@ impl App {
                     field(ui, "Comments", &p.comments);
                 }
             });
+        if let Some(Trust::Invalid { reason, .. }) = self.programs.trust.get(&p.key) {
+            ui.add_space(8.0);
+            theme::warning_banner(
+                ui,
+                tf("This program's signature has a problem: {error}. Its files may have been altered.", &[("error", t(reason))]),
+            );
+        }
         ui.add_space(12.0);
         ui.horizontal_wrapped(|ui| {
             if theme::primary_button(ui, format!("🗑 {}", t("Uninstall"))).clicked() {
@@ -852,6 +956,9 @@ impl App {
                                     ui.label(RichText::new(format!("• {}", p.name)).strong());
                                     if log_for(&self.logs.logs, p).is_some() {
                                         theme::badge(ui, t("Monitored"), theme::ACCENT_TEXT);
+                                    }
+                                    if let Some(Trust::Invalid { .. }) = self.programs.trust.get(&p.key) {
+                                        theme::badge(ui, t("Signature problem"), theme::BAD);
                                     }
                                 });
                             }

@@ -9,6 +9,9 @@ All notable changes to Expunge are documented here. The format follows
 ### Added
 - **Install with Expunge** in the right-click menu of `.exe` and `.msi` files: installs under monitoring in one step. Added for all users by Setup, or per user from Settings (portable). Relaunching as administrator keeps the installer.
 - Program icons in the program list and details.
+- **Program trust info**: each program's digital signature is verified offline (Authenticode). Shows who signed it, flags unsigned programs (new "Unsigned" filter) and broken signatures, and warns before uninstalling a program whose signature fails.
+- Installer lint flags unsigned or broken-signature executables (EXP030, EXP031).
+- CLI: `expunge verify <file>` and `expunge programs --trust`.
 
 ### Changed
 - Darker red accent (#6B0700) across the interface and window border; red text uses a lighter shade of it for readability.

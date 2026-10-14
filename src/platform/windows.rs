@@ -568,3 +568,128 @@ pub fn icon_rgba(path: &str, index: i32, size: u32) -> Option<(u32, u32, Vec<u8>
         Some((size, size, px))
     }
 }
+
+/// Verify a file's Authenticode signature offline. Returns the WinVerifyTrust
+/// result (0 = valid) and the signer's display name when it can be read.
+pub fn authenticode(path: &str) -> (i32, Option<String>) {
+    use windows_sys::Win32::Security::WinTrust::{
+        WinVerifyTrust, WINTRUST_ACTION_GENERIC_VERIFY_V2, WINTRUST_DATA, WINTRUST_DATA_0,
+        WINTRUST_FILE_INFO, WTD_CACHE_ONLY_URL_RETRIEVAL, WTD_CHOICE_FILE, WTD_REVOKE_NONE,
+        WTD_STATEACTION_CLOSE, WTD_STATEACTION_VERIFY, WTD_UI_NONE,
+    };
+    let wpath = wide(path);
+    let code = unsafe {
+        let mut file: WINTRUST_FILE_INFO = std::mem::zeroed();
+        file.cbStruct = std::mem::size_of::<WINTRUST_FILE_INFO>() as u32;
+        file.pcwszFilePath = wpath.as_ptr();
+        let mut data: WINTRUST_DATA = std::mem::zeroed();
+        data.cbStruct = std::mem::size_of::<WINTRUST_DATA>() as u32;
+        data.dwUIChoice = WTD_UI_NONE;
+        data.fdwRevocationChecks = WTD_REVOKE_NONE;
+        data.dwUnionChoice = WTD_CHOICE_FILE;
+        data.Anonymous = WINTRUST_DATA_0 { pFile: &mut file };
+        data.dwStateAction = WTD_STATEACTION_VERIFY;
+        data.dwProvFlags = WTD_CACHE_ONLY_URL_RETRIEVAL;
+        let mut action = WINTRUST_ACTION_GENERIC_VERIFY_V2;
+        let rc = WinVerifyTrust(
+            std::ptr::null_mut(),
+            &mut action,
+            &mut data as *mut _ as *mut _,
+        );
+        data.dwStateAction = WTD_STATEACTION_CLOSE;
+        WinVerifyTrust(
+            std::ptr::null_mut(),
+            &mut action,
+            &mut data as *mut _ as *mut _,
+        );
+        rc
+    };
+    (code, signer_name(&wpath))
+}
+
+/// Read the signer's display name from a file's embedded signature.
+fn signer_name(wpath: &[u16]) -> Option<String> {
+    use windows_sys::Win32::Security::Cryptography::{
+        CertCloseStore, CertFindCertificateInStore, CertFreeCertificateContext, CertGetNameStringW,
+        CryptMsgClose, CryptMsgGetParam, CryptQueryObject, CERT_FIND_SUBJECT_CERT, CERT_INFO,
+        CERT_NAME_SIMPLE_DISPLAY_TYPE, CERT_QUERY_CONTENT_FLAG_PKCS7_SIGNED_EMBED,
+        CERT_QUERY_FORMAT_FLAG_BINARY, CERT_QUERY_OBJECT_FILE, CMSG_SIGNER_INFO,
+        CMSG_SIGNER_INFO_PARAM, PKCS_7_ASN_ENCODING, X509_ASN_ENCODING,
+    };
+    unsafe {
+        let mut encoding = 0u32;
+        let mut content = 0u32;
+        let mut format = 0u32;
+        let mut store = std::ptr::null_mut();
+        let mut msg = std::ptr::null_mut();
+        let ok = CryptQueryObject(
+            CERT_QUERY_OBJECT_FILE,
+            wpath.as_ptr() as *const _,
+            CERT_QUERY_CONTENT_FLAG_PKCS7_SIGNED_EMBED,
+            CERT_QUERY_FORMAT_FLAG_BINARY,
+            0,
+            &mut encoding,
+            &mut content,
+            &mut format,
+            &mut store,
+            &mut msg,
+            std::ptr::null_mut(),
+        );
+        if ok == 0 {
+            return None;
+        }
+        let mut name = None;
+        let mut size = 0u32;
+        if CryptMsgGetParam(
+            msg,
+            CMSG_SIGNER_INFO_PARAM,
+            0,
+            std::ptr::null_mut(),
+            &mut size,
+        ) != 0
+            && size > 0
+        {
+            // u64 buffer keeps the struct properly aligned.
+            let mut buf = vec![0u64; (size as usize).div_ceil(8)];
+            if CryptMsgGetParam(
+                msg,
+                CMSG_SIGNER_INFO_PARAM,
+                0,
+                buf.as_mut_ptr() as *mut _,
+                &mut size,
+            ) != 0
+            {
+                let info = &*(buf.as_ptr() as *const CMSG_SIGNER_INFO);
+                let mut cert_info: CERT_INFO = std::mem::zeroed();
+                cert_info.Issuer = info.Issuer;
+                cert_info.SerialNumber = info.SerialNumber;
+                let cert = CertFindCertificateInStore(
+                    store,
+                    X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
+                    0,
+                    CERT_FIND_SUBJECT_CERT,
+                    &cert_info as *const _ as *const _,
+                    std::ptr::null(),
+                );
+                if !cert.is_null() {
+                    let mut out = [0u16; 256];
+                    let n = CertGetNameStringW(
+                        cert,
+                        CERT_NAME_SIMPLE_DISPLAY_TYPE,
+                        0,
+                        std::ptr::null(),
+                        out.as_mut_ptr(),
+                        out.len() as u32,
+                    );
+                    if n > 1 {
+                        name = Some(String::from_utf16_lossy(&out[..(n as usize - 1)]));
+                    }
+                    CertFreeCertificateContext(cert);
+                }
+            }
+        }
+        CryptMsgClose(msg);
+        CertCloseStore(store, 0);
+        name
+    }
+}

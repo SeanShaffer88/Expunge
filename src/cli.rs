@@ -26,7 +26,11 @@ USAGE:
   expunge diff <before.snap> <after.snap> [--name NAME]
                                             Compare two snapshots, save a log
   expunge logs [--json]                     List saved install logs
-  expunge programs [--all] [--json]         List installed programs
+  expunge programs [--all] [--trust] [--json]
+                                            List installed programs (--trust adds
+                                            each program's digital signature)
+  expunge verify <file>                     Check a file's digital signature
+                                            (exit 2 if unsigned or invalid)
   expunge lint <log-id> [--json] [--strict] Check an installation for packaging
                                             problems (exit 2 on errors, or on
                                             warnings with --strict)
@@ -235,9 +239,42 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                 );
             }
         }
+        "verify" => {
+            let file = args.get(1).ok_or_else(|| anyhow::anyhow!("missing file"))?;
+            let tr = expunge_core::trust::check_file(file);
+            match &tr {
+                expunge_core::trust::Trust::Signed { signer } => {
+                    println!("Signed by {signer} (valid)")
+                }
+                expunge_core::trust::Trust::Invalid { signer, reason } => {
+                    println!("Signature problem: {reason} {signer}")
+                }
+                other => println!("{}", other.label()),
+            }
+            return Ok(if matches!(tr, expunge_core::trust::Trust::Signed { .. }) {
+                0
+            } else {
+                2
+            });
+        }
         "programs" if has(&args, "--json") => {
             let list = programs::list_programs(reg.as_ref(), has(&args, "--all"));
-            println!("{}", serde_json::to_string_pretty(&list)?);
+            if has(&args, "--trust") {
+                let v: Vec<serde_json::Value> =
+                    list.iter()
+                        .map(|p| {
+                            let mut j = serde_json::to_value(p).unwrap_or_default();
+                            j["signature"] = serde_json::to_value(
+                                expunge_core::trust::check_program(p, reg.as_ref()),
+                            )
+                            .unwrap_or_default();
+                            j
+                        })
+                        .collect();
+                println!("{}", serde_json::to_string_pretty(&v)?);
+            } else {
+                println!("{}", serde_json::to_string_pretty(&list)?);
+            }
         }
         "lint" => {
             let id = args
@@ -312,8 +349,23 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
             return Ok(if left.items.is_empty() { 0 } else { 2 });
         }
         "programs" => {
+            let with_trust = has(&args, "--trust");
             for p in programs::list_programs(reg.as_ref(), has(&args, "--all")) {
-                println!("{}\t{}\t{}\t{}", p.name, p.version, p.publisher, p.key);
+                if with_trust {
+                    let tr = expunge_core::trust::check_program(&p, reg.as_ref());
+                    let sig = match &tr {
+                        expunge_core::trust::Trust::Signed { signer } => {
+                            format!("signed: {signer}")
+                        }
+                        expunge_core::trust::Trust::Invalid { reason, .. } => {
+                            format!("INVALID: {reason}")
+                        }
+                        other => other.label().to_lowercase(),
+                    };
+                    println!("{}\t{}\t{}\t{}", p.name, p.version, p.publisher, sig);
+                } else {
+                    println!("{}\t{}\t{}\t{}", p.name, p.version, p.publisher, p.key);
+                }
             }
         }
         "revert" => {

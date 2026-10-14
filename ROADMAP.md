@@ -5,7 +5,6 @@ matching GitHub issue to move something up.
 
 ## Next
 - **winget integration** — show which installed programs have updates and upgrade them in place.
-- **Program trust info** — show whether each uninstaller is digitally signed, and by whom.
 
 ## Later
 - **Background auto-monitoring** — a lightweight service that notices installations and records them automatically, even ones you forgot to monitor.

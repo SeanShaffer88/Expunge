@@ -23,6 +23,7 @@ pub mod shell;
 pub mod snapshot;
 pub mod startup;
 pub mod store;
+pub mod trust;
 pub mod updates;
 pub mod util;
 
