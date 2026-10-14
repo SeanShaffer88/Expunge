@@ -9,6 +9,7 @@
 //! any later version. See LICENSE for details.
 
 pub mod backup;
+pub mod cache;
 pub mod cleaner;
 pub mod i18n;
 pub mod leftovers;

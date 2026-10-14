@@ -32,6 +32,8 @@ pub struct MonitorState {
     pub after_job: Option<Job<Result<InstallLog, String>>>,
     pub child: Option<ChildProcess>,
     pub review: Option<InstallLog>,
+    /// Saving the reviewed log (large logs take a moment to write).
+    pub save_job: Option<Job<Result<InstallLog, (InstallLog, String)>>>,
     pub error: String,
 }
 
@@ -144,6 +146,26 @@ impl App {
     }
 
     pub fn poll_monitor(&mut self, ctx: &egui::Context) {
+        if let Some(r) = self.monitor.save_job.as_ref().and_then(|j| j.poll()) {
+            self.monitor.save_job = None;
+            match r {
+                Ok(log) => {
+                    self.store.clear_pending();
+                    self.set_status(tf(
+                        "Saved install log for {name}",
+                        &[("name", log.name.clone())],
+                    ));
+                    self.monitor = Default::default();
+                    self.reload_logs();
+                    self.logs.selected = Some(log.id);
+                    self.programs.needs_refresh = true;
+                }
+                Err((log, e)) => {
+                    self.monitor.review = Some(log);
+                    self.monitor.error = e;
+                }
+            }
+        }
         if let Some(r) = self.monitor.before_job.as_ref().and_then(|j| j.poll()) {
             self.monitor.before_job = None;
             match r {
@@ -311,6 +333,10 @@ impl App {
     }
 
     fn monitor_review(&mut self, ui: &mut egui::Ui) {
+        if self.monitor.save_job.is_some() {
+            job_progress(ui, &t("Saving…"), 0);
+            return;
+        }
         let Some(log) = &mut self.monitor.review else {
             return;
         };
@@ -386,25 +412,14 @@ impl App {
                 discard = true;
             }
         });
-        if save {
+        if save && self.monitor.save_job.is_none() {
             let log = self.monitor.review.take().unwrap();
-            match self.store.save_log(&log) {
-                Ok(()) => {
-                    self.store.clear_pending();
-                    self.set_status(tf(
-                        "Saved install log for {name}",
-                        &[("name", log.name.clone())],
-                    ));
-                    self.monitor = Default::default();
-                    self.reload_logs();
-                    self.logs.selected = Some(log.id);
-                    self.programs.needs_refresh = true;
-                }
-                Err(e) => {
-                    self.monitor.review = Some(log);
-                    self.monitor.error = e.to_string();
-                }
-            }
+            let store = self.store.clone();
+            self.monitor.save_job =
+                Some(Job::spawn(&self.ctx, move |_| match store.save_log(&log) {
+                    Ok(()) => Ok(log),
+                    Err(e) => Err((log, e.to_string())),
+                }));
         } else if discard {
             self.monitor.cancel(&self.store);
         }

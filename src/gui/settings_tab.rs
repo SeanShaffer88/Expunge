@@ -55,10 +55,14 @@ pub struct SettingsState {
     pub dirty: bool,
     pub learn_job: Option<Job<Result<Learned, String>>>,
     pub learned: Option<LearnResult>,
+    /// Whether the right-click entry exists (all users, current user);
+    /// read from the registry when Settings opens, not every frame.
+    pub shell_registered: Option<(bool, bool)>,
 }
 
 impl SettingsState {
     pub fn load(&mut self, s: &Settings) {
+        self.shell_registered = None;
         self.reg_roots = s.registry_roots.join("\n");
         self.file_roots_rec = s
             .file_roots
@@ -370,8 +374,12 @@ impl App {
                     ui.label(RichText::new(t("Explorer integration")).heading());
                     ui.add_space(4.0);
                     let reg = self.reg.clone();
-                    let machine = expunge_core::shell::is_registered(reg.as_ref(), true);
-                    let mut user = expunge_core::shell::is_registered(reg.as_ref(), false);
+                    let (machine, mut user) = *self.settings_ui.shell_registered.get_or_insert_with(|| {
+                        (
+                            expunge_core::shell::is_registered(reg.as_ref(), true),
+                            expunge_core::shell::is_registered(reg.as_ref(), false),
+                        )
+                    });
                     if machine {
                         ui.label(format!("✔ {}", t("\"Install with Expunge\" is in the right-click menu for all users (added by Setup).")));
                     } else if ui
@@ -387,6 +395,7 @@ impl App {
                         if let Err(e) = res {
                             self.set_status(e.to_string());
                         }
+                        self.settings_ui.shell_registered = None;
                     }
                     small_muted(
                         ui,

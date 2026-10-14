@@ -20,6 +20,44 @@ use expunge_core::snapshot::Progress;
 use std::sync::mpsc;
 use std::sync::Arc;
 
+/// Reloads a list in the background. A reload asked for while one is
+/// running is queued, so the newest data always wins.
+pub struct Reload<T> {
+    job: Option<Job<T>>,
+    again: bool,
+}
+
+impl<T> Default for Reload<T> {
+    fn default() -> Self {
+        Reload {
+            job: None,
+            again: false,
+        }
+    }
+}
+
+impl<T: Send + 'static> Reload<T> {
+    pub fn request(&mut self, ctx: &egui::Context, f: impl FnOnce() -> T + Send + 'static) {
+        if self.job.is_some() {
+            self.again = true;
+        } else {
+            self.job = Some(Job::spawn(ctx, move |_| f()));
+        }
+    }
+
+    /// The new data when a reload finished. `rerun` is called to start the
+    /// queued reload, if any.
+    pub fn poll(&mut self) -> Option<(T, bool)> {
+        let r = self.job.as_ref()?.poll()?;
+        self.job = None;
+        Some((r, std::mem::take(&mut self.again)))
+    }
+
+    pub fn busy(&self) -> bool {
+        self.job.is_some()
+    }
+}
+
 /// Work running on a background thread, polled once per frame.
 pub struct Job<T> {
     rx: mpsc::Receiver<T>,

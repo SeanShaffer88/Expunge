@@ -6,9 +6,6 @@ listed in the [README](README.md#features).
 
 ## Next
 
-**Engine**
-- **Lightweight footprint and a never-blocking UI** — every disk, registry, network and process operation off the UI thread; snapshot roots scanned in parallel; program sizes, icons and signatures cached on disk so the program list opens instantly; large results streamed instead of loaded whole; caches released when their page closes. Memory, startup-time and snapshot-speed budgets checked in CI.
-
 **Uninstaller**
 - **Unattended batch uninstall queue** — queue any number of programs and walk away: silent switches detected automatically per installer type (MSI `/qn`, NSIS `/S`, Inno Setup `/VERYSILENT`, InstallShield, WiX Burn), reboots suppressed until the end, uninstallers run one at a time so they never collide (Windows Installer allows only one at once), with a single combined leftover scan and report.
 - **Deeper leftover scan** — also finds empty folders left behind, dangling COM registrations (CLSIDs and type libraries pointing to deleted files), environment variables and `PATH` entries pointing to missing folders, orphaned file associations and context-menu handlers, and firewall rules for deleted programs.

@@ -50,31 +50,56 @@ pub fn take_snapshot(
         ..Default::default()
     };
     let reg_excl: Vec<String> = settings.effective_registry_exclusions();
-    for root in &settings.registry_roots {
-        let root = platform::normalize_reg_path(root);
-        progress.set_phase(format!("Registry: {root}"));
-        capture_registry(reg, &root, &reg_excl, &mut snap, progress);
-        if progress.cancelled() {
-            anyhow::bail!("cancelled");
-        }
-    }
     let file_excl: Vec<String> = settings.effective_file_exclusions();
-    for root in &settings.file_roots {
-        let path = expand_env(&root.path);
-        if path.contains('%') || !Path::new(&path).exists() {
-            continue;
+    let roots: Vec<(String, bool)> = settings
+        .file_roots
+        .iter()
+        .map(|r| (expand_env(&r.path), r.recursive))
+        .filter(|(p, _)| !p.contains('%') && Path::new(p).exists())
+        .collect();
+    // Folders are walked on worker threads (a few at a time) while this
+    // thread reads the registry; the parts are merged at the end.
+    let workers = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+        .clamp(2, 6);
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let parts: Vec<Snapshot> = std::thread::scope(|scope| {
+        let handles: Vec<_> = (0..workers.min(roots.len()))
+            .map(|_| {
+                scope.spawn(|| {
+                    let mut part = Snapshot::default();
+                    loop {
+                        let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let Some((path, recursive)) = roots.get(i) else {
+                            break;
+                        };
+                        if progress.cancelled() {
+                            break;
+                        }
+                        capture_files(Path::new(path), *recursive, &file_excl, &mut part, progress);
+                    }
+                    part
+                })
+            })
+            .collect();
+        for root in &settings.registry_roots {
+            let root = platform::normalize_reg_path(root);
+            progress.set_phase(format!("Registry: {root}"));
+            capture_registry(reg, &root, &reg_excl, &mut snap, progress);
+            if progress.cancelled() {
+                break;
+            }
         }
-        progress.set_phase(format!("Files: {path}"));
-        capture_files(
-            Path::new(&path),
-            root.recursive,
-            &file_excl,
-            &mut snap,
-            progress,
-        );
-        if progress.cancelled() {
-            anyhow::bail!("cancelled");
-        }
+        progress.set_phase("Files");
+        handles.into_iter().filter_map(|h| h.join().ok()).collect()
+    });
+    if progress.cancelled() {
+        anyhow::bail!("cancelled");
+    }
+    for part in parts {
+        snap.files.extend(part.files);
+        snap.warnings.extend(part.warnings);
     }
     progress.set_phase("Done");
     Ok(snap)

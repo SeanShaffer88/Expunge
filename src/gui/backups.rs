@@ -13,6 +13,7 @@ pub struct BackupsState {
     pub list: Vec<Backup>,
     pub job: Option<Job<Result<Vec<ActionResult>, String>>>,
     pub results: Option<Vec<ActionResult>>,
+    pub loader: super::Reload<Vec<Backup>>,
 }
 
 impl App {
@@ -27,10 +28,12 @@ impl App {
     }
 
     pub fn delete_backup(&mut self, id: &str) {
-        if let Err(e) = backup::delete_backup(&self.store.backups_dir(), id) {
-            self.set_status(e.to_string());
-        }
-        self.reload_backups();
+        // A backup can be a large folder: delete it in the background.
+        let (dir, id) = (self.store.backups_dir(), id.to_string());
+        self.backups.list.retain(|b| b.id != id);
+        self.file_job = Some(Job::spawn(&self.ctx, move |_| {
+            backup::delete_backup(&dir, &id).map_err(|e| e.to_string())
+        }));
     }
 
     pub fn poll_backups(&mut self) {
@@ -86,6 +89,10 @@ impl App {
                 });
             });
             ui.add_space(6.0);
+            if self.backups.list.is_empty() && self.backups.loader.busy() {
+                job_progress(ui, &t("Loading…"), 0);
+                return;
+            }
             if self.backups.list.is_empty() {
                 theme::card(ui, |ui| {
                     muted(ui, t("No backups yet. Every removal Expunge makes is backed up here first."));

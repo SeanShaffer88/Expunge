@@ -41,6 +41,8 @@ pub struct LabState {
     // Snapshots
     snap_name: String,
     snap_job: Option<Job<Result<String, String>>>,
+    /// Saved snapshots (name, path, date), read when needed rather than every frame.
+    snaps: Option<Vec<(String, std::path::PathBuf, String)>>,
     cmp_a: Option<usize>,
     cmp_b: Option<usize>,
     cmp_job: Option<Job<Result<InstallLog, String>>>,
@@ -107,6 +109,7 @@ impl App {
         }
         if let Some(r) = self.lab.snap_job.as_ref().and_then(|j| j.poll()) {
             self.lab.snap_job = None;
+            self.lab.snaps = None;
             self.lab.message = match r {
                 Ok(name) => tf("Saved snapshot {name}", &[("name", name)]),
                 Err(e) => e,
@@ -396,8 +399,16 @@ impl App {
         });
     }
 
+    /// Re-read the snapshot folder next time the list is shown.
+    pub fn on_lab_opened(&mut self) {
+        self.lab.snaps = None;
+    }
+
     fn ui_lab_snapshots(&mut self, ui: &mut egui::Ui) {
-        let snaps = self.store.list_snapshots();
+        if self.lab.snaps.is_none() {
+            self.lab.snaps = Some(self.store.list_snapshots());
+        }
+        let snaps = self.lab.snaps.clone().unwrap_or_default();
         theme::card(ui, |ui| {
             ui.label(RichText::new(t("Take a named snapshot")).strong());
             small_muted(ui, t("Capture the system now, do anything, capture again, and compare any two snapshots."));

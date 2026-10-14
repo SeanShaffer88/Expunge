@@ -52,6 +52,8 @@ pub struct ProgramsState {
     pub icons_requested: HashSet<String>,
     /// Digital-signature status by registry key (checked in the background).
     pub trust: HashMap<String, Trust>,
+    /// Sizes and signature results kept between launches.
+    pub cache: std::sync::Arc<std::sync::Mutex<expunge_core::cache::Cache>>,
     pub trust_job: Option<Job<Vec<(String, Trust)>>>,
     pub restore_job: Option<Job<Result<(), String>>>,
     pub filter: String,
@@ -210,18 +212,45 @@ impl App {
                 })
                 .map(|p| (p.key.clone(), p.install_location.clone()))
                 .collect();
+            // Forget programs that were uninstalled; reuse sizes measured recently.
+            let now = expunge_core::cache::now();
+            let versions: HashMap<String, String> = self
+                .programs
+                .list
+                .iter()
+                .map(|p| (p.key.clone(), p.version.clone()))
+                .collect();
+            let todo: Vec<(String, String, String)> = {
+                let mut c = self.programs.cache.lock().unwrap();
+                c.retain_keys(&versions.keys().cloned().collect());
+                todo.into_iter()
+                    .filter_map(|(k, loc)| {
+                        let v = versions.get(&k).cloned().unwrap_or_default();
+                        match c.size(&k, &loc, &v, now) {
+                            Some(bytes) => {
+                                self.programs.sizes.insert(k, bytes);
+                                None
+                            }
+                            None => Some((k, loc, v)),
+                        }
+                    })
+                    .collect()
+            };
             if !todo.is_empty() {
                 let protected = expunge_core::util::protected_dirs();
+                let cache = self.programs.cache.clone();
                 self.programs.size_job = Some(Job::spawn(ctx, move |pr| {
                     let mut m = HashMap::new();
-                    for (k, loc) in todo {
+                    for (k, loc, v) in todo {
                         if pr.cancelled() {
                             break;
                         }
                         if !expunge_core::util::is_protected_dir(&loc, &protected)
                             && std::path::Path::new(&loc).is_dir()
                         {
-                            m.insert(k, programs::dir_size(&loc));
+                            let bytes = programs::dir_size(&loc);
+                            cache.lock().unwrap().put_size(&k, &loc, &v, bytes, now);
+                            m.insert(k, bytes);
                         }
                     }
                     m
@@ -235,10 +264,12 @@ impl App {
         if let Some(sizes) = self.programs.size_job.as_ref().and_then(|j| j.poll()) {
             self.programs.size_job = None;
             self.programs.sizes.extend(sizes);
+            self.save_cache();
         }
         if let Some(results) = self.programs.trust_job.as_ref().and_then(|j| j.poll()) {
             self.programs.trust_job = None;
             self.programs.trust.extend(results);
+            self.save_cache();
         }
         if let Some(icons) = self.programs.icon_job.as_ref().and_then(|j| j.poll()) {
             self.programs.icon_job = None;
@@ -266,11 +297,32 @@ impl App {
             return;
         }
         let reg = self.reg.clone();
+        let cache = self.programs.cache.clone();
         self.programs.trust_job = Some(Job::spawn(ctx, move |_| {
             todo.iter()
-                .map(|p| (p.key.clone(), trust::check_program(p, reg.as_ref())))
+                .map(|p| {
+                    let Some(path) = trust::trust_target(p, reg.as_ref()) else {
+                        return (p.key.clone(), Trust::Unknown);
+                    };
+                    let stamp = expunge_core::cache::file_stamp(&path);
+                    if let Some(t) = cache.lock().unwrap().trust(&p.key, &path, stamp) {
+                        return (p.key.clone(), t);
+                    }
+                    let t = trust::check_file(&path);
+                    cache.lock().unwrap().put_trust(&p.key, &path, stamp, &t);
+                    (p.key.clone(), t)
+                })
                 .collect()
         }));
+    }
+
+    /// Write the cache in the background.
+    fn save_cache(&self) {
+        let cache = self.programs.cache.lock().unwrap().clone();
+        let path = self.store.cache_path();
+        std::thread::spawn(move || {
+            let _ = cache.save(&path);
+        });
     }
 
     /// Extract icons for programs we haven't seen yet, off the UI thread.

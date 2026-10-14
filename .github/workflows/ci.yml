@@ -39,6 +39,34 @@ jobs:
         run: |
           ./target/release/expunge.exe --version
           ./target/release/expunge.exe programs | Select-Object -First 5
+      - name: Performance budget
+        shell: pwsh
+        run: |
+          # Full system snapshot on the (large) CI image: time and peak memory.
+          $sw = [Diagnostics.Stopwatch]::StartNew()
+          $p = Start-Process ./target/release/expunge.exe -ArgumentList 'snapshot','perf.snap' -PassThru -NoNewWindow
+          $peak = 0
+          while (-not $p.HasExited) { $p.Refresh(); $peak = [Math]::Max($peak, $p.PeakWorkingSet64); Start-Sleep -Milliseconds 200 }
+          $sw.Stop()
+          $secs = [Math]::Round($sw.Elapsed.TotalSeconds, 1)
+          $mb = [Math]::Round($peak / 1MB)
+          $snapMb = [Math]::Round((Get-Item perf.snap).Length / 1MB, 1)
+          $exeMb = [Math]::Round((Get-Item ./target/release/expunge.exe).Length / 1MB, 1)
+          $sw2 = [Diagnostics.Stopwatch]::StartNew()
+          ./target/release/expunge.exe programs --trust --json | Out-Null
+          $trustSecs = [Math]::Round($sw2.Elapsed.TotalSeconds, 1)
+          @"
+          ### Performance
+          | Measure | Value | Budget |
+          |---|---|---|
+          | Snapshot time | $secs s | 600 s |
+          | Snapshot peak memory | $mb MB | 1500 MB |
+          | Snapshot file | $snapMb MB | |
+          | Program list with signatures | $trustSecs s | 120 s |
+          | Expunge.exe size | $exeMb MB | |
+          "@ | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          Write-Host "snapshot ${secs}s, peak ${mb}MB, signatures ${trustSecs}s, exe ${exeMb}MB"
+          if ($secs -gt 600 -or $mb -gt 1500 -or $trustSecs -gt 120) { throw "Performance budget exceeded" }
       - uses: actions/upload-artifact@v4
         with:
           name: Expunge-dev

@@ -63,6 +63,8 @@ pub struct App {
     pub monitor: monitor::MonitorState,
     pub logs: logs::LogsState,
     pub backups: backups::BackupsState,
+    /// A file operation (deleting a backup) running in the background.
+    pub file_job: Option<Job<Result<(), String>>>,
     pub startup: startup_tab::StartupState,
     pub cleaner: cleaner::CleanerState,
     pub settings_ui: settings_tab::SettingsState,
@@ -130,6 +132,7 @@ impl App {
             monitor: Default::default(),
             logs: Default::default(),
             backups: Default::default(),
+            file_job: None,
             startup: Default::default(),
             cleaner: Default::default(),
             settings_ui: Default::default(),
@@ -145,6 +148,9 @@ impl App {
             wizard: None,
             removal: None,
         };
+        app.programs.cache = std::sync::Arc::new(std::sync::Mutex::new(
+            expunge_core::cache::Cache::load(&app.store.cache_path()),
+        ));
         app.reload_logs();
         app.reload_backups();
         app.refresh_programs(&cc.egui_ctx);
@@ -166,12 +172,43 @@ impl App {
         }
     }
 
+    /// Re-read install logs from disk in the background.
     pub fn reload_logs(&mut self) {
-        self.logs.logs = self.store.list_logs();
+        let store = self.store.clone();
+        self.logs
+            .loader
+            .request(&self.ctx, move || store.list_logs());
     }
 
+    /// Re-read backups from disk in the background.
     pub fn reload_backups(&mut self) {
-        self.backups.list = expunge_core::backup::list_backups(&self.store.backups_dir());
+        let dir = self.store.backups_dir();
+        self.backups
+            .loader
+            .request(&self.ctx, move || expunge_core::backup::list_backups(&dir));
+    }
+
+    fn poll_lists(&mut self) {
+        if let Some((list, again)) = self.logs.loader.poll() {
+            self.logs.logs = list;
+            if again {
+                self.reload_logs();
+            }
+        }
+        if let Some((list, again)) = self.backups.loader.poll() {
+            self.backups.list = list;
+            if again {
+                self.reload_backups();
+            }
+        }
+        if let Some(r) = self.file_job.as_ref().and_then(|j| j.poll()) {
+            self.file_job = None;
+            if let Err(e) = r {
+                self.set_status(e);
+            }
+            self.reload_logs();
+            self.reload_backups();
+        }
     }
 
     pub fn ask(&mut self, title: &str, body: String, ok: &str, action: Confirm) {
@@ -432,6 +469,7 @@ impl App {
                 {
                     self.tab = Tab::Lab;
                     self.reload_logs();
+                    self.on_lab_opened();
                 }
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
                     if !self.elevated
@@ -526,6 +564,7 @@ impl App {
             Tab::Backups => self.reload_backups(),
             Tab::Startup if !self.startup.loaded => self.refresh_startup(ctx),
             Tab::Settings => self.settings_ui.load(&self.settings),
+            Tab::Lab => self.on_lab_opened(),
             _ => {}
         }
     }
@@ -665,6 +704,7 @@ impl App {
     }
 
     fn poll_jobs(&mut self, ctx: &egui::Context) {
+        self.poll_lists();
         self.poll_programs(ctx);
         self.poll_monitor(ctx);
         self.poll_startup();

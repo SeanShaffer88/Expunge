@@ -19,6 +19,7 @@ pub struct LogsState {
     /// "Which program created this?" search.
     pub path_search: String,
     pub editing: bool,
+    pub loader: super::Reload<Vec<InstallLog>>,
 }
 
 /// Collapsible lists of every change. With `editable`, each entry gets a ✖
@@ -298,7 +299,10 @@ impl App {
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        if self.logs.logs.is_empty() {
+                        if self.logs.logs.is_empty() && self.logs.loader.busy() {
+                            ui.add_space(20.0);
+                            job_progress(ui, &t("Loading…"), 0);
+                        } else if self.logs.logs.is_empty() {
                             ui.add_space(20.0);
                             muted(
                                 ui,

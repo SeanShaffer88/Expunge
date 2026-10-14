@@ -21,6 +21,7 @@ pub struct PendingSession {
     pub installer: String,
 }
 
+#[derive(Clone, Debug)]
 pub struct Store {
     pub root: PathBuf,
     pub portable: bool,
@@ -65,6 +66,11 @@ impl Store {
     pub fn backups_dir(&self) -> PathBuf {
         self.root.join("backups")
     }
+    /// Cached program sizes and signature results.
+    pub fn cache_path(&self) -> PathBuf {
+        self.root.join("cache.json")
+    }
+
     pub fn snapshots_dir(&self) -> PathBuf {
         self.root.join("snapshots")
     }
@@ -123,7 +129,8 @@ impl Store {
     }
 
     pub fn save_log(&self, log: &InstallLog) -> Result<()> {
-        let json = serde_json::to_string_pretty(log)?;
+        // Compact JSON: large logs are much smaller and faster to write.
+        let json = serde_json::to_string(log)?;
         let tmp = self.logs_dir().join(format!("{}.tmp", log.id));
         std::fs::write(&tmp, json)?;
         std::fs::rename(&tmp, self.log_path(&log.id))?;
