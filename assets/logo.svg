@@ -1,30 +1,28 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#ff5a52"/>
-      <stop offset="1" stop-color="#b3141c"/>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2a2226"/>
+      <stop offset="1" stop-color="#141113"/>
     </linearGradient>
-    <linearGradient id="fade" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#ffffff"/>
-      <stop offset="0.55" stop-color="#ffffff"/>
-      <stop offset="1" stop-color="#ffffff" stop-opacity="0.15"/>
+    <linearGradient id="red" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ff5a52"/>
+      <stop offset="0.55" stop-color="#e53935"/>
+      <stop offset="1" stop-color="#e53935" stop-opacity="0.12"/>
     </linearGradient>
   </defs>
-  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#bg)"/>
-  <rect x="16" y="16" width="480" height="480" rx="112" fill="none" stroke="#ffffff" stroke-opacity="0.18" stroke-width="6"/>
-  <!-- The letter E, being erased from the right -->
-  <rect x="132" y="120" width="64" height="272" rx="14" fill="#fff"/>
-  <rect x="132" y="120" width="236" height="62" rx="14" fill="url(#fade)"/>
-  <rect x="132" y="225" width="168" height="62" rx="14" fill="url(#fade)"/>
-  <rect x="132" y="330" width="236" height="62" rx="14" fill="url(#fade)"/>
-  <!-- Particles drifting away -->
-  <g fill="#fff">
-    <rect x="388" y="132" width="22" height="22" rx="5" opacity="0.55"/>
-    <rect x="424" y="150" width="14" height="14" rx="4" opacity="0.35"/>
-    <rect x="318" y="238" width="22" height="22" rx="5" opacity="0.5"/>
-    <rect x="356" y="250" width="14" height="14" rx="4" opacity="0.3"/>
-    <rect x="388" y="342" width="22" height="22" rx="5" opacity="0.55"/>
-    <rect x="424" y="356" width="14" height="14" rx="4" opacity="0.35"/>
-    <rect x="452" y="300" width="9" height="9" rx="3" opacity="0.25"/>
+  <rect x="20" y="20" width="472" height="472" rx="108" fill="url(#bg)"/>
+  <rect x="20" y="20" width="472" height="472" rx="108" fill="none" stroke="#e53935" stroke-width="14"/>
+  <rect x="136" y="124" width="64" height="264" rx="14" fill="#ff5a52"/>
+  <rect x="136" y="124" width="232" height="60" rx="14" fill="url(#red)"/>
+  <rect x="136" y="226" width="166" height="60" rx="14" fill="url(#red)"/>
+  <rect x="136" y="328" width="232" height="60" rx="14" fill="url(#red)"/>
+  <g fill="#e53935">
+    <rect x="386" y="136" width="22" height="22" rx="5" opacity="0.6"/>
+    <rect x="420" y="152" width="13" height="13" rx="4" opacity="0.38"/>
+    <rect x="320" y="238" width="22" height="22" rx="5" opacity="0.55"/>
+    <rect x="356" y="250" width="13" height="13" rx="4" opacity="0.32"/>
+    <rect x="386" y="338" width="22" height="22" rx="5" opacity="0.6"/>
+    <rect x="420" y="352" width="13" height="13" rx="4" opacity="0.38"/>
+    <rect x="440" y="296" width="9" height="9" rx="3" opacity="0.25"/>
   </g>
 </svg>

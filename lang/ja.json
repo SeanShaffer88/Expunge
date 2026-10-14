@@ -136,7 +136,6 @@
   "Install location": "インストール先",
   "Install log (.json)": "インストールログ（.json）",
   "Install logs": "インストールログ",
-  "Install monitor and complete uninstaller for Windows.": "Windows 用のインストール監視ツール兼完全アンインストーラー。",
   "Install the program now, and run it once if you like, so first-run settings are captured too.": "今すぐプログラムをインストールしてください。必要なら一度起動して、初回起動時の設定も記録できます。",
   "Install with monitoring": "監視しながらインストール",
   "Installed": "インストール日",
@@ -489,5 +488,6 @@
   "e.g. before-build-42": "例：before-build-42",
   "{n} errors": "エラー {n} 件",
   "{n} items were left behind or not restored.": "{n} 項目が残っているか、元に戻されていません。",
-  "{n} warnings": "警告 {n} 件"
+  "{n} warnings": "警告 {n} 件",
+  "Open Source Install Monitor & Uninstaller": "オープンソースのインストール監視ツール＆アンインストーラー"
 }

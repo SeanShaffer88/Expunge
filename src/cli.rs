@@ -14,7 +14,7 @@ use expunge_core::{programs, report};
 use std::path::PathBuf;
 
 const HELP: &str = "\
-Expunge — install monitor and complete uninstaller for Windows
+Expunge — Open Source Install Monitor & Uninstaller
 Copyright (C) 2026 Sean Shaffer. GPLv3: free software, no warranty.
 
 USAGE:

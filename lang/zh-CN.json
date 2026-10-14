@@ -136,7 +136,6 @@
   "Install location": "安装位置",
   "Install log (.json)": "安装日志（.json）",
   "Install logs": "安装日志",
-  "Install monitor and complete uninstaller for Windows.": "适用于 Windows 的安装监视器和完整卸载工具。",
   "Install the program now, and run it once if you like, so first-run settings are captured too.": "现在安装程序，愿意的话可以运行一次，这样首次运行的设置也会被记录。",
   "Install with monitoring": "在监视下安装",
   "Installed": "安装日期",
@@ -489,5 +488,6 @@
   "e.g. before-build-42": "例如：before-build-42",
   "{n} errors": "{n} 个错误",
   "{n} items were left behind or not restored.": "有 {n} 项残留或未还原。",
-  "{n} warnings": "{n} 个警告"
+  "{n} warnings": "{n} 个警告",
+  "Open Source Install Monitor & Uninstaller": "开源安装监视器与卸载工具"
 }

@@ -606,7 +606,7 @@ impl App {
                             &[("n", expunge_core::APP_VERSION.to_string())],
                         ));
                         ui.add_space(6.0);
-                        ui.label(t("Install monitor and complete uninstaller for Windows."));
+                        ui.label(t("Open Source Install Monitor & Uninstaller"));
                         ui.label(format!("© 2026 {}", expunge_core::APP_AUTHOR));
                         ui.add_space(6.0);
                         small_muted(

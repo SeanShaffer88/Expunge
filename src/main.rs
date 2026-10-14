@@ -1,4 +1,4 @@
-// Expunge — install monitor and complete uninstaller for Windows.
+// Expunge — Open Source Install Monitor & Uninstaller.
 // Copyright (C) 2026 Sean Shaffer
 //
 // This program is free software: you can redistribute it and/or modify it

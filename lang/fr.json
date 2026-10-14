@@ -136,7 +136,6 @@
   "Install location": "Emplacement d'installation",
   "Install log (.json)": "Journal d'installation (.json)",
   "Install logs": "Journaux d'installation",
-  "Install monitor and complete uninstaller for Windows.": "Moniteur d'installation et désinstallateur complet pour Windows.",
   "Install the program now, and run it once if you like, so first-run settings are captured too.": "Installez le programme maintenant et, si vous le souhaitez, lancez-le une fois pour capturer aussi les réglages du premier démarrage.",
   "Install with monitoring": "Installer sous surveillance",
   "Installed": "Installé le",
@@ -489,5 +488,6 @@
   "e.g. before-build-42": "ex. avant-build-42",
   "{n} errors": "{n} erreurs",
   "{n} items were left behind or not restored.": "{n} éléments sont restés ou n'ont pas été restaurés.",
-  "{n} warnings": "{n} avertissements"
+  "{n} warnings": "{n} avertissements",
+  "Open Source Install Monitor & Uninstaller": "Moniteur d'installation et désinstallateur open source"
 }

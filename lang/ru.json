@@ -136,7 +136,6 @@
   "Install location": "Папка установки",
   "Install log (.json)": "Журнал установки (.json)",
   "Install logs": "Журналы установки",
-  "Install monitor and complete uninstaller for Windows.": "Монитор установок и полный деинсталлятор для Windows.",
   "Install the program now, and run it once if you like, so first-run settings are captured too.": "Установите программу сейчас и при желании запустите её один раз, чтобы записать и настройки первого запуска.",
   "Install with monitoring": "Установка с отслеживанием",
   "Installed": "Установлено",
@@ -489,5 +488,6 @@
   "e.g. before-build-42": "например, до-сборки-42",
   "{n} errors": "Ошибок: {n}",
   "{n} items were left behind or not restored.": "Осталось или не восстановлено элементов: {n}.",
-  "{n} warnings": "Предупреждений: {n}"
+  "{n} warnings": "Предупреждений: {n}",
+  "Open Source Install Monitor & Uninstaller": "Монитор установок и деинсталлятор с открытым исходным кодом"
 }

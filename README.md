@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <b>Open-source install monitor and complete uninstaller for Windows 11.</b><br>
+  <b>Open Source Install Monitor & Uninstaller</b> for Windows 11.<br>
   Record what an installation changes. Remove exactly that — and nothing else.
 </p>
 

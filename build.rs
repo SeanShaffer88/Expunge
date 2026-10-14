@@ -14,7 +14,7 @@ fn main() {
         .set("ProductName", "Expunge")
         .set(
             "FileDescription",
-            "Expunge – install monitor and complete uninstaller",
+            "Expunge – Open Source Install Monitor & Uninstaller",
         )
         .set("CompanyName", "Sean Shaffer")
         .set(
