@@ -54,6 +54,9 @@ USAGE:
   expunge transfer check <package>          Check a package against this PC
   expunge transfer import <package> [--overwrite]
                                             Restore a package (undo from backups)
+  expunge repackage <log-id> <folder>       Turn a monitored installation into a
+                                            folder with files, install.reg and
+                                            silent install/uninstall scripts
   expunge orphans [--json]                  List registrations left by removed
                                             programs (pointing to missing files)
   expunge backups                           List backups
@@ -294,6 +297,33 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                 }
             }
             return Ok(if failed == 0 { 0 } else { 2 });
+        }
+        "repackage" => {
+            let (Some(id), Some(dir)) = (args.get(1), args.get(2)) else {
+                anyhow::bail!("usage: expunge repackage <log-id> <folder>")
+            };
+            let st = store()?;
+            let log = st.load_log(id)?;
+            let s = expunge_core::repackage::repackage(
+                &log,
+                reg.as_ref(),
+                &PathBuf::from(dir),
+                &|_| {},
+            )?;
+            println!(
+                "Saved {}: {} files ({}), {} keys, {} values",
+                s.folder.display(),
+                s.files,
+                human_size(s.bytes),
+                s.keys,
+                s.values
+            );
+            if s.missing > 0 {
+                eprintln!(
+                    "{} recorded files no longer exist and were left out.",
+                    s.missing
+                );
+            }
         }
         "transfer" => {
             let sub = args.get(1).map(String::as_str).unwrap_or("");

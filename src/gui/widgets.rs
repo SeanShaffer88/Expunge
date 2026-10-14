@@ -52,6 +52,18 @@ pub fn pick_file(title: &str, filter_name: &str, exts: &[&str]) -> Option<PathBu
     }
 }
 
+pub fn pick_folder(title: &str) -> Option<PathBuf> {
+    #[cfg(windows)]
+    {
+        rfd::FileDialog::new().set_title(title).pick_folder()
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = title;
+        std::env::var_os("EXPUNGE_DEMO").map(|_| std::env::temp_dir())
+    }
+}
+
 pub fn save_file(title: &str, default_name: &str, filter_name: &str, ext: &str) -> Option<PathBuf> {
     #[cfg(windows)]
     {

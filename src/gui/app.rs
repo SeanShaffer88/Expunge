@@ -766,6 +766,7 @@ impl App {
     fn poll_jobs(&mut self, ctx: &egui::Context) {
         self.poll_lists();
         self.poll_orphans();
+        self.poll_repackage();
         self.poll_extras(ctx);
         self.poll_programs(ctx);
         self.poll_monitor(ctx);

@@ -67,6 +67,7 @@ It is a free, GPL-licensed alternative to commercial tools like Total Uninstall 
 - **Deep cleanup** (Advanced): previous Windows installation (Windows.old), outdated Windows components (DISM), files of turned-off features, and old restore points, each analyzed first and confirmed separately.
 - **Transfer programs to another PC**: pack programs with their files, settings and registry entries into one file and restore them on a new PC, with a compatibility check, path rewriting for different user names or drives, and one-click undo.
 - **"Which program created this?"** — search any file or registry path across all monitored installs.
+- **Repackage** a monitored installation as a folder with a silent `install.ps1`, `install.reg` and `uninstall.ps1`, for deploying it to other PCs.
 - **Export** install logs as an HTML report, a `.reg` undo script, a PowerShell removal script, or JSON (import them on another PC).
 
 **For everyone**

@@ -702,5 +702,11 @@
   "Transfer {n}…": "迁移 {n} 个…",
   "Pack the selected programs to move them to another PC.": "打包所选程序，以便迁移到另一台电脑。",
   "Transfer to another PC…": "迁移到另一台电脑…",
-  "Pack this program with its files and settings to move it to another PC.": "将此程序连同其文件和设置一起打包，以便迁移到另一台电脑。"
+  "Pack this program with its files and settings to move it to another PC.": "将此程序连同其文件和设置一起打包，以便迁移到另一台电脑。",
+  "Repackage as a silent installer…": "重新打包为静默安装程序…",
+  "A folder with the installed files, a registry file and install/uninstall scripts, for deploying to other PCs.": "包含已安装文件、注册表文件以及安装/卸载脚本的文件夹，用于部署到其他电脑。",
+  "Choose where to save the package": "选择保存包的位置",
+  "Repackaging {name}…": "正在重新打包 {name}…",
+  "Package ready: {files} files ({size}), {keys} registry keys.": "包已就绪：{files} 个文件（{size}），{keys} 个注册表项。",
+  "{n} recorded files no longer exist and were left out.": "记录中的 {n} 个文件已不存在，已略过。"
 }

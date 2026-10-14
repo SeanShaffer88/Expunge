@@ -6,14 +6,16 @@ listed in the [README](README.md#features).
 
 ## Next
 
-**Moving programs**
-- **Repackage** a monitored installation as a portable folder, a silent install script, or an MSIX, for deploying to many machines.
+Everything planned as *Next* has been built; the items below are the next candidates.
 
 ## Later
 
 **Monitoring**
 - **Live activity inspector** — watch an installer's file and registry changes stream in as they happen, using Windows' built-in event tracing (ETW), which needs no driver.
 - **Background auto-monitoring** — notices installations and records them automatically, even ones you forgot to monitor.
+
+**Moving programs**
+- **MSIX output** for repackaged installations (needs Microsoft's free MSIX Packaging Tool to sign the result).
 
 **Uninstaller**
 - **Pre- and post-uninstall scripts** — run a PowerShell or batch script before or after removing a specific program (for example, to export its settings or stop a service first). Advanced mode only.

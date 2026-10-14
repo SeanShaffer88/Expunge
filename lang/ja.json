@@ -702,5 +702,11 @@
   "Transfer {n}…": "{n} 件を移行…",
   "Pack the selected programs to move them to another PC.": "選択したプログラムをパッケージにして、別の PC に移行します。",
   "Transfer to another PC…": "別の PC へ移行…",
-  "Pack this program with its files and settings to move it to another PC.": "このプログラムをファイルと設定ごとパッケージにして、別の PC に移行します。"
+  "Pack this program with its files and settings to move it to another PC.": "このプログラムをファイルと設定ごとパッケージにして、別の PC に移行します。",
+  "Repackage as a silent installer…": "サイレントインストーラーとして再パッケージ…",
+  "A folder with the installed files, a registry file and install/uninstall scripts, for deploying to other PCs.": "インストールされたファイル、レジストリファイル、インストール／アンインストールスクリプトを含むフォルダー。他の PC への展開用です。",
+  "Choose where to save the package": "パッケージの保存先を選択",
+  "Repackaging {name}…": "{name} を再パッケージ中…",
+  "Package ready: {files} files ({size}), {keys} registry keys.": "パッケージの準備ができました：ファイル {files} 個（{size}）、レジストリキー {keys} 個。",
+  "{n} recorded files no longer exist and were left out.": "記録されたファイルのうち {n} 個はもう存在しないため除外しました。"
 }

@@ -702,5 +702,11 @@
   "Transfer {n}…": "Перенести ({n})…",
   "Pack the selected programs to move them to another PC.": "Упаковать выбранные программы, чтобы перенести их на другой ПК.",
   "Transfer to another PC…": "Перенести на другой ПК…",
-  "Pack this program with its files and settings to move it to another PC.": "Упаковать эту программу с файлами и настройками, чтобы перенести на другой ПК."
+  "Pack this program with its files and settings to move it to another PC.": "Упаковать эту программу с файлами и настройками, чтобы перенести на другой ПК.",
+  "Repackage as a silent installer…": "Переупаковать в тихий установщик…",
+  "A folder with the installed files, a registry file and install/uninstall scripts, for deploying to other PCs.": "Папка с установленными файлами, файлом реестра и сценариями установки и удаления для развёртывания на других ПК.",
+  "Choose where to save the package": "Выберите, где сохранить пакет",
+  "Repackaging {name}…": "Переупаковка {name}…",
+  "Package ready: {files} files ({size}), {keys} registry keys.": "Пакет готов: файлов {files} ({size}), разделов реестра {keys}.",
+  "{n} recorded files no longer exist and were left out.": "Записанных файлов, которых больше нет: {n}; они пропущены."
 }

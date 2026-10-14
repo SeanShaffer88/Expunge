@@ -21,6 +21,7 @@ pub mod noise;
 pub mod orphans;
 pub mod platform;
 pub mod programs;
+pub mod repackage;
 pub mod report;
 pub mod revert;
 pub mod settings;

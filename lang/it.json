@@ -702,5 +702,11 @@
   "Transfer {n}…": "Trasferisci {n}…",
   "Pack the selected programs to move them to another PC.": "Impacchetta i programmi selezionati per spostarli su un altro PC.",
   "Transfer to another PC…": "Trasferisci su un altro PC…",
-  "Pack this program with its files and settings to move it to another PC.": "Impacchetta questo programma con file e impostazioni per spostarlo su un altro PC."
+  "Pack this program with its files and settings to move it to another PC.": "Impacchetta questo programma con file e impostazioni per spostarlo su un altro PC.",
+  "Repackage as a silent installer…": "Ricrea come programma di installazione silenzioso…",
+  "A folder with the installed files, a registry file and install/uninstall scripts, for deploying to other PCs.": "Una cartella con i file installati, un file di registro e script di installazione/disinstallazione, per distribuire su altri PC.",
+  "Choose where to save the package": "Scegli dove salvare il pacchetto",
+  "Repackaging {name}…": "Ricreazione del pacchetto di {name}…",
+  "Package ready: {files} files ({size}), {keys} registry keys.": "Pacchetto pronto: {files} file ({size}), {keys} chiavi di registro.",
+  "{n} recorded files no longer exist and were left out.": "{n} file registrati non esistono più e sono stati esclusi."
 }
