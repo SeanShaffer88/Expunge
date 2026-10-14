@@ -96,14 +96,17 @@ pub fn resolve_pattern(pattern: &str) -> Vec<PathBuf> {
     if expanded.contains('%') {
         return Vec::new();
     }
-    let sep = if expanded.contains('\\') { '\\' } else { '/' };
-    let mut parts = expanded.split(sep).filter(|s| !s.is_empty()).peekable();
+    // Accept both separators (patterns may mix them, e.g. %TEMP%/x on Windows).
+    let mut parts = expanded.split(['\\', '/']).filter(|s| !s.is_empty()).peekable();
     let mut current: Vec<PathBuf> = vec![];
     let first = parts.next().unwrap_or_default();
-    current.push(if expanded.starts_with(sep) {
-        PathBuf::from(format!("{sep}{first}"))
+    current.push(if expanded.starts_with('/') {
+        PathBuf::from(format!("/{first}"))
+    } else if expanded.starts_with('\\') {
+        PathBuf::from(format!("\\{first}"))
     } else {
-        PathBuf::from(format!("{first}{sep}"))
+        // Drive letter like "C:" needs its root separator.
+        PathBuf::from(format!("{first}{}", std::path::MAIN_SEPARATOR))
     });
     for part in parts {
         let mut next = Vec::new();
