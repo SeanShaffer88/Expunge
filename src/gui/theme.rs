@@ -26,7 +26,7 @@ const WIDGET: Color32 = Color32::from_rgb(46, 40, 43);
 const HOVER: Color32 = Color32::from_rgb(60, 51, 55);
 pub const LINE: Color32 = Color32::from_rgb(52, 45, 48);
 pub const NAV_SELECTED: Color32 = ACCENT;
-const TEXT: Color32 = Color32::from_rgb(236, 230, 233);
+pub const TEXT: Color32 = Color32::from_rgb(236, 230, 233);
 
 pub fn apply(ctx: &egui::Context, high_contrast: bool) {
     ctx.options_mut(|o| o.theme_preference = egui::ThemePreference::Dark);

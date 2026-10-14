@@ -6,9 +6,6 @@ listed in the [README](README.md#features).
 
 ## Next
 
-**Uninstaller**
-- **One list for everything** — besides desktop programs and Store apps: **winget** packages (with available updates, upgraded in place), **optional Windows features** (turn on/off), and **App Execution Aliases**.
-
 **Cleaner**
 - **Windows Slimmer–style cleanup** in the Junk cleaner, covering what [Auslogics Windows Slimmer](https://www.auslogics.com/en/software/windows-slimmer/) trims. Each item is explained and confirmed, with the space it frees shown first, and a restore point is offered before deep cleaning:
   - *Unneeded system files*: Windows.old and previous-upgrade leftovers, Windows logs, error reports and memory dumps, Prefetch, Delivery Optimization cache.

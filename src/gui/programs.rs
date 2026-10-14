@@ -26,6 +26,12 @@ pub enum View {
     Broken,
     Unsigned,
     Store,
+    /// Programs with a winget update.
+    Updates,
+    /// Optional Windows features (Advanced mode).
+    Features,
+    /// App Execution Aliases (Advanced mode).
+    Aliases,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
@@ -281,6 +287,7 @@ impl App {
             self.set_status(tf("{n} programs installed", &[("n", n.to_string())]));
             self.load_icons(ctx);
             self.check_trust(ctx);
+            self.check_upgrades(ctx);
             // Measure folders for programs that don't report their size.
             let todo: Vec<(String, String)> = self
                 .programs
@@ -464,6 +471,8 @@ impl App {
                     st.trust.get(&p.key),
                     Some(Trust::Unsigned | Trust::Invalid { .. })
                 ),
+                View::Updates => self.upgrade_for(p).is_some(),
+                View::Features | View::Aliases => false,
                 _ => true,
             })
             .filter(|p| {
@@ -519,6 +528,8 @@ impl App {
                 egui::ScrollArea::vertical().show(ui, |ui| match &selected {
                     Some(p) => self.program_details(ui, p),
                     None => {
+                        // Keep the panel's width so the table doesn't shift.
+                        ui.set_min_width(ui.available_width());
                         ui.add_space(30.0);
                         ui.vertical_centered(|ui| {
                             muted(ui, t("Select a program to see its details."));
@@ -540,9 +551,29 @@ impl App {
                         if ui.button(format!("⟳ {}", t("Refresh"))).clicked() {
                             self.refresh_programs(ctx);
                         }
+                        let n = self.programs.checked.len();
+                        if n > 0 {
+                            if theme::primary_button(
+                                ui,
+                                tf("Uninstall {n} selected", &[("n", n.to_string())]),
+                            )
+                            .clicked()
+                            {
+                                let mut all = self.programs.list.clone();
+                                all.extend(self.programs.store_apps.clone());
+                                let chosen: Vec<InstalledProgram> = all
+                                    .into_iter()
+                                    .filter(|p| self.programs.checked.contains(&p.key))
+                                    .collect();
+                                self.start_uninstall(chosen, false);
+                            }
+                            if ui.small_button(t("Clear")).clicked() {
+                                self.programs.checked.clear();
+                            }
+                        }
                     });
                 });
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     let views = [
                         (View::All, t("All")),
                         (View::Monitored, t("Monitored")),
@@ -572,6 +603,25 @@ impl App {
                         ),
                         (View::Store, t("Store apps")),
                     ];
+                    let mut views = views.to_vec();
+                    if self.extras.winget == Some(true) {
+                        let n = self
+                            .programs
+                            .list
+                            .iter()
+                            .filter(|p| self.upgrade_for(p).is_some())
+                            .count();
+                        views.insert(
+                            1,
+                            (View::Updates, tf("Updates ({n})", &[("n", n.to_string())])),
+                        );
+                    }
+                    if self.settings.advanced_mode {
+                        views.push((View::Features, t("Windows features")));
+                        views.push((View::Aliases, t("App aliases")));
+                    } else if matches!(self.programs.view, View::Features | View::Aliases) {
+                        self.programs.view = View::All;
+                    }
                     for (v, label) in views {
                         if ui
                             .selectable_label(self.programs.view == v, label)
@@ -587,30 +637,14 @@ impl App {
                             }
                         }
                     }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let n = self.programs.checked.len();
-                        if n > 0 {
-                            if theme::primary_button(
-                                ui,
-                                tf("Uninstall {n} selected", &[("n", n.to_string())]),
-                            )
-                            .clicked()
-                            {
-                                let mut all = self.programs.list.clone();
-                                all.extend(self.programs.store_apps.clone());
-                                let chosen: Vec<InstalledProgram> = all
-                                    .into_iter()
-                                    .filter(|p| self.programs.checked.contains(&p.key))
-                                    .collect();
-                                self.start_uninstall(chosen, false);
-                            }
-                            if ui.small_button(t("Clear")).clicked() {
-                                self.programs.checked.clear();
-                            }
-                        }
-                    });
                 });
                 ui.add_space(4.0);
+                match self.programs.view {
+                    View::Features => return self.ui_features(ui),
+                    View::Aliases => return self.ui_aliases(ui),
+                    View::Updates => self.ui_updates_bar(ui, &visible),
+                    _ => {}
+                }
                 if self.programs.job.is_some()
                     || (self.programs.view == View::Store && self.programs.store_job.is_some())
                 {
@@ -628,6 +662,14 @@ impl App {
 
     fn programs_table(&mut self, ui: &mut egui::Ui, visible: &[InstalledProgram]) {
         let row_h = 24.0;
+        // Newer versions available through winget, by registry key.
+        let updates: HashMap<String, String> = visible
+            .iter()
+            .filter_map(|p| {
+                self.upgrade_for(p)
+                    .map(|u| (p.key.clone(), u.available.clone()))
+            })
+            .collect();
         // Keyboard: arrows/Home/End/Page keys move the selection, Space ticks it.
         let blocked = self.wizard.is_some() || self.removal.is_some() || self.confirm.is_some();
         let cur = self
@@ -687,15 +729,17 @@ impl App {
             .sense(egui::Sense::click())
             .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
             .column(Column::exact(22.0))
-            .column(Column::remainder().at_least(160.0).clip(true))
+            // Minimum widths add up to less than the narrowest normal window,
+            // so the Size column never gets cut off.
+            .column(Column::remainder().at_least(130.0).clip(true))
             .column(
-                Column::initial(170.0)
+                Column::initial(150.0)
                     .at_least(80.0)
                     .clip(true)
                     .resizable(true),
             )
             .column(
-                Column::initial(100.0)
+                Column::initial(90.0)
                     .at_least(60.0)
                     .clip(true)
                     .resizable(true),
@@ -785,7 +829,24 @@ impl App {
                         );
                     });
                     row.col(|ui| {
-                        ui.add(egui::Label::new(&p.version).truncate().selectable(false));
+                        if let Some(new) = updates.get(&p.key) {
+                            // Version and an arrow in one label, so the column keeps its width.
+                            let mut job = egui::text::LayoutJob::default();
+                            let font = egui::TextStyle::Body.resolve(ui.style());
+                            job.append(
+                                &p.version,
+                                0.0,
+                                egui::TextFormat::simple(font.clone(), theme::TEXT),
+                            );
+                            job.append(" ⬆", 0.0, egui::TextFormat::simple(font, theme::OK));
+                            ui.add(egui::Label::new(job).truncate().selectable(false))
+                                .on_hover_text(tf(
+                                    "Version {v} is available",
+                                    &[("v", new.clone())],
+                                ));
+                        } else {
+                            ui.add(egui::Label::new(&p.version).truncate().selectable(false));
+                        }
                     });
                     row.col(|ui| {
                         ui.add(egui::Label::new(&p.install_date).selectable(false));
@@ -876,6 +937,9 @@ impl App {
                     };
                     field(ui, "Digital signature", &text);
                 }
+                if let Some(u) = self.upgrade_for(p) {
+                    field(ui, "Update available", &u.available);
+                }
                 if p.source != Source::Store && self.settings.advanced_mode {
                     field(ui, "Uninstaller", &p.uninstall_string);
                     field(ui, "Registry key", &p.key);
@@ -894,6 +958,24 @@ impl App {
             );
         }
         ui.add_space(12.0);
+        if let Some(u) = self.upgrade_for(p).cloned() {
+            let busy = self.extras.update_job.is_some();
+            if ui
+                .add_enabled(
+                    !busy,
+                    egui::Button::new(format!(
+                        "⬆ {}",
+                        tf("Update to {v}", &[("v", u.available.clone())])
+                    )),
+                )
+                .on_hover_text(t("Installs the new version silently with winget."))
+                .clicked()
+            {
+                let ctx = ui.ctx().clone();
+                self.start_updates(&ctx, vec![u]);
+            }
+            ui.add_space(4.0);
+        }
         ui.horizontal_wrapped(|ui| {
             if theme::primary_button(ui, format!("🗑 {}", t("Uninstall"))).clicked() {
                 self.start_uninstall(vec![p.clone()], false);

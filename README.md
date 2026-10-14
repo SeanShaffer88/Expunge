@@ -51,6 +51,8 @@ It is a free, GPL-licensed alternative to commercial tools like Total Uninstall 
 - **Leftovers of removed programs**: a system-wide scan for registrations, file types, shell extensions, PATH entries, firewall rules and tasks that point to files that are gone.
 - **Trust info**: shows who digitally signed each program, and flags unsigned programs and broken signatures (possible tampering).
 - Real folder sizes for programs that don't report one.
+- **Updates via winget**: see which programs have a newer version and update one or all of them silently.
+- **Windows features and app aliases** (Advanced mode): turn optional Windows features on or off, and see which app execution aliases are active.
 
 **Safety first**
 - Automatic **backups** of everything removed or changed — files go to a quarantine folder and registry entries are also exported as a timestamped `.reg` file you can double-click to restore. Restore any operation from the Backups page.
@@ -116,6 +118,8 @@ expunge backups
 expunge restore <backup-id>
 expunge learn-noise [--seconds N] [--apply]
 expunge orphans
+expunge updates
+expunge update --all
 expunge --help
 ```
 

@@ -34,6 +34,8 @@ pub enum Confirm {
     DeleteTask(usize),
     ResetSettings,
     CancelMonitoring,
+    /// Turn an optional Windows feature on (true) or off.
+    SetFeature(String, bool),
 }
 
 pub struct ConfirmDialog {
@@ -60,6 +62,7 @@ pub struct App {
     pub confirm: Option<ConfirmDialog>,
     pub languages: Vec<(String, String)>,
     pub programs: programs::ProgramsState,
+    pub extras: super::extras::ExtrasState,
     pub monitor: monitor::MonitorState,
     pub logs: logs::LogsState,
     pub backups: backups::BackupsState,
@@ -131,6 +134,7 @@ impl App {
             confirm: None,
             languages,
             programs: Default::default(),
+            extras: Default::default(),
             monitor: Default::default(),
             logs: Default::default(),
             backups: Default::default(),
@@ -267,6 +271,7 @@ impl App {
             Confirm::RestoreBackup(id) => self.restore_backup(&id),
             Confirm::DeleteBackup(id) => self.delete_backup(&id),
             Confirm::CleanJunk => self.start_clean(),
+            Confirm::SetFeature(name, enable) => self.set_feature(name, enable),
             Confirm::DeleteStartup(i) => self.delete_startup(i),
             Confirm::DeleteTask(i) => self.delete_task(i),
             Confirm::ResetSettings => {
@@ -751,6 +756,7 @@ impl App {
     fn poll_jobs(&mut self, ctx: &egui::Context) {
         self.poll_lists();
         self.poll_orphans();
+        self.poll_extras(ctx);
         self.poll_programs(ctx);
         self.poll_monitor(ctx);
         self.poll_startup();

@@ -11,6 +11,7 @@
 pub mod backup;
 pub mod cache;
 pub mod cleaner;
+pub mod features;
 pub mod i18n;
 pub mod leftovers;
 pub mod lint;
@@ -30,6 +31,7 @@ pub mod store;
 pub mod trust;
 pub mod updates;
 pub mod util;
+pub mod winget;
 
 pub const APP_NAME: &str = "Expunge";
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");

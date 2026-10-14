@@ -46,6 +46,8 @@ USAGE:
                                             (default 60) and list what changed
                                             on its own; --apply adds it to the
                                             exclusions
+  expunge updates [--json]                  Programs with updates (needs winget)
+  expunge update <winget-id> | --all        Install updates silently with winget
   expunge orphans [--json]                  List registrations left by removed
                                             programs (pointing to missing files)
   expunge backups                           List backups
@@ -245,6 +247,47 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                     human_size(st.bytes_added)
                 );
             }
+        }
+        "updates" => {
+            let list = expunge_core::winget::list_upgrades()?;
+            if has(&args, "--json") {
+                println!("{}", serde_json::to_string_pretty(&list)?);
+            } else if list.is_empty() {
+                println!("Everything is up to date.");
+            } else {
+                for u in &list {
+                    println!("{}  {} → {}  ({})", u.name, u.version, u.available, u.id);
+                }
+            }
+        }
+        "update" => {
+            let ids: Vec<String> = if has(&args, "--all") {
+                expunge_core::winget::list_upgrades()?
+                    .into_iter()
+                    .map(|u| u.id)
+                    .collect()
+            } else {
+                args.iter()
+                    .skip(1)
+                    .filter(|a| !a.starts_with("--"))
+                    .cloned()
+                    .collect()
+            };
+            if ids.is_empty() {
+                anyhow::bail!("usage: expunge update <winget-id>... | --all");
+            }
+            let mut failed = 0;
+            for id in &ids {
+                eprint!("Updating {id}… ");
+                match expunge_core::winget::upgrade(id) {
+                    Ok(()) => eprintln!("done"),
+                    Err(e) => {
+                        failed += 1;
+                        eprintln!("{e}");
+                    }
+                }
+            }
+            return Ok(if failed == 0 { 0 } else { 2 });
         }
         "orphans" => {
             let plan = expunge_core::orphans::scan_system(reg.as_ref());
