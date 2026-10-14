@@ -51,8 +51,10 @@ impl<T: Send + 'static> Job<T> {
     }
 }
 
+/// Window/taskbar icon: the small-size variant (red card, black E), which
+/// stays legible at taskbar size.
 fn load_icon() -> Option<egui::IconData> {
-    let bytes = include_bytes!("../../assets/icon-256.png");
+    let bytes = include_bytes!("../../assets/icon-taskbar.png");
     let img = image::load_from_memory_with_format(bytes, image::ImageFormat::Png)
         .ok()?
         .into_rgba8();

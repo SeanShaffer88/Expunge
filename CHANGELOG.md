@@ -13,6 +13,7 @@ All notable changes to Expunge are documented here. The format follows
 ### Changed
 - Darker red accent (#6B0700) across the interface and window border; red text uses a lighter shade of it for readability.
 - "Administrator" is capitalized throughout.
+- New icon in #6B0700: dark card with a red E at large sizes, and an inverted red card with a black E at taskbar sizes (16–48 px), for the window and sidebar.
 - Backups also export registry entries as a double-clickable `.reg` file; optional Recycle Bin.
 
 ### Fixed

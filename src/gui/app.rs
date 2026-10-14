@@ -46,6 +46,7 @@ pub struct ConfirmDialog {
 pub struct App {
     pub ctx: egui::Context,
     pub logo: egui::TextureHandle,
+    pub logo_small: egui::TextureHandle,
     pub reg: Arc<dyn Registry>,
     pub store: Store,
     pub settings: Settings,
@@ -103,6 +104,11 @@ impl App {
             logo: cc
                 .egui_ctx
                 .load_texture("logo", logo_image(), egui::TextureOptions::LINEAR),
+            logo_small: cc.egui_ctx.load_texture(
+                "logo_small",
+                logo_small_image(),
+                egui::TextureOptions::LINEAR,
+            ),
             reg,
             store,
             settings,
@@ -360,7 +366,7 @@ impl App {
             )
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    let tex = self.logo.clone();
+                    let tex = self.logo_small.clone();
                     ui.add(egui::Image::new(&tex).fit_to_exact_size(egui::vec2(28.0, 28.0)));
                     ui.label(
                         RichText::new("Expunge")
@@ -676,8 +682,17 @@ impl App {
     }
 }
 
+/// Large logo (dark card, red E) for the About box and welcome screen.
 pub fn logo_image() -> egui::ColorImage {
-    let bytes = include_bytes!("../../assets/icon-256.png");
+    decode_png(include_bytes!("../../assets/icon-256.png"))
+}
+
+/// Small logo (red card, black E), legible at sidebar/taskbar size.
+pub fn logo_small_image() -> egui::ColorImage {
+    decode_png(include_bytes!("../../assets/icon-taskbar.png"))
+}
+
+fn decode_png(bytes: &[u8]) -> egui::ColorImage {
     match image::load_from_memory_with_format(bytes, image::ImageFormat::Png) {
         Ok(img) => {
             let img = img.into_rgba8();
