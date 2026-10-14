@@ -16,7 +16,8 @@ First public release.
 - Precise uninstall from an install log: removes added files, folders, keys and values; restores changed and removed values; stops and deletes services; removes scheduled tasks; repairs `PATH` without touching later edits.
 - Program list with 64-bit, 32-bit, per-user and Microsoft Store programs, sorting, search, details, real folder sizes, and a broken-entry finder.
 - Uninstall wizard with vendor uninstaller, quiet uninstall, forced removal, batch uninstall, and leftover scanning.
-- Backups of everything removed or changed, with one-click restore.
+- Backups of everything removed or changed (quarantined files plus a double-clickable `.reg` file for registry entries), with one-click restore.
+- Optional: also send removed files to the Recycle Bin.
 - Optional System Restore point before uninstalling.
 - Windows Updates window: list installed updates and remove individual ones via DISM or WUSA.
 - Startup manager for Run keys, Startup folders, services and scheduled tasks.

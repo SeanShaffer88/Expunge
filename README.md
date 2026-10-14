@@ -50,7 +50,8 @@ It is a free, GPL-licensed alternative to commercial tools like Total Uninstall 
 - Real folder sizes for programs that don't report one.
 
 **Safety first**
-- Automatic **backups** of everything removed or changed; restore any operation from the Backups page.
+- Automatic **backups** of everything removed or changed — files go to a quarantine folder and registry entries are also exported as a timestamped `.reg` file you can double-click to restore. Restore any operation from the Backups page.
+- Optionally send removed files to the **Recycle Bin** as well.
 - Optional **System Restore point** before uninstalling.
 - Hard-coded protection for critical folders and registry keys — they can never be deleted, whatever a log says.
 

@@ -34,7 +34,7 @@ USAGE:
                                             Run the program's own uninstaller and
                                             report what it left behind (exit 2
                                             if anything remains)
-  expunge revert <log-id> [--dry-run] [--remove-unlogged] [--no-backup]
+  expunge revert <log-id> [--dry-run] [--remove-unlogged] [--no-backup] [--recycle]
                                             Undo an installation precisely
   expunge export <log-id> <html|json|reg|ps1> <output-file>
   expunge backups                           List backups
@@ -326,6 +326,7 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
             let opts = ExecOptions {
                 remove_unlogged: has(&args, "--remove-unlogged"),
                 dry_run: has(&args, "--dry-run"),
+                use_recycle_bin: has(&args, "--recycle"),
             };
             let mut writer = if has(&args, "--no-backup") || opts.dry_run {
                 None

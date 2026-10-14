@@ -242,6 +242,7 @@ impl App {
             let opts = ExecOptions {
                 remove_unlogged: flow.remove_unlogged,
                 dry_run: false,
+                use_recycle_bin: self.settings.use_recycle_bin,
             };
             flow.job = Some(Job::spawn(ctx, move |_| {
                 let mut writer = if backup_on {

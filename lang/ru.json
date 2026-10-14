@@ -489,5 +489,8 @@
   "{n} errors": "Ошибок: {n}",
   "{n} items were left behind or not restored.": "Осталось или не восстановлено элементов: {n}.",
   "{n} warnings": "Предупреждений: {n}",
-  "Open Source Install Monitor & Uninstaller": "Монитор установок и деинсталлятор с открытым исходным кодом"
+  "Open Source Install Monitor & Uninstaller": "Монитор установок и деинсталлятор с открытым исходным кодом",
+  "Also send removed files to the Recycle Bin": "Также отправлять удалённые файлы в Корзину",
+  "Everything is backed up either way. This additionally keeps removed files in the Recycle Bin, using extra disk space.": "Резервная копия создаётся в любом случае. Эта настройка дополнительно оставляет удалённые файлы в Корзине, занимая больше места на диске.",
+  "Backed-up files, plus a .reg file you can double-click to restore registry entries without Expunge.": "Сохранённые файлы и .reg-файл, который можно открыть двойным щелчком, чтобы восстановить записи реестра без Expunge."
 }

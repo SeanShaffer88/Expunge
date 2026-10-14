@@ -206,13 +206,74 @@ impl BackupWriter {
 
     pub fn finish(self) -> Result<Backup> {
         self.save()?;
+        // Also export the registry part as a standard .reg file, so it can be
+        // restored by double-clicking even without Expunge.
+        let reg = backup_to_reg(&self.backup);
+        if !reg.is_empty() {
+            let mut bytes = vec![0xFF, 0xFE];
+            reg.encode_utf16()
+                .for_each(|u| bytes.extend_from_slice(&u.to_le_bytes()));
+            std::fs::write(
+                self.dir.join(format!("registry-{}.reg", self.backup.id)),
+                bytes,
+            )?;
+        }
         Ok(self.backup)
+    }
+
+    pub fn dir(&self) -> &Path {
+        &self.dir
     }
 
     /// Remove an empty backup (nothing needed saving).
     pub fn discard(self) {
         let _ = std::fs::remove_dir_all(&self.dir);
     }
+}
+
+/// The registry contents of a backup as a `.reg` file that puts everything
+/// back the way it was before the operation. Empty if no registry changes.
+pub fn backup_to_reg(b: &Backup) -> String {
+    use crate::report::{long_path, reg_data, reg_name};
+    let mut body = String::new();
+    // Restore in reverse order of the operation, like `restore_backup`.
+    for item in b.items.iter().rev() {
+        match item {
+            BackupItem::RegTree { keys } => {
+                for k in keys {
+                    body.push_str(&format!("[{}]\r\n", long_path(&k.path)));
+                    for v in k.values.values() {
+                        body.push_str(&format!("{}={}\r\n", reg_name(&v.name), reg_data(v)));
+                    }
+                    body.push_str("\r\n");
+                }
+            }
+            BackupItem::RegValue {
+                key,
+                name,
+                previous,
+            } => {
+                body.push_str(&format!("[{}]\r\n", long_path(key)));
+                match previous {
+                    Some(v) => {
+                        body.push_str(&format!("{}={}\r\n\r\n", reg_name(name), reg_data(v)))
+                    }
+                    None => body.push_str(&format!("{}=-\r\n\r\n", reg_name(name))),
+                }
+            }
+            BackupItem::KeyAbsent { path } => {
+                body.push_str(&format!("[-{}]\r\n\r\n", long_path(path)))
+            }
+            _ => {}
+        }
+    }
+    if body.is_empty() {
+        return body;
+    }
+    format!(
+        "Windows Registry Editor Version 5.00\r\n\r\n; Expunge backup {} — {}\r\n; Created {}. Double-click (as administrator) to restore these registry entries.\r\n\r\n{body}",
+        b.id, b.title, b.created
+    )
 }
 
 pub fn list_backups(root: &Path) -> Vec<Backup> {
@@ -343,6 +404,13 @@ mod tests {
         w.add_value(&reg, "HKCU\\Software\\Z", "n").unwrap();
         w.add_value(&reg, "HKCU\\Software\\Z", "new").unwrap();
         let b = w.finish().unwrap();
+        let reg_file =
+            std::fs::read(broot.join(&b.id).join(format!("registry-{}.reg", b.id))).unwrap();
+        let text = crate::model::decode_utf16z(&reg_file[2..]);
+        assert!(text.starts_with("Windows Registry Editor Version 5.00"));
+        assert!(text.contains("[HKEY_CURRENT_USER\\Software\\X\\Y]"));
+        assert!(text.contains("\"n\"=dword:00000005"));
+        assert!(text.contains("\"new\"=-"));
 
         // Destroy things.
         std::fs::remove_dir_all(&work).unwrap();

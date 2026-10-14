@@ -218,6 +218,21 @@ pub fn delete_file(path: &std::path::Path) -> std::io::Result<()> {
     }
 }
 
+/// Move a file or folder to the Recycle Bin.
+pub fn recycle(path: &std::path::Path) -> Result<()> {
+    #[cfg(windows)]
+    {
+        windows::recycle(path)
+    }
+    #[cfg(not(windows))]
+    {
+        Err(anyhow!(
+            "the Recycle Bin is only available on Windows: {}",
+            path.display()
+        ))
+    }
+}
+
 /// Ask Windows to delete a locked file at the next reboot.
 pub fn delete_on_reboot(path: &std::path::Path) -> Result<()> {
     #[cfg(windows)]

@@ -142,6 +142,10 @@ impl App {
                     changed |= ui.checkbox(&mut self.settings.create_restore_point, t("Create a System Restore point before uninstalling")).changed();
                     changed |= ui.checkbox(&mut self.settings.confirm_actions, t("Ask before deleting things")).changed();
                     changed |= ui
+                        .checkbox(&mut self.settings.use_recycle_bin, t("Also send removed files to the Recycle Bin"))
+                        .on_hover_text(t("Everything is backed up either way. This additionally keeps removed files in the Recycle Bin, using extra disk space."))
+                        .changed();
+                    changed |= ui
                         .checkbox(&mut self.settings.remove_unlogged_files, t("When uninstalling a monitored program, also remove files it created later"))
                         .changed();
                 });

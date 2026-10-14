@@ -159,6 +159,9 @@ pub struct ExecOptions {
     pub remove_unlogged: bool,
     /// Report what would happen without changing anything.
     pub dry_run: bool,
+    /// Send deleted files and folders to the Recycle Bin (in addition to the
+    /// backup) instead of deleting them permanently.
+    pub use_recycle_bin: bool,
 }
 
 const SERVICES_PREFIX: &str = "hklm\\system\\currentcontrolset\\services\\";
@@ -495,6 +498,9 @@ fn run_action(
             if let Some(b) = backup.as_deref_mut() {
                 b.add_file(p)?;
             }
+            if opts.use_recycle_bin && platform::recycle(p).is_ok() {
+                return Ok("moved to the Recycle Bin".into());
+            }
             match platform::delete_file(p) {
                 Ok(()) => Ok("deleted".into()),
                 Err(e) => match platform::delete_on_reboot(p) {
@@ -524,6 +530,11 @@ fn run_action(
                 if let Some(b) = backup.as_deref_mut() {
                     b.add_dir_tree(p)?;
                 }
+                if opts.use_recycle_bin && platform::recycle(p).is_ok() {
+                    return Ok(
+                        "moved to the Recycle Bin with contents created after installation".into(),
+                    );
+                }
                 std::fs::remove_dir_all(p)?;
                 Ok("deleted with contents created after installation".into())
             } else {
@@ -540,6 +551,9 @@ fn run_action(
             }
             if let Some(b) = backup.as_deref_mut() {
                 b.add_dir_tree(p)?;
+            }
+            if opts.use_recycle_bin && platform::recycle(p).is_ok() {
+                return Ok("moved to the Recycle Bin".into());
             }
             match std::fs::remove_dir_all(p) {
                 Ok(()) => Ok("deleted".into()),
@@ -908,7 +922,7 @@ mod tests {
             Some(&mut bw),
             &ExecOptions {
                 remove_unlogged: true,
-                dry_run: false,
+                ..Default::default()
             },
         );
         assert!(res.iter().all(|r| r.ok), "{res:#?}");

@@ -489,5 +489,8 @@
   "{n} errors": "エラー {n} 件",
   "{n} items were left behind or not restored.": "{n} 項目が残っているか、元に戻されていません。",
   "{n} warnings": "警告 {n} 件",
-  "Open Source Install Monitor & Uninstaller": "オープンソースのインストール監視ツール＆アンインストーラー"
+  "Open Source Install Monitor & Uninstaller": "オープンソースのインストール監視ツール＆アンインストーラー",
+  "Also send removed files to the Recycle Bin": "削除したファイルをごみ箱にも送る",
+  "Everything is backed up either way. This additionally keeps removed files in the Recycle Bin, using extra disk space.": "どちらの場合もバックアップは作成されます。これを有効にすると、削除したファイルがごみ箱にも残るため、ディスク容量を多く使います。",
+  "Backed-up files, plus a .reg file you can double-click to restore registry entries without Expunge.": "バックアップしたファイルと、Expunge がなくてもダブルクリックでレジストリを復元できる .reg ファイルです。"
 }

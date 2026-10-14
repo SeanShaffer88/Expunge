@@ -489,5 +489,8 @@
   "{n} errors": "{n} erros",
   "{n} items were left behind or not restored.": "{n} itens ficaram para trás ou não foram restaurados.",
   "{n} warnings": "{n} avisos",
-  "Open Source Install Monitor & Uninstaller": "Monitor de instalação e desinstalador de código aberto"
+  "Open Source Install Monitor & Uninstaller": "Monitor de instalação e desinstalador de código aberto",
+  "Also send removed files to the Recycle Bin": "Enviar também os arquivos removidos para a Lixeira",
+  "Everything is backed up either way. This additionally keeps removed files in the Recycle Bin, using extra disk space.": "Tudo ganha backup de qualquer forma. Isto também mantém os arquivos removidos na Lixeira, usando mais espaço em disco.",
+  "Backed-up files, plus a .reg file you can double-click to restore registry entries without Expunge.": "Arquivos do backup e um arquivo .reg que você pode abrir com clique duplo para restaurar entradas do registro sem o Expunge."
 }

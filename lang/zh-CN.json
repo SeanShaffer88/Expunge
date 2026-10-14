@@ -489,5 +489,8 @@
   "{n} errors": "{n} 个错误",
   "{n} items were left behind or not restored.": "有 {n} 项残留或未还原。",
   "{n} warnings": "{n} 个警告",
-  "Open Source Install Monitor & Uninstaller": "开源安装监视器与卸载工具"
+  "Open Source Install Monitor & Uninstaller": "开源安装监视器与卸载工具",
+  "Also send removed files to the Recycle Bin": "同时将删除的文件移至回收站",
+  "Everything is backed up either way. This additionally keeps removed files in the Recycle Bin, using extra disk space.": "无论如何都会备份。启用后，删除的文件还会保留在回收站中，会占用更多磁盘空间。",
+  "Backed-up files, plus a .reg file you can double-click to restore registry entries without Expunge.": "备份的文件，以及一个 .reg 文件：双击即可在没有 Expunge 的情况下还原注册表项。"
 }

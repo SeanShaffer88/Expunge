@@ -41,6 +41,8 @@ pub struct Settings {
     pub remove_unlogged_files: bool,
     /// Ask before destructive actions.
     pub confirm_actions: bool,
+    /// Also send removed files to the Recycle Bin (in addition to the backup).
+    pub use_recycle_bin: bool,
     /// Show entries flagged as SystemComponent in the program list.
     pub show_system_components: bool,
     /// Show Microsoft Store apps in the program list.
@@ -66,6 +68,7 @@ impl Default for Settings {
             create_restore_point: false,
             remove_unlogged_files: false,
             confirm_actions: true,
+            use_recycle_bin: false,
             show_system_components: false,
             show_store_apps: false,
             advanced_mode: false,

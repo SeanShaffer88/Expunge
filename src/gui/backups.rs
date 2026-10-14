@@ -93,6 +93,7 @@ impl App {
                 return;
             }
             let mut action: Option<Confirm> = None;
+            let backups_dir = self.store.backups_dir();
             egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                 for b in &self.backups.list {
                     theme::card(ui, |ui| {
@@ -107,6 +108,13 @@ impl App {
                                 small_muted(ui, format!("{}  ·  {}", b.created, b.summary()));
                             });
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if ui
+                                    .button(t("Open folder"))
+                                    .on_hover_text(t("Backed-up files, plus a .reg file you can double-click to restore registry entries without Expunge."))
+                                    .clicked()
+                                {
+                                    expunge_core::platform::shell_open(&backups_dir.join(&b.id).to_string_lossy());
+                                }
                                 if ui.button(t("Delete")).clicked() {
                                     action = Some(Confirm::DeleteBackup(b.id.clone()));
                                 }

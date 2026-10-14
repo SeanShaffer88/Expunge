@@ -4,7 +4,7 @@
 use crate::model::*;
 use crate::platform::{split_hive, HIVES};
 
-fn long_path(path: &str) -> String {
+pub fn long_path(path: &str) -> String {
     match split_hive(path) {
         Some((h, rest)) => {
             let long = HIVES
@@ -26,7 +26,7 @@ fn reg_escape(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
-fn reg_name(name: &str) -> String {
+pub fn reg_name(name: &str) -> String {
     if name.is_empty() {
         "@".into()
     } else {

@@ -440,3 +440,28 @@ pub fn message_box(title: &str, text: &str) -> i32 {
         )
     }
 }
+
+/// Move a file or folder to the Recycle Bin, silently.
+pub fn recycle(path: &Path) -> Result<()> {
+    use windows_sys::Win32::UI::Shell::{
+        SHFileOperationW, FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FOF_NOERRORUI, FOF_SILENT, FO_DELETE,
+        SHFILEOPSTRUCTW,
+    };
+    // pFrom must be double-NUL terminated.
+    let mut from = wide(&path.to_string_lossy());
+    from.push(0);
+    unsafe {
+        let mut op: SHFILEOPSTRUCTW = std::mem::zeroed();
+        op.wFunc = FO_DELETE as _;
+        op.pFrom = from.as_ptr();
+        op.fFlags = (FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI) as _;
+        let rc = SHFileOperationW(&mut op);
+        if rc != 0 || op.fAnyOperationsAborted != 0 || path.exists() {
+            return Err(anyhow!(
+                "could not move {} to the Recycle Bin (code {rc})",
+                path.display()
+            ));
+        }
+    }
+    Ok(())
+}

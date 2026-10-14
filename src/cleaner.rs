@@ -97,7 +97,10 @@ pub fn resolve_pattern(pattern: &str) -> Vec<PathBuf> {
         return Vec::new();
     }
     // Accept both separators (patterns may mix them, e.g. %TEMP%/x on Windows).
-    let mut parts = expanded.split(['\\', '/']).filter(|s| !s.is_empty()).peekable();
+    let mut parts = expanded
+        .split(['\\', '/'])
+        .filter(|s| !s.is_empty())
+        .peekable();
     let mut current: Vec<PathBuf> = vec![];
     let first = parts.next().unwrap_or_default();
     current.push(if expanded.starts_with('/') {
