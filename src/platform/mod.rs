@@ -413,15 +413,44 @@ fn demo_programs(r: &MemRegistry) {
         ),
     ];
     for (i, (name, publisher, ver, date, kb)) in apps.iter().enumerate() {
-        let mut k = KeyData::new(&format!("{root}\\App{i}"))
+        // Uninstall entries shaped like the real installer technologies, so
+        // the unattended queue can be tried out.
+        let (leaf, uninstall, msi) = match *name {
+            n if n.starts_with("Audacity") || n.starts_with("GIMP") => (
+                format!("App{i}_is1"),
+                format!("\"C:\\Program Files\\App{i}\\unins000.exe\""),
+                false,
+            ),
+            "Discord" => (
+                "Discord".to_string(),
+                "\"C:\\Users\\demo\\AppData\\Local\\Discord\\Update.exe\" --uninstall".to_string(),
+                false,
+            ),
+            n if n.starts_with("Python") => (
+                "{4D1B5C22-9C6A-4E2B-9E61-6A0F5A1E0001}".to_string(),
+                "\"C:\\ProgramData\\Package Cache\\{4D1B5C22-9C6A-4E2B-9E61-6A0F5A1E0001}\\python-3.13.0-amd64.exe\" /uninstall".to_string(),
+                false,
+            ),
+            n if n.starts_with("7-Zip") => (
+                "{23170F69-40C1-2702-2408-000001000000}".to_string(),
+                "MsiExec.exe /I{23170F69-40C1-2702-2408-000001000000}".to_string(),
+                true,
+            ),
+            _ => (
+                format!("App{i}"),
+                format!("C:\\Program Files\\App{i}\\uninstall.exe"),
+                false,
+            ),
+        };
+        let mut k = KeyData::new(&format!("{root}\\{leaf}"))
             .with(RegValue::string("DisplayName", name))
             .with(RegValue::string("Publisher", publisher))
             .with(RegValue::string("DisplayVersion", ver))
             .with(RegValue::string("InstallDate", date))
-            .with(RegValue::string(
-                "UninstallString",
-                &format!("C:\\Program Files\\App{i}\\uninstall.exe"),
-            ));
+            .with(RegValue::string("UninstallString", &uninstall));
+        if msi {
+            k = k.with(RegValue::dword("WindowsInstaller", 1));
+        }
         if name.starts_with("Old") {
             k = k.with(RegValue::string(
                 "InstallLocation",
@@ -580,5 +609,17 @@ mod tests {
         assert_eq!(expand_env("%EXPUNGE_TEST_VAR%\\y"), "C:\\X\\y");
         assert_eq!(expand_env("%NOPE_NOT_SET%\\y"), "%NOPE_NOT_SET%\\y");
         assert_eq!(expand_env("100%"), "100%");
+    }
+}
+
+/// True while a Windows Installer operation is running (always false off Windows).
+pub fn installer_busy() -> bool {
+    #[cfg(windows)]
+    {
+        windows::installer_busy()
+    }
+    #[cfg(not(windows))]
+    {
+        false
     }
 }

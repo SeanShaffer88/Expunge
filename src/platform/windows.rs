@@ -693,3 +693,20 @@ fn signer_name(wpath: &[u16]) -> Option<String> {
         name
     }
 }
+
+/// True while a Windows Installer (MSI) operation is running anywhere on the
+/// system. Only one can run at a time; starting another fails with 1618.
+pub fn installer_busy() -> bool {
+    use windows_sys::Win32::System::Threading::OpenMutexW;
+    const SYNCHRONIZE: u32 = 0x0010_0000;
+    let name: Vec<u16> = "Global\\_MSIExecute\0".encode_utf16().collect();
+    unsafe {
+        let h = OpenMutexW(SYNCHRONIZE, 0, name.as_ptr());
+        if h.is_null() {
+            false
+        } else {
+            windows_sys::Win32::Foundation::CloseHandle(h);
+            true
+        }
+    }
+}

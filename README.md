@@ -45,8 +45,8 @@ It is a free, GPL-licensed alternative to commercial tools like Total Uninstall 
 **Classic uninstaller (for programs that weren't monitored)**
 - Lists desktop programs (64-bit, 32-bit, per-user) with their icons, plus Microsoft Store apps.
 - Runs the vendor uninstaller, then scans for leftovers: folders, shortcuts, registry keys, autostart entries, App Paths, services.
-- **Batch uninstall** several programs in one go, with one combined leftover scan.
-- **Quiet uninstall** where supported, and **forced removal** when the uninstaller is broken.
+- **Unattended batch uninstall**: queue any number of programs and walk away. Silent switches are detected per installer type (Windows Installer, Inno Setup, NSIS, WiX, Squirrel), uninstallers run one at a time, restarts are held until the end, stuck ones are skipped, and one combined leftover scan follows.
+- **Silent uninstall** for a single program, and **forced removal** when the uninstaller is broken.
 - **Broken entry finder** for programs whose uninstaller or folder no longer exists.
 - **Trust info**: shows who digitally signed each program, and flags unsigned programs and broken signatures (possible tampering).
 - Real folder sizes for programs that don't report one.

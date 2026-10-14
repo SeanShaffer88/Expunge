@@ -22,6 +22,7 @@ pub mod report;
 pub mod revert;
 pub mod settings;
 pub mod shell;
+pub mod silent;
 pub mod snapshot;
 pub mod startup;
 pub mod store;

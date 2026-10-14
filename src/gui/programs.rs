@@ -13,6 +13,7 @@ use expunge_core::model::{fold, human_size, InstallLog};
 use expunge_core::platform::{self, ChildProcess};
 use expunge_core::programs::{self, InstalledProgram, Source};
 use expunge_core::revert::{build_plan, Action, Plan, PlanItem};
+use expunge_core::silent::{self, Engine, ExitMeaning};
 use expunge_core::trust::{self, Trust};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::time::Instant;
@@ -74,11 +75,42 @@ enum Stage {
     Scanning,
 }
 
+/// Progress of one program in the uninstall queue.
+#[derive(Clone, Debug, PartialEq)]
+enum ItemStatus {
+    Pending,
+    Waiting,
+    Running,
+    Done,
+    /// Removed; Windows needs a restart to finish.
+    Reboot,
+    Failed(String),
+    Skipped(String),
+    TimedOut,
+}
+
+/// Unattended limits: one uninstaller may run this long before Expunge moves on…
+const UNATTENDED_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15 * 60);
+/// …and an uninstaller that exited gets this long for its entry to disappear
+/// (many relaunch themselves from %TEMP% and finish in the background).
+const EXIT_GRACE: std::time::Duration = std::time::Duration::from_secs(60);
+/// How long to wait for another Windows Installer job before trying anyway.
+const BUSY_WAIT: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+
 pub struct Wizard {
     pub programs: Vec<InstalledProgram>,
     /// Skip the vendor uninstaller and go straight to cleanup.
     pub force: bool,
+    /// Unattended: silent switches, no windows or prompts, no restarts.
     quiet: bool,
+    /// In unattended mode, skip programs whose uninstaller can't run silently.
+    skip_manual: bool,
+    engines: Vec<Engine>,
+    detect_job: Option<Job<Vec<Engine>>>,
+    status: Vec<ItemStatus>,
+    exited_at: Option<Instant>,
+    waiting_since: Option<Instant>,
+    retries: u32,
     restore_point: bool,
     stage: Stage,
     index: usize,
@@ -94,9 +126,16 @@ pub struct Wizard {
 impl Wizard {
     pub fn new(programs: Vec<InstalledProgram>, force: bool, restore_point: bool) -> Self {
         Wizard {
-            programs,
+            programs: programs.clone(),
+            status: vec![ItemStatus::Pending; programs.len()],
             force,
             quiet: false,
+            skip_manual: false,
+            engines: Vec::new(),
+            detect_job: None,
+            exited_at: None,
+            waiting_since: None,
+            retries: 0,
             restore_point,
             stage: Stage::Confirm,
             index: 0,
@@ -110,12 +149,54 @@ impl Wizard {
         }
     }
 
-    fn advance(&mut self) {
+    /// Finish the current program with `status` and move to the next.
+    fn advance_with(&mut self, status: ItemStatus) {
+        if let Some(s) = self.status.get_mut(self.index) {
+            *s = status;
+        }
         self.index += 1;
         self.launched = false;
         self.child = None;
         self.started = None;
         self.store_job = None;
+        self.exited_at = None;
+        self.waiting_since = None;
+        self.retries = 0;
+    }
+
+    fn advance(&mut self) {
+        self.advance_with(ItemStatus::Done);
+    }
+
+    fn engine(&self, i: usize) -> Engine {
+        self.engines
+            .get(i)
+            .copied()
+            .unwrap_or_else(|| silent::quick_engine(&self.programs[i]))
+    }
+
+    /// Summary lines for the leftover report.
+    fn report(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        for (p, s) in self.programs.iter().zip(&self.status) {
+            let n = p.name.clone();
+            match s {
+                ItemStatus::Failed(why) => out.push(tf(
+                    "{name}: not removed ({reason})",
+                    &[("name", n), ("reason", why.clone())],
+                )),
+                ItemStatus::Skipped(why) => out.push(tf(
+                    "{name}: skipped ({reason})",
+                    &[("name", n), ("reason", why.clone())],
+                )),
+                ItemStatus::TimedOut => out.push(tf(
+                    "{name}: its uninstaller was still running after 15 minutes",
+                    &[("name", n)],
+                )),
+                _ => {}
+            }
+        }
+        out
     }
 }
 
@@ -817,7 +898,15 @@ impl App {
             if theme::primary_button(ui, format!("🗑 {}", t("Uninstall"))).clicked() {
                 self.start_uninstall(vec![p.clone()], false);
             }
-            if p.has_quiet_uninstall() && ui.button(t("Quiet uninstall")).clicked() {
+            if p.source != Source::Store
+                && silent::quick_engine(p).is_silent()
+                && ui
+                    .button(t("Uninstall silently"))
+                    .on_hover_text(t(
+                        "No windows or prompts; Expunge runs the uninstaller in its silent mode.",
+                    ))
+                    .clicked()
+            {
                 let mut w = Wizard::new(vec![p.clone()], false, self.settings.create_restore_point);
                 w.quiet = true;
                 self.wizard = Some(w);
@@ -896,28 +985,57 @@ impl App {
                 }
             }
         }
+        if w.detect_job.is_none() && w.engines.is_empty() && !w.force {
+            let progs = w.programs.clone();
+            w.detect_job = Some(Job::spawn(ctx, move |_| {
+                progs.iter().map(silent::detect).collect()
+            }));
+        }
+        if let Some(e) = w.detect_job.as_ref().and_then(|j| j.poll()) {
+            w.engines = e;
+        }
         if w.stage == Stage::Running {
             if w.index >= w.programs.len() {
+                let report = w.report();
+                w.notes.extend(report);
+                if w.status.contains(&ItemStatus::Reboot) || silent::reboot_pending(reg.as_ref()) {
+                    w.notes
+                        .push(t("Restart Windows to finish removing some programs."));
+                    self.status = t("Restart Windows to finish removing some programs.");
+                }
                 w.stage = Stage::Scanning;
                 start_scan = true;
             } else {
                 let p = w.programs[w.index].clone();
-                if !w.launched {
+                let engine = w.engine(w.index);
+                // Unattended: wait while another Windows Installer job runs
+                // (starting a second one fails with error 1618).
+                let busy = !w.launched && w.quiet && platform::installer_busy();
+                if busy && w.waiting_since.get_or_insert_with(Instant::now).elapsed() < BUSY_WAIT {
+                    w.status[w.index] = ItemStatus::Waiting;
+                    ctx.request_repaint_after(std::time::Duration::from_secs(1));
+                } else if !w.launched {
                     w.launched = true;
                     w.started = Some(Instant::now());
+                    w.status[w.index] = ItemStatus::Running;
+                    let silent_cmd = if w.quiet {
+                        silent::silent_command(&p, engine)
+                    } else {
+                        None
+                    };
                     if p.source == Source::Store {
                         let key = p.key.clone();
                         w.store_job = Some(Job::spawn(ctx, move |_| {
                             programs::remove_store_app(&key).map_err(|e| e.to_string())
                         }));
-                    } else if let Some(cmd) =
-                        p.uninstall_command(w.quiet && p.has_quiet_uninstall())
-                    {
+                    } else if w.quiet && silent_cmd.is_none() && w.skip_manual {
+                        w.advance_with(ItemStatus::Skipped(t("can't run unattended")));
+                    } else if let Some(cmd) = silent_cmd.or_else(|| p.uninstall_command(false)) {
                         match platform::spawn_command_line(&platform::expand_env(&cmd)) {
                             Ok(c) => w.child = Some(c),
                             Err(e) => {
                                 w.notes.push(format!("{}: {e}", p.name));
-                                w.advance();
+                                w.advance_with(ItemStatus::Failed(e.to_string()));
                             }
                         }
                     } else {
@@ -928,17 +1046,56 @@ impl App {
                         w.advance();
                     }
                 } else if let Some(r) = w.store_job.as_ref().and_then(|j| j.poll()) {
-                    if let Err(e) = r {
-                        w.notes.push(format!("{}: {e}", p.name));
+                    match r {
+                        Ok(_) => w.advance(),
+                        Err(e) => {
+                            w.notes.push(format!("{}: {e}", p.name));
+                            w.advance_with(ItemStatus::Failed(e));
+                        }
                     }
-                    w.advance();
                 } else if let Some(c) = &w.child {
-                    let exited = c.try_wait().is_some();
+                    let code = c.try_wait();
                     // Many uninstallers relaunch themselves from %TEMP% and exit
                     // at once; wait for the Uninstall entry to disappear too.
                     let gone = !reg.exists(&p.key);
-                    if exited && (gone || p.is_msi) {
-                        w.advance();
+                    let meaning = code.map(|c| silent::exit_meaning(engine, c));
+                    let ran_for = w.started.map(|s| s.elapsed()).unwrap_or_default();
+                    match meaning {
+                        Some(ExitMeaning::Busy) if w.retries < 3 => {
+                            // Another installation started meanwhile: try again.
+                            w.retries += 1;
+                            w.launched = false;
+                            w.child = None;
+                            w.waiting_since = Some(Instant::now());
+                        }
+                        Some(ExitMeaning::Cancelled) if !gone => {
+                            w.advance_with(ItemStatus::Failed(t("cancelled")));
+                        }
+                        Some(m) if gone || p.is_msi => {
+                            if m == ExitMeaning::RebootRequired {
+                                w.advance_with(ItemStatus::Reboot);
+                            } else if m == ExitMeaning::Failed && !gone {
+                                w.advance_with(ItemStatus::Failed(tf(
+                                    "exit code {code}",
+                                    &[("code", code.unwrap_or_default().to_string())],
+                                )));
+                            } else {
+                                w.advance();
+                            }
+                        }
+                        Some(_) if w.quiet => {
+                            // Exited but still listed: give a relaunched copy time to finish.
+                            if w.exited_at.get_or_insert_with(Instant::now).elapsed() > EXIT_GRACE {
+                                w.advance_with(ItemStatus::Failed(tf(
+                                    "still installed after its uninstaller finished (exit code {code})",
+                                    &[("code", code.unwrap_or_default().to_string())],
+                                )));
+                            }
+                        }
+                        None if w.quiet && ran_for > UNATTENDED_TIMEOUT => {
+                            w.advance_with(ItemStatus::TimedOut);
+                        }
+                        _ => {}
                     }
                     ctx.request_repaint_after(std::time::Duration::from_millis(500));
                 }
@@ -1031,10 +1188,22 @@ impl App {
                         } else {
                             t("These programs will be uninstalled, then Expunge scans for leftovers:")
                         });
-                        egui::ScrollArea::vertical().max_height(160.0).show(ui, |ui| {
-                            for p in &w.programs {
+                        let detecting = w.detect_job.is_some();
+                        egui::ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
+                            for (i, p) in w.programs.iter().enumerate() {
                                 ui.horizontal(|ui| {
                                     ui.label(RichText::new(format!("• {}", p.name)).strong());
+                                    if w.quiet && !w.force {
+                                        let e = w.engines.get(i).copied();
+                                        match e {
+                                            None if detecting => theme::badge(ui, t("Checking…"), theme::MUTED),
+                                            Some(Engine::Manual) | None => {
+                                                let txt = if w.skip_manual { t("Will be skipped") } else { t("Needs its own window") };
+                                                theme::badge(ui, txt, theme::WARN)
+                                            }
+                                            Some(e) => theme::badge(ui, format!("✔ {}", t(e.label())), theme::OK),
+                                        }
+                                    }
                                     if log_for(&self.logs.logs, p).is_some() {
                                         theme::badge(ui, t("Monitored"), theme::ACCENT_TEXT);
                                     }
@@ -1045,8 +1214,20 @@ impl App {
                             }
                         });
                         ui.add_space(6.0);
-                        if !w.force && w.programs.iter().any(|p| p.has_quiet_uninstall()) {
-                            ui.checkbox(&mut w.quiet, t("Uninstall quietly where possible (no prompts)"));
+                        if !w.force {
+                            ui.checkbox(&mut w.quiet, t("Unattended: no windows, prompts or restarts"))
+                                .on_hover_text(t("Expunge uses each uninstaller's silent mode, runs them one at a time, holds back restarts until the end, and moves on if one gets stuck. You can walk away."));
+                            if w.quiet {
+                                let manual = w.engines.iter().filter(|e| **e == Engine::Manual).count();
+                                if manual > 0 {
+                                    ui.indent("skip_manual", |ui| {
+                                        ui.checkbox(
+                                            &mut w.skip_manual,
+                                            tf("Skip programs that need their own window ({n}); uninstall them later", &[("n", manual.to_string())]),
+                                        );
+                                    });
+                                }
+                            }
                         }
                         ui.add_enabled_ui(elevated, |ui| {
                             ui.checkbox(&mut w.restore_point, t("Create a System Restore point first"));
@@ -1079,19 +1260,52 @@ impl App {
                         ui.label(tf("Uninstalling {done} of {total}", &[("done", (cur + 1).to_string()), ("total", total.to_string())]));
                         ui.add(egui::ProgressBar::new(cur as f32 / total as f32).desired_height(6.0));
                         ui.add_space(6.0);
-                        ui.horizontal(|ui| {
-                            ui.spinner();
-                            ui.label(RichText::new(&p.name).strong());
-                        });
-                        small_muted(ui, t("Follow the program's own uninstaller. When it has finished, Expunge continues automatically."));
+                        if total > 1 || w.quiet {
+                            egui::ScrollArea::vertical().max_height(220.0).show(ui, |ui| {
+                                for (q, s) in w.programs.iter().zip(&w.status) {
+                                    ui.horizontal(|ui| {
+                                        let (icon, color, text) = match s {
+                                            ItemStatus::Pending => ("•", theme::MUTED, String::new()),
+                                            ItemStatus::Waiting => ("…", theme::WARN, t("Waiting for another installation to finish")),
+                                            ItemStatus::Running => ("⟳", theme::ACCENT_TEXT, t("Uninstalling")),
+                                            ItemStatus::Done => ("✔", theme::OK, t("Removed")),
+                                            ItemStatus::Reboot => ("✔", theme::WARN, t("Removed; restart needed")),
+                                            ItemStatus::Failed(r) => ("✖", theme::BAD, r.clone()),
+                                            ItemStatus::Skipped(r) => ("⏭", theme::MUTED, r.clone()),
+                                            ItemStatus::TimedOut => ("⏱", theme::BAD, t("Took too long; moved on")),
+                                        };
+                                        ui.label(RichText::new(icon).color(color).strong());
+                                        ui.label(&q.name);
+                                        if !text.is_empty() {
+                                            small_muted(ui, text);
+                                        }
+                                    });
+                                }
+                            });
+                            ui.add_space(6.0);
+                        } else {
+                            ui.horizontal(|ui| {
+                                ui.spinner();
+                                ui.label(RichText::new(&p.name).strong());
+                            });
+                        }
+                        let unattended_now = w.quiet && w.engine(cur).is_silent();
+                        small_muted(
+                            ui,
+                            if unattended_now {
+                                t("Running silently. You can leave this running; Expunge continues by itself.")
+                            } else {
+                                t("Follow the program's own uninstaller. When it has finished, Expunge continues automatically.")
+                            },
+                        );
                         ui.add_space(8.0);
                         ui.horizontal(|ui| {
-                            if ui.button(t("It's finished, continue")).clicked() {
+                            if !unattended_now && ui.button(t("It's finished, continue")).clicked() {
                                 w.advance();
                             }
                             if ui.button(t("Skip this program")).clicked() {
                                 w.notes.push(tf("Skipped {name}", &[("name", p.name.clone())]));
-                                w.advance();
+                                w.advance_with(ItemStatus::Skipped(t("skipped by you")));
                             }
                         });
                     }

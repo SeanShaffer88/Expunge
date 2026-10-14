@@ -7,7 +7,6 @@ listed in the [README](README.md#features).
 ## Next
 
 **Uninstaller**
-- **Unattended batch uninstall queue** — queue any number of programs and walk away: silent switches detected automatically per installer type (MSI `/qn`, NSIS `/S`, Inno Setup `/VERYSILENT`, InstallShield, WiX Burn), reboots suppressed until the end, uninstallers run one at a time so they never collide (Windows Installer allows only one at once), with a single combined leftover scan and report.
 - **Deeper leftover scan** — also finds empty folders left behind, dangling COM registrations (CLSIDs and type libraries pointing to deleted files), environment variables and `PATH` entries pointing to missing folders, orphaned file associations and context-menu handlers, and firewall rules for deleted programs.
 - **One list for everything** — besides desktop programs and Store apps: **winget** packages (with available updates, upgraded in place), **optional Windows features** (turn on/off), and **App Execution Aliases**.
 
