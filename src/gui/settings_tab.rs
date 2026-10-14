@@ -3,9 +3,20 @@
 use super::app::{App, Confirm};
 use super::theme;
 use super::widgets::*;
+use super::Job;
 use egui::RichText;
-use expunge_core::i18n::{self, t};
+use expunge_core::i18n::{self, t, tf};
+use expunge_core::noise::{self, Learned};
 use expunge_core::settings::{FileRoot, Settings};
+
+/// Seconds between the two snapshots of the background-noise check.
+const LEARN_SECONDS: u64 = 60;
+
+/// Suggestions from the background-noise check, each with a checkbox.
+pub struct LearnResult {
+    pub registry: Vec<(String, bool)>,
+    pub files: Vec<(String, bool)>,
+}
 
 /// Text-editable copies of the list settings.
 #[derive(Default)]
@@ -16,6 +27,8 @@ pub struct SettingsState {
     pub reg_excl: String,
     pub file_excl: String,
     pub dirty: bool,
+    pub learn_job: Option<Job<Result<Learned, String>>>,
+    pub learned: Option<LearnResult>,
 }
 
 impl SettingsState {
@@ -78,6 +91,146 @@ fn list_editor(ui: &mut egui::Ui, label: &str, help: &str, text: &mut String, di
 }
 
 impl App {
+    fn start_learning(&mut self, ctx: &egui::Context) {
+        let reg = self.reg.clone();
+        let settings = self.settings.clone();
+        self.settings_ui.learned = None;
+        self.settings_ui.learn_job = Some(Job::spawn(ctx, move |pr| {
+            use expunge_core::snapshot::{diff, take_snapshot};
+            pr.set_phase(t("Taking the first snapshot…"));
+            let before = take_snapshot(reg.as_ref(), &settings, pr).map_err(|e| e.to_string())?;
+            for left in (1..=LEARN_SECONDS).rev() {
+                if pr.cancelled() {
+                    return Err(t("Cancelled"));
+                }
+                pr.set_phase(tf(
+                    "Watching for background changes… {n} s",
+                    &[("n", left.to_string())],
+                ));
+                std::thread::sleep(std::time::Duration::from_secs(1));
+            }
+            pr.set_phase(t("Taking the second snapshot…"));
+            let after = take_snapshot(reg.as_ref(), &settings, pr).map_err(|e| e.to_string())?;
+            let changes = diff(&before, &after);
+            let roots: Vec<String> = settings.file_roots.iter().map(|r| r.path.clone()).collect();
+            Ok(noise::learn(
+                &changes,
+                &roots,
+                &settings.registry_roots,
+                &settings.effective_file_exclusions(),
+                &settings.effective_registry_exclusions(),
+            ))
+        }));
+    }
+
+    pub fn poll_learning(&mut self) {
+        let Some(r) = self.settings_ui.learn_job.as_ref().and_then(|j| j.poll()) else {
+            return;
+        };
+        self.settings_ui.learn_job = None;
+        match r {
+            Ok(l) if l.is_empty() => {
+                self.set_status(t("No background noise found: nothing changed on its own."))
+            }
+            Ok(l) => {
+                self.settings_ui.learned = Some(LearnResult {
+                    registry: l.registry.into_iter().map(|p| (p, true)).collect(),
+                    files: l.files.into_iter().map(|p| (p, true)).collect(),
+                })
+            }
+            Err(e) => self.set_status(e),
+        }
+    }
+
+    fn apply_learned(&mut self) {
+        let Some(res) = self.settings_ui.learned.take() else {
+            return;
+        };
+        let pick = |v: &[(String, bool)]| {
+            v.iter()
+                .filter(|(_, on)| *on)
+                .map(|(p, _)| p.clone())
+                .collect::<Vec<_>>()
+        };
+        let (regs, files) = (pick(&res.registry), pick(&res.files));
+        let date = chrono::Local::now().format("%Y-%m-%d").to_string();
+        noise::append_learned(&mut self.settings.registry_exclusions, &regs, &date);
+        noise::append_learned(&mut self.settings.file_exclusions, &files, &date);
+        self.save_settings();
+        self.settings_ui.load(&self.settings);
+        self.set_status(tf(
+            "Added {n} exclusions.",
+            &[("n", (regs.len() + files.len()).to_string())],
+        ));
+    }
+
+    /// Automatic exclusions and the background-noise check (Advanced mode).
+    fn ui_noise(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        if ui
+            .checkbox(&mut self.settings.auto_exclusions, t("Automatically ignore temporary files, logs and caches (recommended)"))
+            .on_hover_text(t("Uses Expunge's built-in list of volatile locations in addition to yours. It is updated with Expunge."))
+            .changed()
+        {
+            self.save_settings();
+        }
+        egui::CollapsingHeader::new(t("Show the built-in list"))
+            .id_salt("builtin_excl")
+            .show(ui, |ui| {
+                egui::ScrollArea::vertical()
+                    .max_height(180.0)
+                    .show(ui, |ui| {
+                        for p in noise::FILE_PATTERNS.iter().chain(noise::REGISTRY_PATTERNS) {
+                            ui.label(RichText::new(*p).monospace().small().color(theme::MUTED));
+                        }
+                    });
+            });
+        ui.add_space(6.0);
+        if let Some(job) = &self.settings_ui.learn_job {
+            ui.horizontal(|ui| {
+                job_progress(ui, &job.progress.phase(), job.progress.count());
+                if ui.small_button(t("Cancel")).clicked() {
+                    job.progress
+                        .cancel
+                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                }
+            });
+            ctx.request_repaint_after(std::time::Duration::from_millis(500));
+        } else if let Some(res) = &mut self.settings_ui.learned {
+            ui.label(
+                RichText::new(t(
+                    "These changed on their own while nothing was being installed:",
+                ))
+                .strong(),
+            );
+            egui::ScrollArea::vertical()
+                .id_salt("learned")
+                .max_height(220.0)
+                .show(ui, |ui| {
+                    for (p, on) in res.files.iter_mut().chain(res.registry.iter_mut()) {
+                        ui.checkbox(on, RichText::new(p.as_str()).monospace().small());
+                    }
+                });
+            let mut apply = false;
+            let mut discard = false;
+            ui.horizontal(|ui| {
+                apply = theme::primary_button(ui, t("Ignore selected")).clicked();
+                discard = ui.button(t("Discard")).clicked();
+            });
+            if apply {
+                self.apply_learned();
+            } else if discard {
+                self.settings_ui.learned = None;
+            }
+        } else {
+            ui.horizontal(|ui| {
+                if ui.button(format!("🔎 {}", t("Learn background noise"))).clicked() {
+                    self.start_learning(ctx);
+                }
+                small_muted(ui, t("Takes two snapshots a minute apart. Don't install or change anything meanwhile."));
+            });
+        }
+    }
+
     pub fn ui_settings(&mut self, ctx: &egui::Context) {
         if self.settings_ui.reg_roots.is_empty() && !self.settings_ui.dirty {
             self.settings_ui.load(&self.settings);
@@ -215,6 +368,8 @@ impl App {
                 theme::card(ui, |ui| {
                     ui.label(RichText::new(t("Monitoring scope")).heading());
                     small_muted(ui, t("What snapshots capture. One entry per line; %VARIABLES% and * wildcards work."));
+                    ui.add_space(6.0);
+                    self.ui_noise(ui, ctx);
                     ui.add_space(6.0);
                     let st = &mut self.settings_ui;
                     let mut dirty = st.dirty;

@@ -526,5 +526,18 @@
   "These files are signed, but the signature does not verify. They may have been modified after signing.": "Эти файлы подписаны, но подпись не проходит проверку. Возможно, они были изменены после подписания.",
   "{n} items that need expert judgment (Windows folders, services, shared settings or uncertain matches) were left alone. Advanced mode shows them.": "{n} элементов, требующих экспертной оценки (папки Windows, службы, общие настройки или сомнительные совпадения), оставлены без изменений. Расширенный режим показывает их.",
   "Needed by Windows, your security software or your hardware. Advanced mode can change it.": "Нужно Windows, защитной программе или оборудованию. Изменить можно в расширенном режиме.",
-  "Simple mode always backs up before removing and asks before deleting. Options that could harm Windows or slow your PC are only in Advanced mode.": "Простой режим всегда создаёт резервную копию перед удалением и спрашивает подтверждение. Параметры, которые могут повредить Windows или замедлить ПК, доступны только в расширенном режиме."
+  "Simple mode always backs up before removing and asks before deleting. Options that could harm Windows or slow your PC are only in Advanced mode.": "Простой режим всегда создаёт резервную копию перед удалением и спрашивает подтверждение. Параметры, которые могут повредить Windows или замедлить ПК, доступны только в расширенном режиме.",
+  "Taking the first snapshot…": "Создание первого снимка…",
+  "Cancelled": "Отменено",
+  "Watching for background changes… {n} s": "Наблюдение за фоновыми изменениями… {n} с",
+  "Taking the second snapshot…": "Создание второго снимка…",
+  "No background noise found: nothing changed on its own.": "Фоновый шум не найден: ничего не изменилось само.",
+  "Added {n} exclusions.": "Добавлено исключений: {n}.",
+  "Automatically ignore temporary files, logs and caches (recommended)": "Автоматически игнорировать временные файлы, журналы и кэши (рекомендуется)",
+  "Uses Expunge's built-in list of volatile locations in addition to yours. It is updated with Expunge.": "Использует встроенный в Expunge список изменчивых расположений в дополнение к вашему. Он обновляется вместе с Expunge.",
+  "Show the built-in list": "Показать встроенный список",
+  "These changed on their own while nothing was being installed:": "Это изменилось само, пока ничего не устанавливалось:",
+  "Ignore selected": "Игнорировать выбранное",
+  "Learn background noise": "Изучить фоновый шум",
+  "Takes two snapshots a minute apart. Don't install or change anything meanwhile.": "Делает два снимка с интервалом в минуту. В это время ничего не устанавливайте и не изменяйте."
 }

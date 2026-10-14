@@ -122,8 +122,8 @@ impl App {
             let mut changes = diff(&before, &after);
             filter_changes(
                 &mut changes,
-                &settings.registry_exclusions,
-                &settings.file_exclusions,
+                &settings.effective_registry_exclusions(),
+                &settings.effective_file_exclusions(),
             );
             let mut log = InstallLog {
                 id: expunge_core::util::new_id(),

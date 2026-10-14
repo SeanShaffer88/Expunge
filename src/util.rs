@@ -73,6 +73,11 @@ pub fn split_command_line(cmd: &str) -> (String, String) {
 pub fn glob_match(pattern: &str, text: &str) -> bool {
     let p: Vec<char> = pattern.to_lowercase().chars().collect();
     let t: Vec<char> = text.to_lowercase().chars().collect();
+    glob_chars(&p, &t)
+}
+
+/// [`glob_match`] on already lower-cased characters.
+fn glob_chars(p: &[char], t: &[char]) -> bool {
     let (mut pi, mut ti) = (0usize, 0usize);
     let (mut star, mut mark) = (None::<usize>, 0usize);
     while ti < t.len() {
@@ -97,17 +102,91 @@ pub fn glob_match(pattern: &str, text: &str) -> bool {
     pi == p.len()
 }
 
-/// True if `path` is excluded by any pattern. A pattern also excludes
-/// everything beneath the location it names.
-pub fn is_excluded(path: &str, patterns: &[String]) -> bool {
-    patterns.iter().any(|pat| {
-        let pat = pat.trim();
-        if pat.is_empty() || pat.starts_with('#') {
+enum Pat {
+    /// No wildcards: the location itself and everything beneath it.
+    Path(String),
+    /// `*.ext`-style: any path ending with the suffix.
+    Suffix(String),
+    /// General glob. `prefix` (text before the first wildcard) must start
+    /// the path, which rejects most paths without running the glob.
+    Glob {
+        prefix: String,
+        exact: Vec<char>,
+        below: Vec<char>,
+    },
+}
+
+/// Exclusion patterns compiled once and matched many times (snapshots test
+/// every registry key and file against them).
+pub struct Exclusions {
+    pats: Vec<Pat>,
+}
+
+impl Exclusions {
+    pub fn new(patterns: &[String]) -> Self {
+        let mut pats = Vec::new();
+        for raw in patterns {
+            let pat = raw.trim();
+            if pat.is_empty() || pat.starts_with('#') {
+                continue;
+            }
+            let pat = fold(&expand_env(pat));
+            let pat = pat.trim_end_matches('\\').to_string();
+            if pat.is_empty() {
+                continue;
+            }
+            let wild = pat.find(['*', '?']);
+            match wild {
+                None => pats.push(Pat::Path(pat)),
+                Some(0) if !pat[1..].contains(['*', '?', '\\']) => {
+                    pats.push(Pat::Suffix(pat[1..].to_string()))
+                }
+                Some(i) => pats.push(Pat::Glob {
+                    prefix: pat[..i].to_string(),
+                    exact: pat.chars().collect(),
+                    below: format!("{pat}\\*").chars().collect(),
+                }),
+            }
+        }
+        Exclusions { pats }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.pats.is_empty()
+    }
+
+    /// True if `path` matches a pattern or lies beneath a matching location.
+    pub fn matches(&self, path: &str) -> bool {
+        if self.pats.is_empty() {
             return false;
         }
-        let pat = expand_env(pat);
-        glob_match(&pat, path) || glob_match(&format!("{}\\*", pat.trim_end_matches('\\')), path)
-    })
+        let f = fold(path);
+        let mut chars: Option<Vec<char>> = None;
+        self.pats.iter().any(|p| match p {
+            Pat::Path(p) => {
+                f.starts_with(p.as_str()) && (f.len() == p.len() || f.as_bytes()[p.len()] == b'\\')
+            }
+            Pat::Suffix(s) => f.ends_with(s.as_str()) || f.contains(&format!("{s}\\")),
+            Pat::Glob {
+                prefix,
+                exact,
+                below,
+            } => {
+                if !f.starts_with(prefix.as_str()) {
+                    return false;
+                }
+                let t = chars.get_or_insert_with(|| f.chars().collect());
+                glob_chars(exact, t) || glob_chars(below, t)
+            }
+        })
+    }
+}
+
+/// True if `path` is excluded by any pattern. A pattern also excludes
+/// everything beneath the location it names. Compiles the patterns on every
+/// call: use [`Exclusions`] in loops.
+pub fn is_excluded(path: &str, patterns: &[String]) -> bool {
+    Exclusions::new(patterns).matches(path)
 }
 
 fn norm_file(p: &str) -> String {

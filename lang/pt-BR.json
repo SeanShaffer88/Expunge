@@ -526,5 +526,18 @@
   "These files are signed, but the signature does not verify. They may have been modified after signing.": "Estes arquivos são assinados, mas a assinatura não confere. Eles podem ter sido modificados depois de assinados.",
   "{n} items that need expert judgment (Windows folders, services, shared settings or uncertain matches) were left alone. Advanced mode shows them.": "{n} itens que exigem avaliação especializada (pastas do Windows, serviços, configurações compartilhadas ou correspondências incertas) não foram alterados. O modo avançado os mostra.",
   "Needed by Windows, your security software or your hardware. Advanced mode can change it.": "Necessário para o Windows, seu software de segurança ou seu hardware. Pode ser alterado no modo avançado.",
-  "Simple mode always backs up before removing and asks before deleting. Options that could harm Windows or slow your PC are only in Advanced mode.": "O modo simples sempre faz backup antes de remover e pergunta antes de excluir. Opções que podem danificar o Windows ou deixar o PC lento ficam só no modo avançado."
+  "Simple mode always backs up before removing and asks before deleting. Options that could harm Windows or slow your PC are only in Advanced mode.": "O modo simples sempre faz backup antes de remover e pergunta antes de excluir. Opções que podem danificar o Windows ou deixar o PC lento ficam só no modo avançado.",
+  "Taking the first snapshot…": "Tirando o primeiro instantâneo…",
+  "Cancelled": "Cancelado",
+  "Watching for background changes… {n} s": "Observando alterações em segundo plano… {n} s",
+  "Taking the second snapshot…": "Tirando o segundo instantâneo…",
+  "No background noise found: nothing changed on its own.": "Nenhum ruído de fundo encontrado: nada mudou sozinho.",
+  "Added {n} exclusions.": "{n} exclusões adicionadas.",
+  "Automatically ignore temporary files, logs and caches (recommended)": "Ignorar automaticamente arquivos temporários, logs e caches (recomendado)",
+  "Uses Expunge's built-in list of volatile locations in addition to yours. It is updated with Expunge.": "Usa a lista interna de locais voláteis do Expunge além da sua. Ela é atualizada com o Expunge.",
+  "Show the built-in list": "Mostrar a lista interna",
+  "These changed on their own while nothing was being installed:": "Isto mudou sozinho enquanto nada estava sendo instalado:",
+  "Ignore selected": "Ignorar selecionados",
+  "Learn background noise": "Aprender o ruído de fundo",
+  "Takes two snapshots a minute apart. Don't install or change anything meanwhile.": "Tira dois instantâneos com um minuto de intervalo. Não instale nem altere nada nesse meio-tempo."
 }

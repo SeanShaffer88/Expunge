@@ -32,6 +32,7 @@ It is a free, GPL-licensed alternative to commercial tools like Total Uninstall 
 - **Install and monitor** — pick an installer, or just right-click it in Explorer → **Install with Expunge**; Expunge snapshots, runs it, and records every change.
 - **Manual monitoring** for anything else (Microsoft Store, winget, scripts, portable apps).
 - Monitoring **survives restarts**, so installers that need a reboot are captured correctly.
+- **Automatic exclusions** ignore temporary files, logs and browser/app caches, so logs contain only the installer's real changes. **Learn background noise** finds what your PC changes on its own and excludes it too.
 - Review the capture before saving and drop background noise with one click.
 - Detects the program's name, publisher and version automatically.
 
@@ -111,6 +112,7 @@ expunge revert <log-id>
 expunge export <log-id> reg undo.reg
 expunge backups
 expunge restore <backup-id>
+expunge learn-noise [--seconds N] [--apply]
 expunge --help
 ```
 

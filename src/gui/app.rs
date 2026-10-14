@@ -643,6 +643,7 @@ impl App {
         self.poll_monitor(ctx);
         self.poll_startup();
         self.poll_cleaner();
+        self.poll_learning();
         self.poll_backups();
         self.poll_removal();
         self.updates.poll();

@@ -526,5 +526,18 @@
   "These files are signed, but the signature does not verify. They may have been modified after signing.": "これらのファイルは署名されていますが、署名を検証できません。署名後に変更された可能性があります。",
   "{n} items that need expert judgment (Windows folders, services, shared settings or uncertain matches) were left alone. Advanced mode shows them.": "専門的な判断が必要な {n} 個の項目（Windows フォルダー、サービス、共有設定、不確かな一致）はそのままにしました。詳細モードで表示されます。",
   "Needed by Windows, your security software or your hardware. Advanced mode can change it.": "Windows、セキュリティソフト、またはハードウェアに必要です。詳細モードで変更できます。",
-  "Simple mode always backs up before removing and asks before deleting. Options that could harm Windows or slow your PC are only in Advanced mode.": "シンプルモードでは、削除の前に必ずバックアップを作成し、確認を求めます。Windows を損なったり PC を遅くしたりする可能性のあるオプションは詳細モードにのみあります。"
+  "Simple mode always backs up before removing and asks before deleting. Options that could harm Windows or slow your PC are only in Advanced mode.": "シンプルモードでは、削除の前に必ずバックアップを作成し、確認を求めます。Windows を損なったり PC を遅くしたりする可能性のあるオプションは詳細モードにのみあります。",
+  "Taking the first snapshot…": "1 つ目のスナップショットを作成中…",
+  "Cancelled": "キャンセルしました",
+  "Watching for background changes… {n} s": "バックグラウンドの変化を監視中… {n} 秒",
+  "Taking the second snapshot…": "2 つ目のスナップショットを作成中…",
+  "No background noise found: nothing changed on its own.": "バックグラウンドノイズは見つかりませんでした。自動的に変化したものはありません。",
+  "Added {n} exclusions.": "{n} 件の除外を追加しました。",
+  "Automatically ignore temporary files, logs and caches (recommended)": "一時ファイル、ログ、キャッシュを自動的に無視する（推奨）",
+  "Uses Expunge's built-in list of volatile locations in addition to yours. It is updated with Expunge.": "ユーザーのリストに加えて、Expunge 内蔵の変化しやすい場所のリストを使います。このリストは Expunge と一緒に更新されます。",
+  "Show the built-in list": "内蔵リストを表示",
+  "These changed on their own while nothing was being installed:": "何もインストールしていない間に、次の項目が自動的に変化しました：",
+  "Ignore selected": "選択した項目を無視",
+  "Learn background noise": "バックグラウンドノイズを学習",
+  "Takes two snapshots a minute apart. Don't install or change anything meanwhile.": "1 分間隔で 2 つのスナップショットを作成します。その間は何もインストールしたり変更したりしないでください。"
 }

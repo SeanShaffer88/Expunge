@@ -526,5 +526,18 @@
   "These files are signed, but the signature does not verify. They may have been modified after signing.": "这些文件已签名，但签名验证失败。它们可能在签名后被修改过。",
   "{n} items that need expert judgment (Windows folders, services, shared settings or uncertain matches) were left alone. Advanced mode shows them.": "有 {n} 个需要专业判断的项目（Windows 文件夹、服务、共享设置或不确定的匹配）未做处理。高级模式中可以看到它们。",
   "Needed by Windows, your security software or your hardware. Advanced mode can change it.": "Windows、安全软件或硬件需要此项。可在高级模式中更改。",
-  "Simple mode always backs up before removing and asks before deleting. Options that could harm Windows or slow your PC are only in Advanced mode.": "简单模式在删除前总会先备份，并在删除前询问。可能损坏 Windows 或拖慢电脑的选项仅在高级模式中提供。"
+  "Simple mode always backs up before removing and asks before deleting. Options that could harm Windows or slow your PC are only in Advanced mode.": "简单模式在删除前总会先备份，并在删除前询问。可能损坏 Windows 或拖慢电脑的选项仅在高级模式中提供。",
+  "Taking the first snapshot…": "正在创建第一个快照…",
+  "Cancelled": "已取消",
+  "Watching for background changes… {n} s": "正在观察后台变化… {n} 秒",
+  "Taking the second snapshot…": "正在创建第二个快照…",
+  "No background noise found: nothing changed on its own.": "未发现后台噪音：没有任何内容自行变化。",
+  "Added {n} exclusions.": "已添加 {n} 条排除项。",
+  "Automatically ignore temporary files, logs and caches (recommended)": "自动忽略临时文件、日志和缓存（推荐）",
+  "Uses Expunge's built-in list of volatile locations in addition to yours. It is updated with Expunge.": "除了你的列表外，还会使用 Expunge 内置的易变位置列表。该列表随 Expunge 更新。",
+  "Show the built-in list": "显示内置列表",
+  "These changed on their own while nothing was being installed:": "以下内容在未安装任何程序时自行发生了变化：",
+  "Ignore selected": "忽略所选项",
+  "Learn background noise": "学习后台噪音",
+  "Takes two snapshots a minute apart. Don't install or change anything meanwhile.": "间隔一分钟创建两个快照。在此期间请勿安装或更改任何内容。"
 }

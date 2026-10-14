@@ -41,6 +41,11 @@ USAGE:
   expunge revert <log-id> [--dry-run] [--remove-unlogged] [--no-backup] [--recycle]
                                             Undo an installation precisely
   expunge export <log-id> <html|json|reg|ps1> <output-file>
+  expunge learn-noise [--seconds N] [--apply] [--json]
+                                            Take two snapshots N seconds apart
+                                            (default 60) and list what changed
+                                            on its own; --apply adds it to the
+                                            exclusions
   expunge backups                           List backups
   expunge restore <backup-id>               Undo a removal from its backup
   expunge --version | --help
@@ -77,8 +82,8 @@ fn save_new_log(
     let settings = store.load_settings();
     filter_changes(
         &mut changes,
-        &settings.registry_exclusions,
-        &settings.file_exclusions,
+        &settings.effective_registry_exclusions(),
+        &settings.effective_file_exclusions(),
     );
     let mut log = InstallLog {
         id: expunge_core::util::new_id(),
@@ -237,6 +242,48 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                     st.files_added,
                     human_size(st.bytes_added)
                 );
+            }
+        }
+        "learn-noise" => {
+            let secs: u64 = arg_value(&args, "--seconds")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(60);
+            let st = store()?;
+            let before = snapshot_now(reg.as_ref(), &st)?;
+            eprintln!("Waiting {secs} s; don't install or change anything…");
+            std::thread::sleep(std::time::Duration::from_secs(secs));
+            let after = snapshot_now(reg.as_ref(), &st)?;
+            let mut settings = st.load_settings();
+            let roots: Vec<String> = settings.file_roots.iter().map(|r| r.path.clone()).collect();
+            let l = expunge_core::noise::learn(
+                &diff(&before, &after),
+                &roots,
+                &settings.registry_roots,
+                &settings.effective_file_exclusions(),
+                &settings.effective_registry_exclusions(),
+            );
+            if has(&args, "--json") {
+                println!(
+                    "{}",
+                    serde_json::json!({ "registry": l.registry, "files": l.files })
+                );
+            } else if l.is_empty() {
+                println!("Nothing changed on its own.");
+            } else {
+                for p in l.files.iter().chain(&l.registry) {
+                    println!("{p}");
+                }
+            }
+            if has(&args, "--apply") && !l.is_empty() {
+                let date = chrono::Local::now().format("%Y-%m-%d").to_string();
+                expunge_core::noise::append_learned(
+                    &mut settings.registry_exclusions,
+                    &l.registry,
+                    &date,
+                );
+                expunge_core::noise::append_learned(&mut settings.file_exclusions, &l.files, &date);
+                st.save_settings(&settings)?;
+                eprintln!("Added to the exclusions.");
             }
         }
         "verify" => {

@@ -32,6 +32,9 @@ pub struct Settings {
     pub registry_exclusions: Vec<String>,
     /// Glob patterns for file noise to ignore.
     pub file_exclusions: Vec<String>,
+    /// Also apply Expunge's built-in list of volatile locations (temporary
+    /// files, logs, browser and app caches).
+    pub auto_exclusions: bool,
     /// Copy everything to a backup before deleting it.
     pub backup_before_removal: bool,
     /// Create a System Restore point before uninstalling.
@@ -58,6 +61,24 @@ pub struct Settings {
 /// In Simple mode the safety switches are locked to their safe values,
 /// whatever was chosen in Advanced mode.
 impl Settings {
+    /// Registry exclusions in effect: the user's list plus the built-in one.
+    pub fn effective_registry_exclusions(&self) -> Vec<String> {
+        let mut v = self.registry_exclusions.clone();
+        if self.auto_exclusions {
+            v.extend(crate::noise::builtin_registry_exclusions());
+        }
+        v
+    }
+
+    /// File exclusions in effect: the user's list plus the built-in one.
+    pub fn effective_file_exclusions(&self) -> Vec<String> {
+        let mut v = self.file_exclusions.clone();
+        if self.auto_exclusions {
+            v.extend(crate::noise::builtin_file_exclusions());
+        }
+        v
+    }
+
     pub fn backup_enabled(&self) -> bool {
         self.backup_before_removal || !self.advanced_mode
     }
@@ -81,6 +102,7 @@ impl Default for Settings {
             file_roots: default_file_roots(),
             registry_exclusions: default_registry_exclusions(),
             file_exclusions: default_file_exclusions(),
+            auto_exclusions: true,
             backup_before_removal: true,
             create_restore_point: false,
             remove_unlogged_files: false,

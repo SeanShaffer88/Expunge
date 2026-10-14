@@ -3,7 +3,7 @@
 use crate::model::*;
 use crate::platform::{self, expand_env, Registry};
 use crate::settings::Settings;
-use crate::util::is_excluded;
+use crate::util::Exclusions;
 use anyhow::{Context, Result};
 use std::io::{Read, Write};
 use std::path::Path;
@@ -49,7 +49,7 @@ pub fn take_snapshot(
         user: platform::user_name(),
         ..Default::default()
     };
-    let reg_excl: Vec<String> = settings.registry_exclusions.clone();
+    let reg_excl: Vec<String> = settings.effective_registry_exclusions();
     for root in &settings.registry_roots {
         let root = platform::normalize_reg_path(root);
         progress.set_phase(format!("Registry: {root}"));
@@ -58,11 +58,7 @@ pub fn take_snapshot(
             anyhow::bail!("cancelled");
         }
     }
-    let file_excl: Vec<String> = settings
-        .file_exclusions
-        .iter()
-        .map(|s| expand_env(s))
-        .collect();
+    let file_excl: Vec<String> = settings.effective_file_exclusions();
     for root in &settings.file_roots {
         let path = expand_env(&root.path);
         if path.contains('%') || !Path::new(&path).exists() {
@@ -92,12 +88,13 @@ pub fn capture_registry(
     snap: &mut Snapshot,
     progress: &Progress,
 ) {
+    let excl = Exclusions::new(excl);
     let mut stack = vec![root.to_string()];
     while let Some(path) = stack.pop() {
         if progress.cancelled() {
             return;
         }
-        if is_excluded(&path, excl) {
+        if excl.matches(&path) {
             continue;
         }
         match reg.read_key(&path) {
@@ -132,12 +129,13 @@ pub fn capture_files(
     snap: &mut Snapshot,
     progress: &Progress,
 ) {
+    let excl = Exclusions::new(excl);
     let walker = walkdir::WalkDir::new(root)
         .min_depth(1)
         .max_depth(if recursive { usize::MAX } else { 1 })
         .follow_links(false)
         .into_iter()
-        .filter_entry(|e| !is_excluded(&e.path().to_string_lossy(), excl));
+        .filter_entry(|e| !excl.matches(&e.path().to_string_lossy()));
     for entry in walker {
         if progress.cancelled() {
             return;
@@ -234,18 +232,16 @@ pub fn diff(before: &Snapshot, after: &Snapshot) -> ChangeSet {
 /// Drop changes matching exclusion patterns after the fact (used when the
 /// user adds an exclusion while reviewing a capture).
 pub fn filter_changes(cs: &mut ChangeSet, reg_excl: &[String], file_excl: &[String]) {
-    let file_excl: Vec<String> = file_excl.iter().map(|s| expand_env(s)).collect();
-    cs.keys_added.retain(|k| !is_excluded(&k.path, reg_excl));
-    cs.keys_removed.retain(|k| !is_excluded(&k.path, reg_excl));
-    cs.values_added.retain(|v| !is_excluded(&v.key, reg_excl));
-    cs.values_removed.retain(|v| !is_excluded(&v.key, reg_excl));
-    cs.values_modified
-        .retain(|v| !is_excluded(&v.key, reg_excl));
-    cs.files_added.retain(|f| !is_excluded(&f.path, &file_excl));
-    cs.files_removed
-        .retain(|f| !is_excluded(&f.path, &file_excl));
-    cs.files_modified
-        .retain(|f| !is_excluded(&f.after.path, &file_excl));
+    let reg = Exclusions::new(reg_excl);
+    let files = Exclusions::new(file_excl);
+    cs.keys_added.retain(|k| !reg.matches(&k.path));
+    cs.keys_removed.retain(|k| !reg.matches(&k.path));
+    cs.values_added.retain(|v| !reg.matches(&v.key));
+    cs.values_removed.retain(|v| !reg.matches(&v.key));
+    cs.values_modified.retain(|v| !reg.matches(&v.key));
+    cs.files_added.retain(|f| !files.matches(&f.path));
+    cs.files_removed.retain(|f| !files.matches(&f.path));
+    cs.files_modified.retain(|f| !files.matches(&f.after.path));
 }
 
 /// Program identity found in a change set (from a new Uninstall entry).

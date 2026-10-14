@@ -526,5 +526,18 @@
   "These files are signed, but the signature does not verify. They may have been modified after signing.": "Estos archivos están firmados, pero la firma no se verifica. Es posible que se modificaran después de firmarse.",
   "{n} items that need expert judgment (Windows folders, services, shared settings or uncertain matches) were left alone. Advanced mode shows them.": "Se dejaron sin tocar {n} elementos que requieren criterio experto (carpetas de Windows, servicios, configuración compartida o coincidencias dudosas). El modo avanzado los muestra.",
   "Needed by Windows, your security software or your hardware. Advanced mode can change it.": "Lo necesita Windows, su software de seguridad o su hardware. Se puede cambiar en el modo avanzado.",
-  "Simple mode always backs up before removing and asks before deleting. Options that could harm Windows or slow your PC are only in Advanced mode.": "El modo sencillo siempre hace una copia de seguridad antes de quitar algo y pregunta antes de borrar. Las opciones que podrían dañar Windows o ralentizar el PC solo están en el modo avanzado."
+  "Simple mode always backs up before removing and asks before deleting. Options that could harm Windows or slow your PC are only in Advanced mode.": "El modo sencillo siempre hace una copia de seguridad antes de quitar algo y pregunta antes de borrar. Las opciones que podrían dañar Windows o ralentizar el PC solo están en el modo avanzado.",
+  "Taking the first snapshot…": "Tomando la primera instantánea…",
+  "Cancelled": "Cancelado",
+  "Watching for background changes… {n} s": "Observando cambios en segundo plano… {n} s",
+  "Taking the second snapshot…": "Tomando la segunda instantánea…",
+  "No background noise found: nothing changed on its own.": "No se encontró ruido de fondo: nada cambió por sí solo.",
+  "Added {n} exclusions.": "Se agregaron {n} exclusiones.",
+  "Automatically ignore temporary files, logs and caches (recommended)": "Ignorar automáticamente archivos temporales, registros y cachés (recomendado)",
+  "Uses Expunge's built-in list of volatile locations in addition to yours. It is updated with Expunge.": "Usa la lista integrada de ubicaciones volátiles de Expunge además de la suya. Se actualiza con Expunge.",
+  "Show the built-in list": "Mostrar la lista integrada",
+  "These changed on their own while nothing was being installed:": "Esto cambió por sí solo mientras no se instalaba nada:",
+  "Ignore selected": "Ignorar lo seleccionado",
+  "Learn background noise": "Aprender el ruido de fondo",
+  "Takes two snapshots a minute apart. Don't install or change anything meanwhile.": "Toma dos instantáneas con un minuto de diferencia. No instale ni cambie nada mientras tanto."
 }
