@@ -65,6 +65,7 @@ It is a free, GPL-licensed alternative to commercial tools like Total Uninstall 
 - **Startup manager**: Run keys and Startup folders (Task Manager-compatible enable/disable), services and drivers, scheduled tasks, plus (Advanced) every other autostart location: Winlogon, Active Setup, program replacements, AppInit DLLs, Explorer extensions, icon overlays, browser helpers, boot programs and WMI subscriptions.
 - **Junk cleaner**: temp files, crash and memory dumps, Windows logs, Delivery Optimization and Windows Update downloads, shader and browser caches, Prefetch, Recycle Bin.
 - **Deep cleanup** (Advanced): previous Windows installation (Windows.old), outdated Windows components (DISM), files of turned-off features, and old restore points, each analyzed first and confirmed separately.
+- **Transfer programs to another PC**: pack programs with their files, settings and registry entries into one file and restore them on a new PC, with a compatibility check, path rewriting for different user names or drives, and one-click undo.
 - **"Which program created this?"** — search any file or registry path across all monitored installs.
 - **Export** install logs as an HTML report, a `.reg` undo script, a PowerShell removal script, or JSON (import them on another PC).
 
@@ -121,6 +122,8 @@ expunge learn-noise [--seconds N] [--apply]
 expunge orphans
 expunge updates
 expunge update --all
+expunge transfer export moved.expunge "Photo Editor"
+expunge transfer import moved.expunge
 expunge --help
 ```
 

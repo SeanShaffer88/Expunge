@@ -27,6 +27,11 @@ pub enum BackupItem {
     },
     /// A key that did not exist before the operation created it.
     KeyAbsent { path: String },
+    /// A file that did not exist before the operation created it
+    /// (restoring deletes it again).
+    FileAbsent { path: String },
+    /// A folder the operation created (restoring removes it if empty).
+    DirAbsent { path: String },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -191,6 +196,20 @@ impl BackupWriter {
             previous,
         });
         self.save()
+    }
+
+    /// Record that the operation is about to create this file.
+    pub fn add_file_absent(&mut self, path: &str) {
+        self.backup
+            .items
+            .push(BackupItem::FileAbsent { path: path.into() });
+    }
+
+    /// Record that the operation is about to create this folder.
+    pub fn add_dir_absent(&mut self, path: &str) {
+        self.backup
+            .items
+            .push(BackupItem::DirAbsent { path: path.into() });
     }
 
     pub fn add_key_absent(&mut self, path: &str) -> Result<()> {
@@ -359,6 +378,26 @@ pub fn restore_backup(root: &Path, id: &str, reg: &dyn Registry) -> Result<Vec<A
                 };
                 match res {
                     Ok(()) => ActionResult::ok(desc, "restored"),
+                    Err(e) => ActionResult::err(desc, e.to_string()),
+                }
+            }
+            BackupItem::FileAbsent { path } => {
+                let desc = format!("File {path}");
+                if Path::new(path).exists() {
+                    match platform::delete_file(Path::new(path)) {
+                        Ok(()) => ActionResult::ok(desc, "removed again"),
+                        Err(e) => ActionResult::err(desc, e.to_string()),
+                    }
+                } else {
+                    ActionResult::ok(desc, "already absent")
+                }
+            }
+            BackupItem::DirAbsent { path } => {
+                // Items are undone newest first, so its files are gone by now.
+                let desc = format!("Folder {path}");
+                match std::fs::remove_dir(path) {
+                    Ok(()) => ActionResult::ok(desc, "removed again"),
+                    Err(_) if !Path::new(path).exists() => ActionResult::ok(desc, "already absent"),
                     Err(e) => ActionResult::err(desc, e.to_string()),
                 }
             }

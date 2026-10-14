@@ -30,6 +30,7 @@ pub mod slimmer;
 pub mod snapshot;
 pub mod startup;
 pub mod store;
+pub mod transfer;
 pub mod trust;
 pub mod updates;
 pub mod util;

@@ -9,7 +9,7 @@ use egui::RichText;
 use egui_extras::{Column, TableBuilder};
 use expunge_core::i18n::{t, tf};
 use expunge_core::leftovers::{find_leftovers, LeftoverScope};
-use expunge_core::model::{fold, human_size, InstallLog};
+use expunge_core::model::{fold, human_size};
 use expunge_core::platform::{self, ChildProcess};
 use expunge_core::programs::{self, InstalledProgram, Source};
 use expunge_core::revert::{build_plan, Action, Plan, PlanItem};
@@ -248,11 +248,7 @@ pub fn merge_plans(into: &mut Plan, other: Plan) {
     into.info.extend(other.info);
 }
 
-pub fn log_for<'a>(logs: &'a [InstallLog], p: &InstalledProgram) -> Option<&'a InstallLog> {
-    logs.iter()
-        .find(|l| !l.uninstall_key.is_empty() && fold(&l.uninstall_key) == fold(&p.key))
-        .or_else(|| logs.iter().find(|l| fold(&l.name) == fold(&p.name)))
-}
+pub use expunge_core::programs::log_for;
 
 impl App {
     pub fn refresh_programs(&mut self, ctx: &egui::Context) {
@@ -569,6 +565,21 @@ impl App {
                             }
                             if ui.small_button(t("Clear")).clicked() {
                                 self.programs.checked.clear();
+                            }
+                            if ui
+                                .button(tf("Transfer {n}…", &[("n", n.to_string())]))
+                                .on_hover_text(t(
+                                    "Pack the selected programs to move them to another PC.",
+                                ))
+                                .clicked()
+                            {
+                                let mut all = self.programs.list.clone();
+                                all.extend(self.programs.store_apps.clone());
+                                let chosen: Vec<InstalledProgram> = all
+                                    .into_iter()
+                                    .filter(|p| self.programs.checked.contains(&p.key))
+                                    .collect();
+                                self.start_transfer_export(chosen);
                             }
                         }
                     });
@@ -1003,6 +1014,14 @@ impl App {
                     .clicked()
             {
                 self.start_uninstall(vec![p.clone()], true);
+            }
+            if p.source != Source::Store
+                && ui
+                    .button(t("Transfer to another PC…"))
+                    .on_hover_text(t("Pack this program with its files and settings to move it to another PC."))
+                    .clicked()
+            {
+                self.start_transfer_export(vec![p.clone()]);
             }
             if !p.install_location.is_empty() && ui.button(t("Open folder")).clicked() {
                 platform::shell_open(&p.install_location);

@@ -46,8 +46,9 @@ pub fn pick_file(title: &str, filter_name: &str, exts: &[&str]) -> Option<PathBu
     }
     #[cfg(not(windows))]
     {
+        // Demo/testing builds: EXPUNGE_DEMO_OPEN names the file to "pick".
         let _ = (title, filter_name, exts);
-        None
+        std::env::var_os("EXPUNGE_DEMO_OPEN").map(PathBuf::from)
     }
 }
 

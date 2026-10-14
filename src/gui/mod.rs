@@ -14,6 +14,7 @@ mod programs;
 mod settings_tab;
 mod startup_tab;
 mod theme;
+mod transfer_ui;
 mod updates;
 mod widgets;
 

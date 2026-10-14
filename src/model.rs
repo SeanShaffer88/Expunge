@@ -182,6 +182,19 @@ pub fn decode_utf16z(data: &[u8]) -> String {
     String::from_utf16_lossy(&units[..end])
 }
 
+/// Encode strings as REG_MULTI_SZ (each NUL-terminated, plus a final NUL).
+pub fn encode_multi_sz(items: &[String]) -> Vec<u8> {
+    let mut out = Vec::new();
+    for s in items {
+        for u in s.encode_utf16() {
+            out.extend_from_slice(&u.to_le_bytes());
+        }
+        out.extend_from_slice(&[0, 0]);
+    }
+    out.extend_from_slice(&[0, 0]);
+    out
+}
+
 pub fn decode_multi_sz(data: &[u8]) -> Vec<String> {
     let units: Vec<u16> = data
         .chunks_exact(2)

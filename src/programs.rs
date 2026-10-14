@@ -192,6 +192,18 @@ impl InstalledProgram {
     }
 }
 
+/// The install log recorded for a program, if it was monitored: matched by
+/// its Uninstall key, or by name.
+pub fn log_for<'a>(
+    logs: &'a [crate::model::InstallLog],
+    p: &InstalledProgram,
+) -> Option<&'a crate::model::InstallLog> {
+    use crate::model::fold;
+    logs.iter()
+        .find(|l| !l.uninstall_key.is_empty() && fold(&l.uninstall_key) == fold(&p.key))
+        .or_else(|| logs.iter().find(|l| fold(&l.name) == fold(&p.name)))
+}
+
 /// Total size of the files under a folder, in bytes.
 pub fn dir_size(path: &str) -> u64 {
     walkdir::WalkDir::new(path)

@@ -65,6 +65,8 @@ pub struct App {
     pub languages: Vec<(String, String)>,
     pub programs: programs::ProgramsState,
     pub extras: super::extras::ExtrasState,
+    /// Transfer export or restore window.
+    pub transfer: Option<super::transfer_ui::TransferUi>,
     pub monitor: monitor::MonitorState,
     pub logs: logs::LogsState,
     pub backups: backups::BackupsState,
@@ -137,6 +139,7 @@ impl App {
             languages,
             programs: Default::default(),
             extras: Default::default(),
+            transfer: None,
             monitor: Default::default(),
             logs: Default::default(),
             backups: Default::default(),
@@ -302,6 +305,10 @@ impl App {
             .show(ctx, |ui| {
                 egui::MenuBar::new().ui(ui, |ui| {
                     let file = ui.menu_button(t("File"), |ui| {
+                        if ui.button(t("Restore programs from a package…")).clicked() {
+                            ui.close();
+                            self.start_transfer_import();
+                        }
                         if ui.button(t("Import install log…")).clicked() {
                             ui.close();
                             self.import_log();
@@ -1151,6 +1158,7 @@ impl eframe::App for App {
         }
         self.ui_wizard(ctx);
         self.ui_removal(ctx);
+        self.ui_transfer(ctx);
         let elevated = self.elevated;
         if self.updates.show(ctx, elevated) {
             self.style_frames = self.style_frames.max(5);

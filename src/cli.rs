@@ -48,6 +48,12 @@ USAGE:
                                             exclusions
   expunge updates [--json]                  Programs with updates (needs winget)
   expunge update <winget-id> | --all        Install updates silently with winget
+  expunge transfer export <out.expunge> <program>...
+                                            Pack programs (by name) with their files
+                                            and settings to move to another PC
+  expunge transfer check <package>          Check a package against this PC
+  expunge transfer import <package> [--overwrite]
+                                            Restore a package (undo from backups)
   expunge orphans [--json]                  List registrations left by removed
                                             programs (pointing to missing files)
   expunge backups                           List backups
@@ -288,6 +294,110 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                 }
             }
             return Ok(if failed == 0 { 0 } else { 2 });
+        }
+        "transfer" => {
+            let sub = args.get(1).map(String::as_str).unwrap_or("");
+            let st = store()?;
+            match sub {
+                "export" => {
+                    let out = args
+                        .get(2)
+                        .ok_or_else(|| anyhow::anyhow!("missing output file"))?;
+                    let wanted: Vec<String> = args
+                        .iter()
+                        .skip(3)
+                        .filter(|a| !a.starts_with("--"))
+                        .map(|a| a.to_lowercase())
+                        .collect();
+                    if wanted.is_empty() {
+                        anyhow::bail!("name at least one program");
+                    }
+                    let all = programs::list_programs(reg.as_ref(), false);
+                    let chosen: Vec<_> = all
+                        .into_iter()
+                        .filter(|p| wanted.iter().any(|w| p.name.to_lowercase().contains(w)))
+                        .collect();
+                    if chosen.is_empty() {
+                        anyhow::bail!("no installed program matches");
+                    }
+                    let logs = st.list_logs();
+                    let changes: Vec<_> = chosen
+                        .iter()
+                        .map(|p| programs::log_for(&logs, p).map(|l| l.changes.clone()))
+                        .collect();
+                    let c =
+                        expunge_core::transfer::collect(&chosen, &changes, reg.as_ref(), &|s| {
+                            eprintln!("  {s}")
+                        });
+                    let m = expunge_core::transfer::export(
+                        &c,
+                        reg.as_ref(),
+                        &PathBuf::from(out),
+                        &|_| {},
+                    )?;
+                    for w in &m.warnings {
+                        eprintln!("warning: {w}");
+                    }
+                    println!(
+                        "Saved {out}: {} programs, {} files ({}), {} registry entries",
+                        m.programs.len(),
+                        m.files.len(),
+                        human_size(m.bytes()),
+                        m.keys.len() + m.values.len()
+                    );
+                }
+                "check" | "import" => {
+                    let pkg = PathBuf::from(
+                        args.get(2)
+                            .ok_or_else(|| anyhow::anyhow!("missing package"))?,
+                    );
+                    let m = expunge_core::transfer::read_manifest(&pkg)?;
+                    let c = expunge_core::transfer::check(
+                        &m,
+                        reg.as_ref(),
+                        &expunge_core::transfer::Vars::current(),
+                    );
+                    println!("From {} ({}), {}", m.computer, m.user, m.created);
+                    for p in &m.programs {
+                        println!("  {} {}", p.name, p.version);
+                    }
+                    for p in &c.problems {
+                        println!("problem: {p}");
+                    }
+                    for w in &c.warnings {
+                        println!("warning: {w}");
+                    }
+                    if !c.conflicts.is_empty() {
+                        println!(
+                            "{} files already exist (use --overwrite to replace them)",
+                            c.conflicts.len()
+                        );
+                    }
+                    if sub == "check" || !c.problems.is_empty() {
+                        return Ok(if c.problems.is_empty() { 0 } else { 2 });
+                    }
+                    let names: Vec<String> = m.programs.iter().map(|p| p.name.clone()).collect();
+                    let mut bw = BackupWriter::new(
+                        &st.backups_dir(),
+                        &format!("Transfer: {}", names.join(", ")),
+                    )?;
+                    let res = expunge_core::transfer::restore(
+                        &pkg,
+                        reg.as_ref(),
+                        &mut bw,
+                        has(&args, "--overwrite"),
+                        &|s| eprintln!("  {s}"),
+                    )?;
+                    let b = bw.finish()?;
+                    let failed = res.iter().filter(|r| !r.ok).count();
+                    for r in res.iter().filter(|r| !r.ok) {
+                        eprintln!("failed: {} — {}", r.description, r.message);
+                    }
+                    println!("Restored. Undo with: expunge restore {}", b.id);
+                    return Ok(if failed == 0 { 0 } else { 2 });
+                }
+                _ => anyhow::bail!("usage: expunge transfer export|check|import …"),
+            }
         }
         "orphans" => {
             let plan = expunge_core::orphans::scan_system(reg.as_ref());

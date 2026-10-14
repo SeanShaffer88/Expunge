@@ -7,7 +7,6 @@ listed in the [README](README.md#features).
 ## Next
 
 **Moving programs**
-- **Transfer programs to another PC** — pick installed or monitored programs (or a bundle), and Expunge packs their files, registry settings, services, shortcuts and file associations into one portable `.expunge` package. On the new PC, Expunge restores it, rewrites user-profile paths (different user names or drive letters), registers services and shortcuts, and keeps an undo log so a failed transfer can be rolled back in one click. A compatibility check runs first (Windows version, architecture, drivers, licensing or activation that is machine-bound), and programs known not to move (Office, drivers, anti-virus) are flagged.
 - **Repackage** a monitored installation as a portable folder, a silent install script, or an MSIX, for deploying to many machines.
 
 ## Later
