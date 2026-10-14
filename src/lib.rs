@@ -1,0 +1,24 @@
+//! Expunge core library: snapshots, diffs, precise uninstall plans, backups,
+//! leftover scanning, startup management, cleanup, and reports.
+//!
+//! Copyright (C) 2026 Sean Shaffer
+//!
+//! This program is free software: you can redistribute it and/or modify it
+//! under the terms of the GNU General Public License as published by the Free
+//! Software Foundation, either version 3 of the License, or (at your option)
+//! any later version. See LICENSE for details.
+
+pub mod backup;
+pub mod leftovers;
+pub mod model;
+pub mod platform;
+pub mod programs;
+pub mod revert;
+pub mod settings;
+pub mod snapshot;
+pub mod store;
+pub mod util;
+
+pub const APP_NAME: &str = "Expunge";
+pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const APP_AUTHOR: &str = "Sean Shaffer";
