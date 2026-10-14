@@ -377,7 +377,17 @@ pub fn export(
     out: &Path,
     progress: &dyn Fn(String),
 ) -> Result<Manifest> {
-    let vars = Vars::current();
+    export_with(c, reg, out, progress, &Vars::current())
+}
+
+pub fn export_with(
+    c: &Collected,
+    reg: &dyn Registry,
+    out: &Path,
+    progress: &dyn Fn(String),
+    vars: &Vars,
+) -> Result<Manifest> {
+    let vars = vars.clone();
     let mut m = Manifest {
         format: FORMAT,
         created: crate::util::now_string(),
@@ -817,13 +827,7 @@ mod tests {
 
         // Export with the source variables (no env dependence).
         let pkg = src.path().join("move.expunge");
-        let mut m = export(&c, &reg, &pkg, &|_| {}).unwrap();
-        // Make the stored paths portable as `export` would with real env vars.
-        m.vars = from.clone();
-        m.files
-            .iter_mut()
-            .for_each(|f| f.path = from.to_placeholder(&f.path));
-        m.dirs = m.dirs.iter().map(|d| from.to_placeholder(d)).collect();
+        let m = export_with(&c, &reg, &pkg, &|_| {}, &from).unwrap();
         assert!(
             m.files.iter().all(|f| f.path.starts_with("%ProgramFiles%")),
             "{:?}",
