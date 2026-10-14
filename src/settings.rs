@@ -55,6 +55,23 @@ pub struct Settings {
     pub first_run_done: bool,
 }
 
+/// In Simple mode the safety switches are locked to their safe values,
+/// whatever was chosen in Advanced mode.
+impl Settings {
+    pub fn backup_enabled(&self) -> bool {
+        self.backup_before_removal || !self.advanced_mode
+    }
+    pub fn confirm_enabled(&self) -> bool {
+        self.confirm_actions || !self.advanced_mode
+    }
+    pub fn remove_unlogged_enabled(&self) -> bool {
+        self.remove_unlogged_files && self.advanced_mode
+    }
+    pub fn system_components_shown(&self) -> bool {
+        self.show_system_components && self.advanced_mode
+    }
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Settings {

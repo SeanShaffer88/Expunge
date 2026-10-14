@@ -57,14 +57,14 @@ It is a free, GPL-licensed alternative to commercial tools like Total Uninstall 
 - Hard-coded protection for critical folders and registry keys — they can never be deleted, whatever a log says.
 
 **Tools**
-- **Windows Updates** window: list installed updates and uninstall individual ones (uses DISM, which works for modern cumulative updates; permanent servicing-stack updates are labelled).
+- **Windows Updates** window (Advanced mode): list installed updates and uninstall individual ones (uses DISM, which works for modern cumulative updates; permanent servicing-stack updates are labelled).
 - **Startup manager**: Run keys and Startup folders (Task Manager-compatible enable/disable), services, scheduled tasks.
 - **Junk cleaner**: temp files, crash dumps, shader caches, Windows Update downloads, browser caches, Recycle Bin.
 - **"Which program created this?"** — search any file or registry path across all monitored installs.
 - **Export** install logs as an HTML report, a `.reg` undo script, a PowerShell removal script, or JSON (import them on another PC).
 
 **For everyone**
-- **Simple and Advanced modes**, chosen on first launch: plain language and a focused interface, or every technical detail.
+- **Simple and Advanced modes**, chosen on first launch. Simple mode uses plain language and only offers options that can't harm Windows or slow the PC; Advanced mode shows every technical detail and tool.
 - **Help on every page** (Help button or F1) explaining terms like *snapshot* and *leftover* in everyday words.
 - **Safety labels** on every removal item: *Safe*, *Review* or *Careful*.
 - **Accessible**: screen-reader support, adjustable text size, high-contrast option, full keyboard shortcuts (Ctrl+1–8 pages, Ctrl+F search, F5 refresh, Delete uninstall, F1 help).

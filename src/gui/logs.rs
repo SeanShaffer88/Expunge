@@ -228,7 +228,7 @@ impl App {
             tf("Uninstall {name}", &[("name", log.name.clone())]),
             plan,
             true,
-            self.settings.remove_unlogged_files,
+            self.settings.remove_unlogged_enabled(),
         );
         flow.logs_to_delete = vec![log.id.clone()];
         flow.names = vec![log.name.clone()];

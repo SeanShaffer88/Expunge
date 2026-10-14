@@ -523,5 +523,8 @@
   "Executables are not digitally signed": "デジタル署名のない実行ファイルがあります",
   "Unsigned programs trigger SmartScreen warnings and can't be traced to their publisher. Sign them with a code-signing certificate.": "署名のないプログラムは SmartScreen の警告が出て、発行元を確認できません。コード署名証明書で署名してください。",
   "Executables have a broken signature": "署名が壊れている実行ファイルがあります",
-  "These files are signed, but the signature does not verify. They may have been modified after signing.": "これらのファイルは署名されていますが、署名を検証できません。署名後に変更された可能性があります。"
+  "These files are signed, but the signature does not verify. They may have been modified after signing.": "これらのファイルは署名されていますが、署名を検証できません。署名後に変更された可能性があります。",
+  "{n} items that need expert judgment (Windows folders, services, shared settings or uncertain matches) were left alone. Advanced mode shows them.": "専門的な判断が必要な {n} 個の項目（Windows フォルダー、サービス、共有設定、不確かな一致）はそのままにしました。詳細モードで表示されます。",
+  "Needed by Windows, your security software or your hardware. Advanced mode can change it.": "Windows、セキュリティソフト、またはハードウェアに必要です。詳細モードで変更できます。",
+  "Simple mode always backs up before removing and asks before deleting. Options that could harm Windows or slow your PC are only in Advanced mode.": "シンプルモードでは、削除の前に必ずバックアップを作成し、確認を求めます。Windows を損なったり PC を遅くしたりする可能性のあるオプションは詳細モードにのみあります。"
 }

@@ -523,5 +523,8 @@
   "Executables are not digitally signed": "Ausführbare Dateien sind nicht digital signiert",
   "Unsigned programs trigger SmartScreen warnings and can't be traced to their publisher. Sign them with a code-signing certificate.": "Unsignierte Programme lösen SmartScreen-Warnungen aus und lassen sich keinem Herausgeber zuordnen. Signieren Sie sie mit einem Codesignaturzertifikat.",
   "Executables have a broken signature": "Ausführbare Dateien haben eine fehlerhafte Signatur",
-  "These files are signed, but the signature does not verify. They may have been modified after signing.": "Diese Dateien sind signiert, aber die Signatur lässt sich nicht bestätigen. Sie wurden möglicherweise nach dem Signieren verändert."
+  "These files are signed, but the signature does not verify. They may have been modified after signing.": "Diese Dateien sind signiert, aber die Signatur lässt sich nicht bestätigen. Sie wurden möglicherweise nach dem Signieren verändert.",
+  "{n} items that need expert judgment (Windows folders, services, shared settings or uncertain matches) were left alone. Advanced mode shows them.": "{n} Einträge, die Fachwissen erfordern (Windows-Ordner, Dienste, gemeinsame Einstellungen oder unsichere Treffer), wurden nicht angetastet. Der Erweiterte Modus zeigt sie.",
+  "Needed by Windows, your security software or your hardware. Advanced mode can change it.": "Wird von Windows, Ihrer Sicherheitssoftware oder Ihrer Hardware benötigt. Im Erweiterten Modus änderbar.",
+  "Simple mode always backs up before removing and asks before deleting. Options that could harm Windows or slow your PC are only in Advanced mode.": "Der Einfache Modus sichert immer vor dem Entfernen und fragt vor dem Löschen. Optionen, die Windows schaden oder den PC verlangsamen könnten, gibt es nur im Erweiterten Modus."
 }

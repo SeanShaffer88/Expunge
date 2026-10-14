@@ -90,6 +90,21 @@ pub fn categories() -> Vec<Category> {
     ]
 }
 
+/// Categories shown only in Advanced mode: cleaning them makes the PC slower
+/// for a while (caches are rebuilt: games stutter, thumbnails and web pages
+/// load slower) or touches Windows Update's working files.
+pub fn is_advanced(id: &str) -> bool {
+    matches!(
+        id,
+        "thumbnails"
+            | "shader_cache"
+            | "update_cache"
+            | "chrome_cache"
+            | "edge_cache"
+            | "firefox_cache"
+    )
+}
+
 /// Expand env vars and `*` wildcards (one or more path segments may contain them).
 pub fn resolve_pattern(pattern: &str) -> Vec<PathBuf> {
     let expanded = expand_env(pattern);

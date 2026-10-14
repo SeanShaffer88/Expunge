@@ -93,11 +93,13 @@ impl App {
     }
 
     pub fn start_clean(&mut self) {
+        let advanced = self.settings.advanced_mode;
         let cats: Vec<Category> = self
             .cleaner
             .cats
             .iter()
             .filter(|(_, on, _)| *on)
+            .filter(|(c, _, _)| advanced || !cleaner::is_advanced(c.id))
             .map(|(c, _, _)| c.clone())
             .collect();
         self.cleaner.clean_job = Some(Job::spawn(&self.ctx, move |_| {
@@ -133,7 +135,11 @@ impl App {
             let busy = self.cleaner.scan_job.is_some() || self.cleaner.clean_job.is_some();
             egui::ScrollArea::vertical().auto_shrink([false, false]).max_height(ui.available_height() - 52.0).show(ui, |ui| {
                 let elevated = self.elevated;
+                let advanced = self.settings.advanced_mode;
                 for (cat, on, res) in &mut self.cleaner.cats {
+                    if !advanced && cleaner::is_advanced(cat.id) {
+                        continue;
+                    }
                     let (title, desc) = cat_text(cat.id);
                     let locked = cat.needs_admin && !elevated;
                     egui::Frame::new().fill(theme::CARD).corner_radius(12).inner_margin(egui::Margin::symmetric(16, 10)).show(ui, |ui| {
@@ -165,7 +171,8 @@ impl App {
                 job_progress(ui, &if self.cleaner.scan_job.is_some() { t("Scanning…") } else { t("Cleaning…") }, 0);
                 return;
             }
-            let selected: u64 = self.cleaner.cats.iter().filter(|(_, on, _)| *on).filter_map(|(_, _, r)| r.as_ref()).map(|r| r.bytes).sum();
+            let advanced = self.settings.advanced_mode;
+            let selected: u64 = self.cleaner.cats.iter().filter(|(_, on, _)| *on).filter(|(c, _, _)| advanced || !cleaner::is_advanced(c.id)).filter_map(|(_, _, r)| r.as_ref()).map(|r| r.bytes).sum();
             let scanned = self.cleaner.cats.iter().any(|(_, _, r)| r.is_some());
             ui.columns(2, |cols| {
                 if theme::wide_button(&mut cols[0], format!("🔍 {}", t("Scan")), true).clicked() {

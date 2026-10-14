@@ -23,6 +23,8 @@ pub struct RemovalFlow {
     pub delete_logs: bool,
     /// Programs this flow is removing (for the status line).
     pub names: Vec<String>,
+    /// Items hidden because Simple mode doesn't offer them (None = not yet filtered).
+    pub hidden_for_safety: Option<usize>,
     pub job: Option<Job<(Vec<ActionResult>, Option<String>)>>,
     pub results: Option<(Vec<ActionResult>, Option<String>)>,
     pub open: bool,
@@ -40,6 +42,7 @@ impl RemovalFlow {
             logs_to_delete: Vec::new(),
             delete_logs: true,
             names: Vec::new(),
+            hidden_for_safety: None,
             job: None,
             results: None,
             open: true,
@@ -176,9 +179,19 @@ impl App {
     }
 
     pub fn ui_removal(&mut self, ctx: &egui::Context) {
+        let simple = !self.settings.advanced_mode;
         let Some(flow) = &mut self.removal else {
             return;
         };
+        if simple
+            && flow.hidden_for_safety.is_none()
+            && flow.job.is_none()
+            && flow.results.is_none()
+        {
+            flow.hidden_for_safety = Some(expunge_core::revert::simplify(&mut flow.plan));
+            flow.offer_unlogged = false;
+            flow.remove_unlogged = false;
+        }
         let mut start = false;
         let mut close = false;
         let mut open = flow.open;
@@ -208,6 +221,15 @@ impl App {
                     return;
                 }
                 plan_ui(ui, flow);
+                if let Some(n) = flow.hidden_for_safety.filter(|n| *n > 0) {
+                    small_muted(
+                        ui,
+                        tf(
+                            "{n} items that need expert judgment (Windows folders, services, shared settings or uncertain matches) were left alone. Advanced mode shows them.",
+                            &[("n", n.to_string())],
+                        ),
+                    );
+                }
                 ui.separator();
                 ui.horizontal_wrapped(|ui| {
                     if flow.offer_unlogged {
@@ -237,12 +259,12 @@ impl App {
             let plan = flow.plan.clone();
             let reg = self.reg.clone();
             let backup_root = self.store.backups_dir();
-            let backup_on = self.settings.backup_before_removal;
+            let backup_on = self.settings.backup_enabled();
             let title = flow.title.clone();
             let opts = ExecOptions {
                 remove_unlogged: flow.remove_unlogged,
                 dry_run: false,
-                use_recycle_bin: self.settings.use_recycle_bin,
+                use_recycle_bin: self.settings.use_recycle_bin && !simple,
             };
             flow.job = Some(Job::spawn(ctx, move |_| {
                 let mut writer = if backup_on {

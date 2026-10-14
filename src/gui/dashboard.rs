@@ -133,7 +133,7 @@ impl App {
                     self.tab = Tab::Cleaner;
                 }
                 ui.add_space(6.0);
-                if action_row(ui, "🔁", "Manage Windows updates", "See installed updates and remove one that causes problems") {
+                if self.settings.advanced_mode && action_row(ui, "🔁", "Manage Windows updates", "See installed updates and remove one that causes problems") {
                     self.updates.open(ctx);
                     self.style_frames = 30;
                 }

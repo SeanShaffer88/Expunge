@@ -116,6 +116,7 @@ impl App {
                     });
                     small_muted(ui, t("Translations live in the lang folder; you can add or improve languages without rebuilding."));
                     ui.add_space(8.0);
+                    let was_advanced = self.settings.advanced_mode;
                     ui.horizontal(|ui| {
                         ui.label(t("Interface mode"));
                         changed |= ui
@@ -127,6 +128,10 @@ impl App {
                             .on_hover_text(t("All details: registry keys, services, scheduled tasks and the Installer Lab for developers."))
                             .changed();
                     });
+                    if was_advanced != self.settings.advanced_mode {
+                        // System components appear or disappear with the mode.
+                        self.programs.needs_refresh = true;
+                    }
                     if ui.checkbox(&mut self.settings.high_contrast, t("High contrast (brighter text, stronger outlines)")).changed() {
                         changed = true;
                         super::theme::apply(ctx, self.settings.high_contrast);
@@ -138,23 +143,29 @@ impl App {
                 theme::card(ui, |ui| {
                     ui.label(RichText::new(t("Safety")).heading());
                     ui.add_space(4.0);
-                    changed |= ui.checkbox(&mut self.settings.backup_before_removal, t("Back up everything before removing it (recommended)")).changed();
                     changed |= ui.checkbox(&mut self.settings.create_restore_point, t("Create a System Restore point before uninstalling")).changed();
-                    changed |= ui.checkbox(&mut self.settings.confirm_actions, t("Ask before deleting things")).changed();
-                    changed |= ui
-                        .checkbox(&mut self.settings.use_recycle_bin, t("Also send removed files to the Recycle Bin"))
-                        .on_hover_text(t("Everything is backed up either way. This additionally keeps removed files in the Recycle Bin, using extra disk space."))
-                        .changed();
-                    changed |= ui
-                        .checkbox(&mut self.settings.remove_unlogged_files, t("When uninstalling a monitored program, also remove files it created later"))
-                        .changed();
+                    if self.settings.advanced_mode {
+                        changed |= ui.checkbox(&mut self.settings.backup_before_removal, t("Back up everything before removing it (recommended)")).changed();
+                        changed |= ui.checkbox(&mut self.settings.confirm_actions, t("Ask before deleting things")).changed();
+                        changed |= ui
+                            .checkbox(&mut self.settings.use_recycle_bin, t("Also send removed files to the Recycle Bin"))
+                            .on_hover_text(t("Everything is backed up either way. This additionally keeps removed files in the Recycle Bin, using extra disk space."))
+                            .changed();
+                        changed |= ui
+                            .checkbox(&mut self.settings.remove_unlogged_files, t("When uninstalling a monitored program, also remove files it created later"))
+                            .changed();
+                    } else {
+                        small_muted(ui, t("Simple mode always backs up before removing and asks before deleting. Options that could harm Windows or slow your PC are only in Advanced mode."));
+                    }
                 });
                 ui.add_space(10.0);
                 theme::card(ui, |ui| {
                     ui.label(RichText::new(t("Program list")).heading());
                     ui.add_space(4.0);
                     let mut refresh = false;
-                    refresh |= ui.checkbox(&mut self.settings.show_system_components, t("Show system components and updates")).changed();
+                    if self.settings.advanced_mode {
+                        refresh |= ui.checkbox(&mut self.settings.show_system_components, t("Show system components and updates")).changed();
+                    }
                     refresh |= ui.checkbox(&mut self.settings.show_store_apps, t("Load Microsoft Store apps at startup")).changed();
                     if refresh {
                         changed = true;

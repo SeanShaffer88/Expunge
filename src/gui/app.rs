@@ -168,7 +168,7 @@ impl App {
     }
 
     pub fn ask(&mut self, title: &str, body: String, ok: &str, action: Confirm) {
-        if !self.settings.confirm_actions {
+        if !self.settings.confirm_enabled() {
             self.run_confirmed(action);
             return;
         }
@@ -237,7 +237,8 @@ impl App {
                             self.tab = Tab::Monitor;
                             self.start_install_and_monitor(ctx);
                         }
-                        if ui.button(t("Windows Updates…")).clicked() {
+                        if self.settings.advanced_mode && ui.button(t("Windows Updates…")).clicked()
+                        {
                             ui.close();
                             self.updates.open(ctx);
                             self.style_frames = 30;
@@ -406,7 +407,9 @@ impl App {
                 ui.add_space(14.0);
                 ui.label(RichText::new(t("TOOLS")).small().color(theme::MUTED));
                 ui.add_space(2.0);
-                if theme::nav_item(ui, "🔁", &t("Windows Updates"), false, None).clicked() {
+                if self.settings.advanced_mode
+                    && theme::nav_item(ui, "🔁", &t("Windows Updates"), false, None).clicked()
+                {
                     self.updates.open(ctx);
                     self.style_frames = 30;
                 }

@@ -523,5 +523,8 @@
   "Executables are not digitally signed": "Исполняемые файлы без цифровой подписи",
   "Unsigned programs trigger SmartScreen warnings and can't be traced to their publisher. Sign them with a code-signing certificate.": "Неподписанные программы вызывают предупреждения SmartScreen, и их нельзя связать с издателем. Подпишите их сертификатом подписи кода.",
   "Executables have a broken signature": "Исполняемые файлы с повреждённой подписью",
-  "These files are signed, but the signature does not verify. They may have been modified after signing.": "Эти файлы подписаны, но подпись не проходит проверку. Возможно, они были изменены после подписания."
+  "These files are signed, but the signature does not verify. They may have been modified after signing.": "Эти файлы подписаны, но подпись не проходит проверку. Возможно, они были изменены после подписания.",
+  "{n} items that need expert judgment (Windows folders, services, shared settings or uncertain matches) were left alone. Advanced mode shows them.": "{n} элементов, требующих экспертной оценки (папки Windows, службы, общие настройки или сомнительные совпадения), оставлены без изменений. Расширенный режим показывает их.",
+  "Needed by Windows, your security software or your hardware. Advanced mode can change it.": "Нужно Windows, защитной программе или оборудованию. Изменить можно в расширенном режиме.",
+  "Simple mode always backs up before removing and asks before deleting. Options that could harm Windows or slow your PC are only in Advanced mode.": "Простой режим всегда создаёт резервную копию перед удалением и спрашивает подтверждение. Параметры, которые могут повредить Windows или замедлить ПК, доступны только в расширенном режиме."
 }

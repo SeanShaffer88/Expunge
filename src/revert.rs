@@ -699,6 +699,17 @@ impl Risk {
 }
 
 /// Classify a plan item for beginners.
+/// Remove what Simple mode should not offer: items marked Careful (services,
+/// scheduled tasks, Windows folders, shared registry areas) and uncertain
+/// matches (items carrying a note, such as name-only matches). Returns how
+/// many were removed.
+pub fn simplify(plan: &mut Plan) -> usize {
+    let before = plan.items.len();
+    plan.items
+        .retain(|i| i.note.is_empty() && risk(i) != Risk::Careful);
+    before - plan.items.len()
+}
+
 pub fn risk(item: &PlanItem) -> Risk {
     let sysroot = fold(&expand_env("%SystemRoot%"));
     let in_windows = |p: &str| !sysroot.contains('%') && fold(p).starts_with(&sysroot);
@@ -811,6 +822,45 @@ mod tests {
     use crate::platform::MemRegistry;
     use crate::settings::{FileRoot, Settings};
     use crate::snapshot::{diff, take_snapshot, Progress};
+
+    #[test]
+    fn simplify_drops_careful_and_uncertain_items() {
+        let item = |action, note: &str| PlanItem {
+            action,
+            selected: true,
+            exists: true,
+            note: note.into(),
+        };
+        let mut plan = Plan::default();
+        plan.items = vec![
+            item(
+                Action::DeleteKey {
+                    path: "HKCU\\Software\\Contoso".into(),
+                },
+                "",
+            ),
+            item(
+                Action::DeleteKey {
+                    path: "HKLM\\SOFTWARE\\Classes\\.foo".into(),
+                },
+                "",
+            ),
+            item(
+                Action::StopDeleteService {
+                    name: "ContosoSvc".into(),
+                },
+                "",
+            ),
+            item(
+                Action::DeleteTree {
+                    path: "C:\\ProgramData\\Contoso".into(),
+                },
+                "Name match",
+            ),
+        ];
+        assert_eq!(simplify(&mut plan), 3);
+        assert_eq!(plan.items.len(), 1);
+    }
 
     #[test]
     fn full_install_then_revert_restores_system() {

@@ -85,6 +85,46 @@ fn target_missing(command: &str) -> bool {
     !p.exists()
 }
 
+/// Startup entries that keep Windows, security software or hardware working
+/// (Windows Security, audio, touchpad, storage drivers, anti-virus).
+/// Simple mode does not let these be disabled or deleted.
+pub fn is_essential(e: &StartupEntry) -> bool {
+    let cmd = fold(&expand_env(&e.command));
+    let sysroot = fold(&expand_env("%SystemRoot%"));
+    if !sysroot.contains('%') && cmd.trim_start_matches('"').starts_with(&sysroot) {
+        return true;
+    }
+    let hay = format!("{} {}", fold(&e.name), cmd);
+    const KNOWN: &[&str] = &[
+        "securityhealth",
+        "windows defender",
+        "windowsdefender",
+        "msmpeng",
+        "rtkaud",
+        "rthdvcpl",
+        "realtek",
+        "maxxaudio",
+        "nahimic",
+        "syntp",
+        "synaptics",
+        "etdctrl",
+        "igfx",
+        "iastor",
+        "intel rst",
+        "bthtray",
+        "bluetooth",
+        "\\avast",
+        "\\avg\\",
+        "norton",
+        "mcafee",
+        "kaspersky",
+        "bitdefender",
+        "\\eset\\",
+        "malwarebytes",
+    ];
+    KNOWN.iter().any(|k| hay.contains(k))
+}
+
 pub fn startup_folders() -> Vec<(String, String, bool)> {
     vec![
         (
@@ -427,6 +467,37 @@ pub fn delete_task(task: &TaskEntry, backup: Option<&mut BackupWriter>) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn essential_entries() {
+        let e = |name: &str, command: &str| StartupEntry {
+            name: name.into(),
+            command: command.into(),
+            location: String::new(),
+            source: StartupSource::Registry { key: String::new() },
+            enabled: true,
+            approved: None,
+            all_users: true,
+            missing: false,
+        };
+        assert!(is_essential(&e(
+            "SecurityHealth",
+            "%windir%\\system32\\SecurityHealthSystray.exe"
+        )));
+        assert!(is_essential(&e(
+            "RtkAudUService",
+            "\"C:\\Program Files\\Realtek\\Audio\\RtkAudUService64.exe\""
+        )));
+        assert!(is_essential(&e(
+            "ESET",
+            "\"C:\\Program Files\\ESET\\ESET Security\\ecmds.exe\""
+        )));
+        assert!(!is_essential(&e(
+            "Spotify",
+            "\"C:\\Users\\a\\AppData\\Roaming\\Spotify\\Spotify.exe\" /background"
+        )));
+        assert!(!is_essential(&e("Reset helper", "C:\\Tools\\reset.exe")));
+    }
     use crate::model::KeyData;
     use crate::platform::MemRegistry;
 

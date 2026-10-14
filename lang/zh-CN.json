@@ -523,5 +523,8 @@
   "Executables are not digitally signed": "可执行文件没有数字签名",
   "Unsigned programs trigger SmartScreen warnings and can't be traced to their publisher. Sign them with a code-signing certificate.": "未签名的程序会触发 SmartScreen 警告，并且无法追溯到发布者。请使用代码签名证书为其签名。",
   "Executables have a broken signature": "可执行文件的签名已损坏",
-  "These files are signed, but the signature does not verify. They may have been modified after signing.": "这些文件已签名，但签名验证失败。它们可能在签名后被修改过。"
+  "These files are signed, but the signature does not verify. They may have been modified after signing.": "这些文件已签名，但签名验证失败。它们可能在签名后被修改过。",
+  "{n} items that need expert judgment (Windows folders, services, shared settings or uncertain matches) were left alone. Advanced mode shows them.": "有 {n} 个需要专业判断的项目（Windows 文件夹、服务、共享设置或不确定的匹配）未做处理。高级模式中可以看到它们。",
+  "Needed by Windows, your security software or your hardware. Advanced mode can change it.": "Windows、安全软件或硬件需要此项。可在高级模式中更改。",
+  "Simple mode always backs up before removing and asks before deleting. Options that could harm Windows or slow your PC are only in Advanced mode.": "简单模式在删除前总会先备份，并在删除前询问。可能损坏 Windows 或拖慢电脑的选项仅在高级模式中提供。"
 }

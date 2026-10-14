@@ -384,7 +384,7 @@ impl App {
                         tf("Leftovers: {name}", &[("name", name.clone())]),
                         plan.clone(),
                         true,
-                        self.settings.remove_unlogged_files,
+                        self.settings.remove_unlogged_enabled(),
                     );
                     flow.names = vec![name.clone()];
                     if let Some(id) = &self.lab.log_id {

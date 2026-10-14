@@ -64,7 +64,7 @@ impl App {
             Option<&mut BackupWriter>,
         ) -> anyhow::Result<()>,
     ) {
-        let mut w = if self.settings.backup_before_removal {
+        let mut w = if self.settings.backup_enabled() {
             BackupWriter::new(&self.store.backups_dir(), title).ok()
         } else {
             None
@@ -161,6 +161,7 @@ impl App {
                     || e.command.to_lowercase().contains(&f)
             })
             .collect();
+        let advanced = self.settings.advanced_mode;
         let mut toggle: Option<(usize, bool)> = None;
         let mut delete: Option<usize> = None;
         TableBuilder::new(ui)
@@ -187,10 +188,16 @@ impl App {
                 body.rows(26.0, rows.len(), |mut row| {
                     let i = rows[row.index()];
                     let e = &self.startup.entries[i];
+                    let locked = !advanced && startup::is_essential(e);
                     row.col(|ui| {
                         let mut on = e.enabled;
-                        let resp =
-                            ui.add_enabled(e.approved.is_some(), egui::Checkbox::new(&mut on, ""));
+                        let resp = ui
+                            .add_enabled(e.approved.is_some() && !locked, egui::Checkbox::new(&mut on, ""))
+                            .on_disabled_hover_text(if locked {
+                                t("Needed by Windows, your security software or your hardware. Advanced mode can change it.")
+                            } else {
+                                String::new()
+                            });
                         if resp.changed() {
                             toggle = Some((i, on));
                         }
@@ -219,7 +226,8 @@ impl App {
                         });
                     });
                     row.col(|ui| {
-                        if ui.small_button(t("Delete")).clicked() {
+                        // Simple mode only deletes broken entries; others can be disabled instead.
+                        if (advanced || (e.missing && !locked)) && ui.small_button(t("Delete")).clicked() {
                             delete = Some(i);
                         }
                     });

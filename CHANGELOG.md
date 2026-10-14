@@ -10,6 +10,7 @@ All notable changes to Expunge are documented here. The format follows
 - **Install with Expunge** in the right-click menu of `.exe` and `.msi` files: installs under monitoring in one step. Added for all users by Setup, or per user from Settings (portable). Relaunching as administrator keeps the installer.
 - Program icons in the program list and details.
 - **Program trust info**: each program's digital signature is verified offline (Authenticode). Shows who signed it, flags unsigned programs (new "Unsigned" filter) and broken signatures, and warns before uninstalling a program whose signature fails.
+- **Simple mode only offers safe options.** Hidden until you switch to Advanced mode: the Windows Updates remover, forced removal, system components, cleaner items that slow the PC while caches rebuild (shader, thumbnail, browser and Windows Update caches), deleting startup entries (broken ones excepted), and the switches that turn off backups and confirmations. Startup entries that Windows, security software or hardware need can't be disabled. Removal lists leave out items marked Careful and uncertain matches.
 - Installer lint flags unsigned or broken-signature executables (EXP030, EXP031).
 - CLI: `expunge verify <file>` and `expunge programs --trust`.
 

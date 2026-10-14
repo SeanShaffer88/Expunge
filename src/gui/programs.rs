@@ -168,7 +168,7 @@ pub fn log_for<'a>(logs: &'a [InstallLog], p: &InstalledProgram) -> Option<&'a I
 impl App {
     pub fn refresh_programs(&mut self, ctx: &egui::Context) {
         let reg = self.reg.clone();
-        let hidden = self.settings.show_system_components;
+        let hidden = self.settings.system_components_shown();
         self.programs.job = Some(Job::spawn(ctx, move |_| {
             let list = programs::list_programs(reg.as_ref(), hidden);
             let broken = list
@@ -745,6 +745,7 @@ impl App {
         });
         ui.horizontal_wrapped(|ui| {
             if p.source != Source::Store
+                && self.settings.advanced_mode
                 && ui
                     .button(t("Forced removal"))
                     .on_hover_text(t("Skip the program's own uninstaller and remove everything Expunge can find."))
@@ -874,7 +875,7 @@ impl App {
                 tf("Leftovers: {name}", &[("name", name)]),
                 plan,
                 offer,
-                self.settings.remove_unlogged_files,
+                self.settings.remove_unlogged_enabled(),
             );
             flow.logs_to_delete = logs;
             flow.names = names.clone();
