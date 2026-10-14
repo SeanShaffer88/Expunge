@@ -698,18 +698,19 @@ impl Risk {
     }
 }
 
-/// Classify a plan item for beginners.
 /// Remove what Simple mode should not offer: items marked Careful (services,
 /// scheduled tasks, Windows folders, shared registry areas) and uncertain
-/// matches (items carrying a note, such as name-only matches). Returns how
-/// many were removed.
+/// matches the scanner itself left unticked (for example a name-only match
+/// when an install log already covers the program, or protected locations).
+/// Returns how many were removed.
 pub fn simplify(plan: &mut Plan) -> usize {
     let before = plan.items.len();
     plan.items
-        .retain(|i| i.note.is_empty() && risk(i) != Risk::Careful);
+        .retain(|i| i.selected && risk(i) != Risk::Careful);
     before - plan.items.len()
 }
 
+/// Classify a plan item for beginners.
 pub fn risk(item: &PlanItem) -> Risk {
     let sysroot = fold(&expand_env("%SystemRoot%"));
     let in_windows = |p: &str| !sysroot.contains('%') && fold(p).starts_with(&sysroot);
@@ -827,7 +828,8 @@ mod tests {
     fn simplify_drops_careful_and_uncertain_items() {
         let item = |action, note: &str| PlanItem {
             action,
-            selected: true,
+            // Uncertain matches are left unticked by the scanners.
+            selected: note != "Name match",
             exists: true,
             note: note.into(),
         };
@@ -857,9 +859,16 @@ mod tests {
                 },
                 "Name match",
             ),
+            // A labelled, ticked leftover (the normal case) stays visible.
+            item(
+                Action::DeleteFile {
+                    path: "C:\\Users\\a\\Desktop\\Contoso.lnk".into(),
+                },
+                "Shortcut",
+            ),
         ];
         assert_eq!(simplify(&mut plan), 3);
-        assert_eq!(plan.items.len(), 1);
+        assert_eq!(plan.items.len(), 2);
     }
 
     #[test]

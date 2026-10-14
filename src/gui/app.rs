@@ -65,6 +65,8 @@ pub struct App {
     pub backups: backups::BackupsState,
     /// A file operation (deleting a backup) running in the background.
     pub file_job: Option<Job<Result<(), String>>>,
+    /// System-wide scan for registrations left by removed programs.
+    pub orphan_job: Option<Job<expunge_core::revert::Plan>>,
     pub startup: startup_tab::StartupState,
     pub cleaner: cleaner::CleanerState,
     pub settings_ui: settings_tab::SettingsState,
@@ -133,6 +135,7 @@ impl App {
             logs: Default::default(),
             backups: Default::default(),
             file_job: None,
+            orphan_job: None,
             startup: Default::default(),
             cleaner: Default::default(),
             settings_ui: Default::default(),
@@ -186,6 +189,40 @@ impl App {
         self.backups
             .loader
             .request(&self.ctx, move || expunge_core::backup::list_backups(&dir));
+    }
+
+    /// Start the system-wide orphan scan.
+    pub fn scan_orphans(&mut self) {
+        if self.orphan_job.is_some() {
+            return;
+        }
+        let reg = self.reg.clone();
+        self.set_status(t("Looking for leftovers of removed programs…"));
+        self.orphan_job = Some(Job::spawn(&self.ctx, move |_| {
+            expunge_core::orphans::scan_system(reg.as_ref())
+        }));
+    }
+
+    fn poll_orphans(&mut self) {
+        let Some(plan) = self.orphan_job.as_ref().and_then(|j| j.poll()) else {
+            return;
+        };
+        self.orphan_job = None;
+        if plan.items.is_empty() {
+            self.set_status(t("No leftovers of removed programs found."));
+            return;
+        }
+        let n = plan.items.len();
+        self.set_status(tf(
+            "Found {n} leftovers of removed programs.",
+            &[("n", n.to_string())],
+        ));
+        let mut flow =
+            super::plan::RemovalFlow::new(t("Leftovers of removed programs"), plan, false, false);
+        flow.plan.info.push(t(
+            "These registrations point to files or folders that no longer exist. Windows' own entries are never included.",
+        ));
+        self.open_removal(flow);
     }
 
     fn poll_lists(&mut self) {
@@ -296,6 +333,14 @@ impl App {
                         if ui.button(t("Junk cleaner")).clicked() {
                             ui.close();
                             self.tab = Tab::Cleaner;
+                        }
+                        if self.settings.advanced_mode
+                            && ui
+                                .button(t("Find leftovers of removed programs…"))
+                                .clicked()
+                        {
+                            ui.close();
+                            self.scan_orphans();
                         }
                         if ui.button(t("Create restore point")).clicked() {
                             ui.close();
@@ -705,6 +750,7 @@ impl App {
 
     fn poll_jobs(&mut self, ctx: &egui::Context) {
         self.poll_lists();
+        self.poll_orphans();
         self.poll_programs(ctx);
         self.poll_monitor(ctx);
         self.poll_startup();

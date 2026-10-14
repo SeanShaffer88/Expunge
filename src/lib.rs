@@ -16,6 +16,7 @@ pub mod leftovers;
 pub mod lint;
 pub mod model;
 pub mod noise;
+pub mod orphans;
 pub mod platform;
 pub mod programs;
 pub mod report;

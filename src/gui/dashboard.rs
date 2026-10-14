@@ -135,6 +135,19 @@ impl App {
                 if action_row(ui, "✨", "Clean junk files", "Temporary files, caches and crash dumps") {
                     self.tab = Tab::Cleaner;
                 }
+                if self.settings.advanced_mode {
+                    ui.add_space(6.0);
+                    if self.orphan_job.is_some() {
+                        job_progress(ui, &t("Looking for leftovers of removed programs…"), 0);
+                    } else if action_row(
+                        ui,
+                        "🧹",
+                        "Find leftovers of removed programs",
+                        "Registrations, file types, PATH entries, firewall rules and tasks pointing to files that are gone",
+                    ) {
+                        self.scan_orphans();
+                    }
+                }
                 ui.add_space(6.0);
                 if self.settings.advanced_mode && action_row(ui, "🔁", "Manage Windows updates", "See installed updates and remove one that causes problems") {
                     self.updates.open(ctx);

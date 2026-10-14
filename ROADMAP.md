@@ -7,7 +7,6 @@ listed in the [README](README.md#features).
 ## Next
 
 **Uninstaller**
-- **Deeper leftover scan** — also finds empty folders left behind, dangling COM registrations (CLSIDs and type libraries pointing to deleted files), environment variables and `PATH` entries pointing to missing folders, orphaned file associations and context-menu handlers, and firewall rules for deleted programs.
 - **One list for everything** — besides desktop programs and Store apps: **winget** packages (with available updates, upgraded in place), **optional Windows features** (turn on/off), and **App Execution Aliases**.
 
 **Cleaner**

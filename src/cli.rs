@@ -46,6 +46,8 @@ USAGE:
                                             (default 60) and list what changed
                                             on its own; --apply adds it to the
                                             exclusions
+  expunge orphans [--json]                  List registrations left by removed
+                                            programs (pointing to missing files)
   expunge backups                           List backups
   expunge restore <backup-id>               Undo a removal from its backup
   expunge --version | --help
@@ -243,6 +245,35 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                     human_size(st.bytes_added)
                 );
             }
+        }
+        "orphans" => {
+            let plan = expunge_core::orphans::scan_system(reg.as_ref());
+            if has(&args, "--json") {
+                let items: Vec<_> = plan
+                    .items
+                    .iter()
+                    .map(|i| {
+                        serde_json::json!({
+                            "category": i.action.category(),
+                            "kind": i.note,
+                            "action": i.action.describe(),
+                            "risk": format!("{:?}", expunge_core::revert::risk(i)),
+                        })
+                    })
+                    .collect();
+                println!("{}", serde_json::Value::Array(items));
+            } else if plan.items.is_empty() {
+                println!("No leftovers of removed programs found.");
+            } else {
+                for i in &plan.items {
+                    println!("[{}] {}", i.note, i.action.describe());
+                }
+                eprintln!(
+                    "{} items. Remove them from the app (Tools → Find leftovers of removed programs), where everything is backed up first.",
+                    plan.items.len()
+                );
+            }
+            return Ok(if plan.items.is_empty() { 0 } else { 2 });
         }
         "learn-noise" => {
             let secs: u64 = arg_value(&args, "--seconds")
