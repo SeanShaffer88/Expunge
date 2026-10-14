@@ -14,14 +14,24 @@ pub fn new_id() -> String {
     use std::sync::atomic::{AtomicU32, Ordering};
     static COUNTER: AtomicU32 = AtomicU32::new(0);
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    format!("{}-{:03}", chrono::Local::now().format("%Y%m%d-%H%M%S"), n % 1000)
+    format!(
+        "{}-{:03}",
+        chrono::Local::now().format("%Y%m%d-%H%M%S"),
+        n % 1000
+    )
 }
 
 /// Make a string safe to use as a file name.
 pub fn safe_file_name(s: &str) -> String {
     let cleaned: String = s
         .chars()
-        .map(|c| if c.is_alphanumeric() || " -_.()".contains(c) { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || " -_.()".contains(c) {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     let t = cleaned.trim().trim_matches('.').to_string();
     if t.is_empty() {
@@ -164,7 +174,10 @@ pub fn protected_dirs() -> Vec<String> {
     .map(|s| {
         // Resolve a trailing `\..` lexically (the Users folder).
         match s.strip_suffix("\\..") {
-            Some(base) => base.rsplit_once('\\').map(|(p, _)| p.to_string()).unwrap_or_default(),
+            Some(base) => base
+                .rsplit_once('\\')
+                .map(|(p, _)| p.to_string())
+                .unwrap_or_default(),
             None => s,
         }
     })
@@ -179,7 +192,11 @@ pub fn protected_dirs() -> Vec<String> {
 pub fn is_protected_dir(path: &str, protected: &[String]) -> bool {
     let p = norm_file(path);
     // Drive roots and anything with no real depth.
-    let depth = p.trim_end_matches('\\').split('\\').filter(|s| !s.is_empty()).count();
+    let depth = p
+        .trim_end_matches('\\')
+        .split('\\')
+        .filter(|s| !s.is_empty())
+        .count();
     if depth <= 1 {
         return true;
     }
@@ -244,7 +261,11 @@ pub fn is_protected_key(path: &str) -> bool {
     // Treat the 32-bit view the same as the 64-bit one.
     let rest = rest.replace("software\\wow6432node\\", "software\\");
     // HKCR is a merged view of Software\Classes.
-    let rest = if hive == "hkcr" { format!("software\\classes\\{rest}") } else { rest };
+    let rest = if hive == "hkcr" {
+        format!("software\\classes\\{rest}")
+    } else {
+        rest
+    };
     PROTECTED_KEY_SUFFIXES.contains(&rest.as_str())
 }
 
@@ -256,7 +277,10 @@ mod tests {
     fn split_commands() {
         assert_eq!(
             split_command_line("\"C:\\Program Files\\A\\unins000.exe\" /SILENT"),
-            ("C:\\Program Files\\A\\unins000.exe".into(), "/SILENT".into())
+            (
+                "C:\\Program Files\\A\\unins000.exe".into(),
+                "/SILENT".into()
+            )
         );
         assert_eq!(
             split_command_line("C:\\Program Files\\A B\\uninst.exe /x"),
@@ -266,28 +290,44 @@ mod tests {
             split_command_line("MsiExec.exe /X{1234}"),
             ("MsiExec.exe".into(), "/X{1234}".into())
         );
-        assert_eq!(split_command_line("C:\\a\\b.exe"), ("C:\\a\\b.exe".into(), "".into()));
+        assert_eq!(
+            split_command_line("C:\\a\\b.exe"),
+            ("C:\\a\\b.exe".into(), "".into())
+        );
     }
 
     #[test]
     fn globs() {
-        assert!(glob_match("HKLM\\SOFTWARE\\Microsoft\\*", "hklm\\software\\microsoft\\x\\y"));
+        assert!(glob_match(
+            "HKLM\\SOFTWARE\\Microsoft\\*",
+            "hklm\\software\\microsoft\\x\\y"
+        ));
         assert!(glob_match("*.etl", "C:\\a\\b.ETL"));
         assert!(glob_match("a?c", "abc"));
         assert!(!glob_match("a?c", "abbc"));
-        assert!(is_excluded("HKCU\\Software\\X\\Bags\\1", &["HKCU\\Software\\X\\Bags".into()]));
-        assert!(!is_excluded("HKCU\\Software\\X\\BagsMore", &["HKCU\\Software\\X\\Bags".into()]));
+        assert!(is_excluded(
+            "HKCU\\Software\\X\\Bags\\1",
+            &["HKCU\\Software\\X\\Bags".into()]
+        ));
+        assert!(!is_excluded(
+            "HKCU\\Software\\X\\BagsMore",
+            &["HKCU\\Software\\X\\Bags".into()]
+        ));
     }
 
     #[test]
     fn protected_keys() {
         assert!(is_protected_key("HKLM"));
         assert!(is_protected_key("HKLM\\SOFTWARE"));
-        assert!(is_protected_key("HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Run"));
+        assert!(is_protected_key(
+            "HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Run"
+        ));
         assert!(is_protected_key("HKCR\\CLSID"));
         assert!(is_protected_key("HKU\\S-1-5-21-1\\Software"));
         assert!(!is_protected_key("HKLM\\SOFTWARE\\Vendor\\App"));
-        assert!(!is_protected_key("HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\App"));
+        assert!(!is_protected_key(
+            "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\App"
+        ));
     }
 
     #[test]

@@ -1,0 +1,22 @@
+name: Bug report
+description: Something doesn't work as expected
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes: { label: Expunge version, description: "Help → About Expunge" }
+    validations: { required: true }
+  - type: input
+    id: windows
+    attributes: { label: Windows version, placeholder: "Windows 11 24H2" }
+    validations: { required: true }
+  - type: dropdown
+    id: mode
+    attributes: { label: How is Expunge installed?, options: [Installer, Portable, Built from source] }
+  - type: textarea
+    id: what
+    attributes: { label: What happened?, description: "Steps to reproduce, what you expected, what you got." }
+    validations: { required: true }
+  - type: textarea
+    id: report
+    attributes: { label: Results report, description: "If an operation failed, paste the output of \"Copy report\".", render: text }

@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test & build (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Unit tests
+        run: cargo test --lib --locked
+      - name: Clippy
+        run: cargo clippy --all-targets --locked
+      - name: Release build
+        run: cargo build --release --locked
+      - name: Smoke test the CLI
+        shell: pwsh
+        run: |
+          ./target/release/expunge.exe --version
+          ./target/release/expunge.exe programs | Select-Object -First 5
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Expunge-dev
+          path: target/release/expunge.exe
+
+  core-linux:
+    name: Core tests (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --lib --locked

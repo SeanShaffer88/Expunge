@@ -5,9 +5,18 @@ use crate::platform::Registry;
 use serde::{Deserialize, Serialize};
 
 pub const UNINSTALL_ROOTS: [(&str, Source); 3] = [
-    ("HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall", Source::Machine64),
-    ("HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall", Source::Machine32),
-    ("HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall", Source::User),
+    (
+        "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+        Source::Machine64,
+    ),
+    (
+        "HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+        Source::Machine32,
+    ),
+    (
+        "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+        Source::User,
+    ),
 ];
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -59,7 +68,8 @@ impl InstalledProgram {
         let name = k.get_string("DisplayName")?;
         let key_leaf = crate::platform::leaf_name(&k.path).to_string();
         let uninstall = k.get_string("UninstallString").unwrap_or_default();
-        let is_msi = k.get_u32("WindowsInstaller") == Some(1) || uninstall.to_lowercase().contains("msiexec");
+        let is_msi = k.get_u32("WindowsInstaller") == Some(1)
+            || uninstall.to_lowercase().contains("msiexec");
         let product_code = if key_leaf.starts_with('{') && key_leaf.ends_with('}') {
             key_leaf.clone()
         } else {
@@ -69,7 +79,11 @@ impl InstalledProgram {
         Some(InstalledProgram {
             key: k.path.clone(),
             name: name.trim().to_string(),
-            publisher: k.get_string("Publisher").unwrap_or_default().trim().to_string(),
+            publisher: k
+                .get_string("Publisher")
+                .unwrap_or_default()
+                .trim()
+                .to_string(),
             version: k.get_string("DisplayVersion").unwrap_or_default(),
             install_date: format_install_date(&raw_date),
             install_location: k
@@ -101,9 +115,12 @@ impl InstalledProgram {
     pub fn is_hidden(&self, k: &KeyData) -> bool {
         self.system_component
             || k.get_string("ParentKeyName").is_some()
-            || k
-                .get_string("ReleaseType")
-                .is_some_and(|r| matches!(r.to_lowercase().as_str(), "update" | "hotfix" | "security update"))
+            || k.get_string("ReleaseType").is_some_and(|r| {
+                matches!(
+                    r.to_lowercase().as_str(),
+                    "update" | "hotfix" | "security update"
+                )
+            })
     }
 
     /// Command line that removes the program.
@@ -125,9 +142,47 @@ impl InstalledProgram {
         }
     }
 
+    /// The entry points at an uninstaller or folder that no longer exists.
+    pub fn is_broken(&self) -> bool {
+        if self.source == Source::Store {
+            return false;
+        }
+        if !self.install_location.is_empty()
+            && !std::path::Path::new(&self.install_location).exists()
+        {
+            return true;
+        }
+        if self.is_msi {
+            return false;
+        }
+        let cmd = crate::platform::expand_env(&self.uninstall_string);
+        if cmd.trim().is_empty() {
+            return !self.no_remove;
+        }
+        let (prog, _) = crate::util::split_command_line(&cmd);
+        let p = std::path::Path::new(&prog);
+        let lower = prog.to_lowercase();
+        let system_tool = ["rundll32", "msiexec", "cmd.exe", "powershell"]
+            .iter()
+            .any(|t| lower.contains(t));
+        p.is_absolute() && !system_tool && !p.exists()
+    }
+
     pub fn has_quiet_uninstall(&self) -> bool {
         !self.quiet_uninstall_string.is_empty() || (self.is_msi && !self.product_code.is_empty())
     }
+}
+
+/// Total size of the files under a folder, in bytes.
+pub fn dir_size(path: &str) -> u64 {
+    walkdir::WalkDir::new(path)
+        .follow_links(false)
+        .into_iter()
+        .flatten()
+        .filter(|e| e.file_type().is_file())
+        .filter_map(|e| e.metadata().ok())
+        .map(|m| m.len())
+        .sum()
 }
 
 pub fn extract_guid(s: &str) -> Option<String> {
@@ -153,8 +208,12 @@ pub fn list_programs(reg: &dyn Registry, include_hidden: bool) -> Vec<InstalledP
     for (root, source) in UNINSTALL_ROOTS {
         for sub in reg.subkeys(root) {
             let path = format!("{root}\\{sub}");
-            let Some(k) = reg.read_key(&path) else { continue };
-            let Some(p) = InstalledProgram::from_key(&k, source) else { continue };
+            let Some(k) = reg.read_key(&path) else {
+                continue;
+            };
+            let Some(p) = InstalledProgram::from_key(&k, source) else {
+                continue;
+            };
             if !include_hidden && p.is_hidden(&k) {
                 continue;
             }
@@ -179,7 +238,14 @@ pub fn list_store_apps() -> Vec<InstalledProgram> {
                       | ConvertTo-Json -Compress";
         let Ok((_, out)) = crate::platform::run_hidden(
             "powershell.exe",
-            &["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script],
+            &[
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                script,
+            ],
         ) else {
             return Vec::new();
         };
@@ -201,7 +267,9 @@ pub fn parse_store_json(json: &str) -> Vec<InstalledProgram> {
         o @ serde_json::Value::Object(_) => vec![o],
         _ => return Vec::new(),
     };
-    let s = |o: &serde_json::Value, k: &str| o.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string();
+    let s = |o: &serde_json::Value, k: &str| {
+        o.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string()
+    };
     let mut out: Vec<InstalledProgram> = items
         .iter()
         .map(|o| {
@@ -227,10 +295,18 @@ pub fn parse_store_json(json: &str) -> Vec<InstalledProgram> {
 }
 
 pub fn remove_store_app(full_name: &str) -> anyhow::Result<String> {
-    let safe: String = full_name.chars().filter(|c| c.is_alphanumeric() || "._-~".contains(*c)).collect();
+    let safe: String = full_name
+        .chars()
+        .filter(|c| c.is_alphanumeric() || "._-~".contains(*c))
+        .collect();
     let (code, out) = crate::platform::run_hidden(
         "powershell.exe",
-        &["-NoProfile", "-NonInteractive", "-Command", &format!("Remove-AppxPackage -Package '{safe}'")],
+        &[
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            &format!("Remove-AppxPackage -Package '{safe}'"),
+        ],
     )?;
     if code == 0 {
         Ok("removed".into())
@@ -242,7 +318,8 @@ pub fn remove_store_app(full_name: &str) -> anyhow::Result<String> {
 /// Export the program list as CSV.
 pub fn to_csv(programs: &[InstalledProgram]) -> String {
     let esc = |s: &str| format!("\"{}\"", s.replace('"', "\"\""));
-    let mut out = String::from("Name,Publisher,Version,Installed,Size KB,Type,Location,Uninstall\r\n");
+    let mut out =
+        String::from("Name,Publisher,Version,Installed,Size KB,Type,Location,Uninstall\r\n");
     for p in programs {
         out.push_str(&format!(
             "{},{},{},{},{},{},{},{}\r\n",
@@ -272,7 +349,10 @@ mod tests {
         reg.put(
             KeyData::new(&format!("{root}\\Foo"))
                 .with(RegValue::string("DisplayName", "Foo"))
-                .with(RegValue::string("UninstallString", "\"C:\\Foo\\unins000.exe\""))
+                .with(RegValue::string(
+                    "UninstallString",
+                    "\"C:\\Foo\\unins000.exe\"",
+                ))
                 .with(RegValue::string("InstallDate", "20260102"))
                 .with(RegValue::dword("EstimatedSize", 2048)),
         );
@@ -280,7 +360,10 @@ mod tests {
             KeyData::new(&format!("{root}\\{{12345678-1234-1234-1234-123456789012}}"))
                 .with(RegValue::string("DisplayName", "Bar MSI"))
                 .with(RegValue::dword("WindowsInstaller", 1))
-                .with(RegValue::string("UninstallString", "MsiExec.exe /I{12345678-1234-1234-1234-123456789012}")),
+                .with(RegValue::string(
+                    "UninstallString",
+                    "MsiExec.exe /I{12345678-1234-1234-1234-123456789012}",
+                )),
         );
         reg.put(
             KeyData::new(&format!("{root}\\Hidden"))
@@ -292,7 +375,10 @@ mod tests {
         let list = list_programs(&reg, false);
         assert_eq!(list.len(), 2);
         let msi = list.iter().find(|p| p.name == "Bar MSI").unwrap();
-        assert_eq!(msi.uninstall_command(false).unwrap(), "MsiExec.exe /X{12345678-1234-1234-1234-123456789012}");
+        assert_eq!(
+            msi.uninstall_command(false).unwrap(),
+            "MsiExec.exe /X{12345678-1234-1234-1234-123456789012}"
+        );
         assert!(msi.has_quiet_uninstall());
         let foo = list.iter().find(|p| p.name == "Foo").unwrap();
         assert_eq!(foo.install_date, "2026-01-02");

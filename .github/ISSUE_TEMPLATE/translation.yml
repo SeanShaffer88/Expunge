@@ -1,0 +1,12 @@
+name: Translation
+description: Report a translation problem or offer a new language
+labels: [translation]
+body:
+  - type: input
+    id: lang
+    attributes: { label: Language }
+    validations: { required: true }
+  - type: textarea
+    id: details
+    attributes: { label: Details, description: "Wrong wording, missing strings, or attach a lang/<code>.json file." }
+    validations: { required: true }

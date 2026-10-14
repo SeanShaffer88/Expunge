@@ -10,7 +10,9 @@ use winreg::enums::*;
 use winreg::RegKey;
 
 use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, HANDLE, WAIT_OBJECT_0};
-use windows_sys::Win32::Security::{GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY};
+use windows_sys::Win32::Security::{
+    GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY,
+};
 use windows_sys::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_DELAY_UNTIL_REBOOT};
 use windows_sys::Win32::System::Registry::RegSetValueExW;
 use windows_sys::Win32::System::Threading::{
@@ -25,7 +27,10 @@ use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 const ERROR_ELEVATION_REQUIRED: u32 = 740;
 
 pub fn wide(s: &str) -> Vec<u16> {
-    OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
+    OsStr::new(s)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect()
 }
 
 fn hive(short: &str) -> RegKey {
@@ -61,7 +66,11 @@ impl Registry for WinRegistry {
         let key = open(path, KEY_QUERY_VALUE).ok()?;
         let mut kd = KeyData::new(path);
         for (name, v) in key.enum_values().flatten() {
-            let rv = RegValue { name: name.clone(), kind: v.vtype.clone() as u32, data: v.bytes.to_vec() };
+            let rv = RegValue {
+                name: name.clone(),
+                kind: v.vtype.clone() as u32,
+                data: v.bytes.to_vec(),
+            };
             kd.values.insert(fold(&name), rv);
         }
         Some(kd)
@@ -101,14 +110,19 @@ impl Registry for WinRegistry {
             )
         };
         if rc != 0 {
-            return Err(anyhow!("RegSetValueEx {key}\\{} failed: {}", value.name, std::io::Error::from_raw_os_error(rc as i32)));
+            return Err(anyhow!(
+                "RegSetValueEx {key}\\{} failed: {}",
+                value.name,
+                std::io::Error::from_raw_os_error(rc as i32)
+            ));
         }
         Ok(())
     }
 
     fn delete_value(&self, key: &str, name: &str) -> Result<()> {
         let k = open(key, KEY_SET_VALUE).with_context(|| format!("open {key}"))?;
-        k.delete_value(name).with_context(|| format!("delete value {key}\\{name}"))?;
+        k.delete_value(name)
+            .with_context(|| format!("delete value {key}\\{name}"))?;
         Ok(())
     }
 
@@ -122,7 +136,8 @@ impl Registry for WinRegistry {
             None => (h.to_string(), rest.to_string()),
         };
         let pk = open(&parent, KEY_ALL_ACCESS).with_context(|| format!("open {parent}"))?;
-        pk.delete_subkey_all(&leaf).with_context(|| format!("delete {path}"))?;
+        pk.delete_subkey_all(&leaf)
+            .with_context(|| format!("delete {path}"))?;
         Ok(())
     }
 }
@@ -131,7 +146,10 @@ pub fn delete_on_reboot(path: &Path) -> Result<()> {
     let p = wide(&path.to_string_lossy());
     let ok = unsafe { MoveFileExW(p.as_ptr(), std::ptr::null(), MOVEFILE_DELAY_UNTIL_REBOOT) };
     if ok == 0 {
-        return Err(anyhow!("MoveFileEx failed: {}", std::io::Error::last_os_error()));
+        return Err(anyhow!(
+            "MoveFileEx failed: {}",
+            std::io::Error::last_os_error()
+        ));
     }
     Ok(())
 }
@@ -220,14 +238,19 @@ pub fn spawn_command_line(cmdline: &str) -> Result<ChildProcess> {
         );
         if ok != 0 {
             CloseHandle(pi.hThread);
-            return Ok(ChildProcess { handle: pi.hProcess });
+            return Ok(ChildProcess {
+                handle: pi.hProcess,
+            });
         }
         let err = GetLastError();
         if err == ERROR_ELEVATION_REQUIRED {
             let (prog, args) = crate::util::split_command_line(cmdline);
             return shell_execute_wait(&prog, &args, true);
         }
-        Err(anyhow!("could not start `{cmdline}`: {}", std::io::Error::from_raw_os_error(err as i32)))
+        Err(anyhow!(
+            "could not start `{cmdline}`: {}",
+            std::io::Error::from_raw_os_error(err as i32)
+        ))
     }
 }
 
@@ -242,12 +265,21 @@ pub fn shell_execute_wait(file: &str, params: &str, elevate: bool) -> Result<Chi
         info.fMask = SEE_MASK_NOCLOSEPROCESS;
         info.lpVerb = verb.as_ptr();
         info.lpFile = f.as_ptr();
-        info.lpParameters = if params.is_empty() { std::ptr::null() } else { p.as_ptr() };
+        info.lpParameters = if params.is_empty() {
+            std::ptr::null()
+        } else {
+            p.as_ptr()
+        };
         info.nShow = SW_SHOWNORMAL;
         if ShellExecuteExW(&mut info) == 0 {
-            return Err(anyhow!("could not start {file}: {}", std::io::Error::last_os_error()));
+            return Err(anyhow!(
+                "could not start {file}: {}",
+                std::io::Error::last_os_error()
+            ));
         }
-        Ok(ChildProcess { handle: info.hProcess })
+        Ok(ChildProcess {
+            handle: info.hProcess,
+        })
     }
 }
 
@@ -256,13 +288,22 @@ pub fn shell_open(target: &str) {
     let verb = wide("open");
     let t = wide(target);
     unsafe {
-        ShellExecuteW(std::ptr::null_mut(), verb.as_ptr(), t.as_ptr(), std::ptr::null(), std::ptr::null(), SW_SHOWNORMAL);
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            verb.as_ptr(),
+            t.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            SW_SHOWNORMAL,
+        );
     }
 }
 
 /// Restart Expunge elevated. Returns true if the new process launched.
 pub fn relaunch_elevated() -> bool {
-    let exe = std::env::current_exe().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
+    let exe = std::env::current_exe()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
     shell_execute_wait(&exe, "", true).is_ok()
 }
 
@@ -278,8 +319,16 @@ pub fn attach_parent_console() {
 /// Open Registry Editor at the given key.
 pub fn open_in_regedit(path: &str) -> Result<()> {
     let (h, rest) = super::split_hive(path).ok_or_else(|| anyhow!("unknown hive"))?;
-    let long = super::HIVES.iter().find(|(s, _)| *s == h).map(|(_, l)| *l).unwrap_or(h);
-    let target = if rest.is_empty() { format!("Computer\\{long}") } else { format!("Computer\\{long}\\{rest}") };
+    let long = super::HIVES
+        .iter()
+        .find(|(s, _)| *s == h)
+        .map(|(_, l)| *l)
+        .unwrap_or(h);
+    let target = if rest.is_empty() {
+        format!("Computer\\{long}")
+    } else {
+        format!("Computer\\{long}\\{rest}")
+    };
     let applet = RegKey::predef(HKEY_CURRENT_USER)
         .create_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Applets\\Regedit")?
         .0;
@@ -287,4 +336,107 @@ pub fn open_in_regedit(path: &str) -> Result<()> {
     // Regedit is single-instance; /m opens a new window that honours LastKey.
     shell_execute_wait("regedit.exe", "/m", false)?;
     Ok(())
+}
+
+/// (items, bytes) in the Recycle Bin across all drives.
+pub fn recycle_bin_info() -> (u64, u64) {
+    use windows_sys::Win32::UI::Shell::{SHQueryRecycleBinW, SHQUERYRBINFO};
+    unsafe {
+        let mut info: SHQUERYRBINFO = std::mem::zeroed();
+        info.cbSize = std::mem::size_of::<SHQUERYRBINFO>() as u32;
+        if SHQueryRecycleBinW(std::ptr::null(), &mut info) == 0 {
+            (info.i64NumItems.max(0) as u64, info.i64Size.max(0) as u64)
+        } else {
+            (0, 0)
+        }
+    }
+}
+
+pub fn empty_recycle_bin() -> bool {
+    use windows_sys::Win32::UI::Shell::{
+        SHEmptyRecycleBinW, SHERB_NOCONFIRMATION, SHERB_NOPROGRESSUI, SHERB_NOSOUND,
+    };
+    unsafe {
+        SHEmptyRecycleBinW(
+            std::ptr::null_mut(),
+            std::ptr::null(),
+            SHERB_NOCONFIRMATION | SHERB_NOPROGRESSUI | SHERB_NOSOUND,
+        ) == 0
+    }
+}
+
+/// Windows display locale, e.g. `de-DE`.
+pub fn user_locale() -> String {
+    use windows_sys::Win32::Globalization::GetUserDefaultLocaleName;
+    let mut buf = [0u16; 85];
+    let n = unsafe { GetUserDefaultLocaleName(buf.as_mut_ptr(), buf.len() as i32) };
+    if n > 1 {
+        String::from_utf16_lossy(&buf[..(n as usize - 1)])
+    } else {
+        "en-US".into()
+    }
+}
+
+/// Give every visible top-level window of this process a native Windows 11
+/// border colour and a title bar that matches the light/dark theme.
+pub fn apply_window_style(border_rgb: (u8, u8, u8), dark: bool) {
+    use windows_sys::Win32::Foundation::{BOOL, HWND, LPARAM};
+    use windows_sys::Win32::Graphics::Dwm::DwmSetWindowAttribute;
+    use windows_sys::Win32::System::Threading::GetCurrentProcessId;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindowThreadProcessId, IsWindowVisible,
+    };
+
+    const DWMWA_USE_IMMERSIVE_DARK_MODE: u32 = 20;
+    const DWMWA_BORDER_COLOR: u32 = 34;
+
+    struct Ctx {
+        pid: u32,
+        color: u32,
+        dark: i32,
+    }
+    unsafe extern "system" fn each(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let ctx = &*(lparam as *const Ctx);
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(hwnd, &mut pid);
+        if pid == ctx.pid && IsWindowVisible(hwnd) != 0 {
+            DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_BORDER_COLOR,
+                &ctx.color as *const u32 as *const _,
+                4,
+            );
+            DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_USE_IMMERSIVE_DARK_MODE,
+                &ctx.dark as *const i32 as *const _,
+                4,
+            );
+        }
+        1
+    }
+    let (r, g, b) = border_rgb;
+    // COLORREF is 0x00BBGGRR.
+    let ctx = Ctx {
+        pid: unsafe { GetCurrentProcessId() },
+        color: (b as u32) << 16 | (g as u32) << 8 | r as u32,
+        dark: dark as i32,
+    };
+    unsafe {
+        EnumWindows(Some(each), &ctx as *const Ctx as LPARAM);
+    }
+}
+
+/// A plain Windows message box (used only when the window can't be created).
+pub fn message_box(title: &str, text: &str) -> i32 {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
+    let (t, m) = (wide(title), wide(text));
+    unsafe {
+        MessageBoxW(
+            std::ptr::null_mut(),
+            m.as_ptr(),
+            t.as_ptr(),
+            MB_OK | MB_ICONERROR,
+        )
+    }
 }

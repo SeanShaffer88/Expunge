@@ -2,14 +2,6 @@
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum ThemePref {
-    #[default]
-    System,
-    Light,
-    Dark,
-}
-
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct FileRoot {
     pub path: String,
@@ -18,14 +10,18 @@ pub struct FileRoot {
 
 impl FileRoot {
     fn new(path: &str, recursive: bool) -> Self {
-        FileRoot { path: path.into(), recursive }
+        FileRoot {
+            path: path.into(),
+            recursive,
+        }
     }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(default)]
 pub struct Settings {
-    pub theme: ThemePref,
+    /// Interface language code ("" = follow Windows).
+    pub language: String,
     /// UI zoom factor.
     pub zoom: f32,
     /// Registry keys captured by snapshots (whole subtrees).
@@ -54,7 +50,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Settings {
-            theme: ThemePref::System,
+            language: String::new(),
             zoom: 1.0,
             registry_roots: default_registry_roots(),
             file_roots: default_file_roots(),

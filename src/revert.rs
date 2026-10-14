@@ -16,22 +16,47 @@ use std::path::Path;
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum Action {
     /// Stop and delete a Windows service the installation registered.
-    StopDeleteService { name: String },
+    StopDeleteService {
+        name: String,
+    },
     /// Delete a scheduled task (task path like `\Vendor\Updater`).
-    DeleteTask { name: String },
-    DeleteFile { path: String },
+    DeleteTask {
+        name: String,
+    },
+    DeleteFile {
+        path: String,
+    },
     /// Remove a folder the installation created (deepest first).
-    DeleteDir { path: String },
+    DeleteDir {
+        path: String,
+    },
     /// Remove a folder and everything in it (leftover scans).
-    DeleteTree { path: String },
-    DeleteKey { path: String },
-    DeleteValue { key: String, name: String },
+    DeleteTree {
+        path: String,
+    },
+    DeleteKey {
+        path: String,
+    },
+    DeleteValue {
+        key: String,
+        name: String,
+    },
     /// Put back a value's pre-installation data.
-    SetValue { key: String, value: RegValue },
+    SetValue {
+        key: String,
+        value: RegValue,
+    },
     /// Recreate a key the installation deleted.
-    RestoreKey { key: KeyData },
+    RestoreKey {
+        key: KeyData,
+    },
     /// Surgically undo a PATH-style list edit without clobbering later edits.
-    EditList { key: String, name: String, remove: Vec<String>, add_back: Vec<String> },
+    EditList {
+        key: String,
+        name: String,
+        remove: Vec<String>,
+        add_back: Vec<String>,
+    },
 }
 
 impl Action {
@@ -39,9 +64,13 @@ impl Action {
         match self {
             Action::StopDeleteService { .. } => "Services",
             Action::DeleteTask { .. } => "Scheduled tasks",
-            Action::DeleteFile { .. } | Action::DeleteDir { .. } | Action::DeleteTree { .. } => "Files",
+            Action::DeleteFile { .. } | Action::DeleteDir { .. } | Action::DeleteTree { .. } => {
+                "Files"
+            }
             Action::DeleteKey { .. } | Action::DeleteValue { .. } => "Registry",
-            Action::SetValue { .. } | Action::RestoreKey { .. } | Action::EditList { .. } => "Registry restore",
+            Action::SetValue { .. } | Action::RestoreKey { .. } | Action::EditList { .. } => {
+                "Registry restore"
+            }
         }
     }
 
@@ -54,13 +83,25 @@ impl Action {
             Action::DeleteTree { path } => format!("Delete folder and contents {path}"),
             Action::DeleteKey { path } => format!("Delete key {path}"),
             Action::DeleteValue { key, name } => {
-                format!("Delete value {key}\\{}", if name.is_empty() { "(Default)" } else { name })
+                format!(
+                    "Delete value {key}\\{}",
+                    if name.is_empty() { "(Default)" } else { name }
+                )
             }
             Action::SetValue { key, value } => {
-                format!("Restore value {key}\\{} = {}", value.display_name(), value.display_data())
+                format!(
+                    "Restore value {key}\\{} = {}",
+                    value.display_name(),
+                    value.display_data()
+                )
             }
             Action::RestoreKey { key } => format!("Recreate key {}", key.path),
-            Action::EditList { key, name, remove, add_back } => {
+            Action::EditList {
+                key,
+                name,
+                remove,
+                add_back,
+            } => {
                 let mut s = format!("Edit {key}\\{name}:");
                 if !remove.is_empty() {
                     s.push_str(&format!(" remove {}", remove.join("; ")));
@@ -112,18 +153,12 @@ impl Plan {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct ExecOptions {
     /// Delete folder contents that weren't part of the installation.
     pub remove_unlogged: bool,
     /// Report what would happen without changing anything.
     pub dry_run: bool,
-}
-
-impl Default for ExecOptions {
-    fn default() -> Self {
-        ExecOptions { remove_unlogged: false, dry_run: false }
-    }
 }
 
 const SERVICES_PREFIX: &str = "hklm\\system\\currentcontrolset\\services\\";
@@ -147,7 +182,10 @@ fn is_path_list(key: &str, name: &str) -> bool {
 }
 
 fn split_list(s: &str) -> Vec<String> {
-    s.split(';').map(|p| p.trim().to_string()).filter(|p| !p.is_empty()).collect()
+    s.split(';')
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty())
+        .collect()
 }
 
 /// Build the removal plan for an installation's change set.
@@ -156,7 +194,12 @@ pub fn build_plan(cs: &ChangeSet, reg: &dyn Registry) -> Plan {
     let protected = protected_dirs();
     let tasks = tasks_dir();
     let mut push = |action: Action, selected: bool, exists: bool, note: &str| {
-        plan.items.push(PlanItem { action, selected: selected && exists, exists, note: note.to_string() });
+        plan.items.push(PlanItem {
+            action,
+            selected: selected && exists,
+            exists,
+            note: note.to_string(),
+        });
     };
 
     // Services and scheduled tasks.
@@ -170,21 +213,49 @@ pub fn build_plan(cs: &ChangeSet, reg: &dyn Registry) -> Plan {
         if !f.is_dir && fold(&f.path).starts_with(&tasks) {
             let rel = &f.path[tasks.len()..];
             let exists = Path::new(&f.path).exists();
-            push(Action::DeleteTask { name: format!("\\{rel}") }, true, exists, "");
+            push(
+                Action::DeleteTask {
+                    name: format!("\\{rel}"),
+                },
+                true,
+                exists,
+                "",
+            );
         }
     }
 
     // Files and folders.
     for f in cs.files_added.iter().filter(|f| !f.is_dir) {
         let exists = Path::new(&f.path).exists();
-        push(Action::DeleteFile { path: f.path.clone() }, true, exists, "");
+        push(
+            Action::DeleteFile {
+                path: f.path.clone(),
+            },
+            true,
+            exists,
+            "",
+        );
     }
     for f in cs.files_added.iter().filter(|f| f.is_dir) {
         let exists = Path::new(&f.path).exists();
         if is_protected_dir(&f.path, &protected) {
-            push(Action::DeleteDir { path: f.path.clone() }, false, exists, "Protected system folder");
+            push(
+                Action::DeleteDir {
+                    path: f.path.clone(),
+                },
+                false,
+                exists,
+                "Protected system folder",
+            );
         } else {
-            push(Action::DeleteDir { path: f.path.clone() }, true, exists, "");
+            push(
+                Action::DeleteDir {
+                    path: f.path.clone(),
+                },
+                true,
+                exists,
+                "",
+            );
         }
     }
 
@@ -206,34 +277,71 @@ pub fn build_plan(cs: &ChangeSet, reg: &dyn Registry) -> Plan {
         }
         let exists = reg.exists(&k.path);
         if is_protected_key(&k.path) {
-            push(Action::DeleteKey { path: k.path.clone() }, false, exists, "Protected system key");
+            push(
+                Action::DeleteKey {
+                    path: k.path.clone(),
+                },
+                false,
+                exists,
+                "Protected system key",
+            );
         } else {
-            push(Action::DeleteKey { path: k.path.clone() }, true, exists, "");
+            push(
+                Action::DeleteKey {
+                    path: k.path.clone(),
+                },
+                true,
+                exists,
+                "",
+            );
         }
     }
-    let current_value = |key: &str, name: &str| reg.read_key(key).and_then(|k| k.get(name).cloned());
+    let current_value =
+        |key: &str, name: &str| reg.read_key(key).and_then(|k| k.get(name).cloned());
     for v in &cs.values_added {
         let cur = current_value(&v.key, &v.value.name);
         let changed = cur.as_ref().is_some_and(|c| c != &v.value);
         push(
-            Action::DeleteValue { key: v.key.clone(), name: v.value.name.clone() },
+            Action::DeleteValue {
+                key: v.key.clone(),
+                name: v.value.name.clone(),
+            },
             !changed,
             cur.is_some(),
-            if changed { "Changed since installation" } else { "" },
+            if changed {
+                "Changed since installation"
+            } else {
+                ""
+            },
         );
     }
     for v in &cs.values_modified {
         let cur = current_value(&v.key, &v.after.name);
         if is_path_list(&v.key, &v.after.name) {
-            let (Some(b), Some(a)) = (v.before.as_string(), v.after.as_string()) else { continue };
+            let (Some(b), Some(a)) = (v.before.as_string(), v.after.as_string()) else {
+                continue;
+            };
             let (bl, al) = (split_list(&b), split_list(&a));
             let bset: BTreeSet<String> = bl.iter().map(|s| fold(s)).collect();
             let aset: BTreeSet<String> = al.iter().map(|s| fold(s)).collect();
-            let remove: Vec<String> = al.iter().filter(|s| !bset.contains(&fold(s))).cloned().collect();
-            let add_back: Vec<String> = bl.iter().filter(|s| !aset.contains(&fold(s))).cloned().collect();
+            let remove: Vec<String> = al
+                .iter()
+                .filter(|s| !bset.contains(&fold(s)))
+                .cloned()
+                .collect();
+            let add_back: Vec<String> = bl
+                .iter()
+                .filter(|s| !aset.contains(&fold(s)))
+                .cloned()
+                .collect();
             if !remove.is_empty() || !add_back.is_empty() {
                 push(
-                    Action::EditList { key: v.key.clone(), name: v.after.name.clone(), remove, add_back },
+                    Action::EditList {
+                        key: v.key.clone(),
+                        name: v.after.name.clone(),
+                        remove,
+                        add_back,
+                    },
                     true,
                     cur.is_some(),
                     "Only the entries the installer changed",
@@ -243,34 +351,59 @@ pub fn build_plan(cs: &ChangeSet, reg: &dyn Registry) -> Plan {
         }
         let changed = cur.as_ref().is_some_and(|c| c != &v.after);
         push(
-            Action::SetValue { key: v.key.clone(), value: v.before.clone() },
+            Action::SetValue {
+                key: v.key.clone(),
+                value: v.before.clone(),
+            },
             !changed,
             true,
-            if changed { "Changed again since installation" } else { "" },
+            if changed {
+                "Changed again since installation"
+            } else {
+                ""
+            },
         );
     }
     for v in &cs.values_removed {
         let cur = current_value(&v.key, &v.value.name);
         push(
-            Action::SetValue { key: v.key.clone(), value: v.value.clone() },
+            Action::SetValue {
+                key: v.key.clone(),
+                value: v.value.clone(),
+            },
             cur.is_none(),
             true,
-            if cur.is_some() { "Value exists again" } else { "" },
+            if cur.is_some() {
+                "Value exists again"
+            } else {
+                ""
+            },
         );
     }
     // Recreate removed keys, top-most first, with their values.
     let mut removed = cs.keys_removed.clone();
-    removed.sort_by(|a, b| a.path.len().cmp(&b.path.len()));
+    removed.sort_by_key(|a| a.path.len());
     for k in removed {
         let exists = reg.exists(&k.path);
-        push(Action::RestoreKey { key: k }, !exists, true, if exists { "Key exists again" } else { "" });
+        push(
+            Action::RestoreKey { key: k },
+            !exists,
+            true,
+            if exists { "Key exists again" } else { "" },
+        );
     }
 
     for f in &cs.files_modified {
-        plan.info.push(format!("Modified during installation (left as is): {}", f.after.path));
+        plan.info.push(format!(
+            "Modified during installation (left as is): {}",
+            f.after.path
+        ));
     }
     for f in &cs.files_removed {
-        plan.info.push(format!("Deleted during installation (cannot be restored): {}", f.path));
+        plan.info.push(format!(
+            "Deleted during installation (cannot be restored): {}",
+            f.path
+        ));
     }
     plan.items.sort_by_key(|i| i.action.order());
     plan
@@ -286,13 +419,17 @@ pub fn execute_plan(
     let mut results = Vec::new();
     let mut items: Vec<&PlanItem> = plan.items.iter().filter(|i| i.selected).collect();
     items.sort_by(|a, b| {
-        a.action.order().cmp(&b.action.order()).then_with(|| match (&a.action, &b.action) {
-            // Deepest folders first.
-            (Action::DeleteDir { path: x } | Action::DeleteTree { path: x }, Action::DeleteDir { path: y } | Action::DeleteTree { path: y }) => {
-                y.len().cmp(&x.len())
-            }
-            _ => std::cmp::Ordering::Equal,
-        })
+        a.action
+            .order()
+            .cmp(&b.action.order())
+            .then_with(|| match (&a.action, &b.action) {
+                // Deepest folders first.
+                (
+                    Action::DeleteDir { path: x } | Action::DeleteTree { path: x },
+                    Action::DeleteDir { path: y } | Action::DeleteTree { path: y },
+                ) => y.len().cmp(&x.len()),
+                _ => std::cmp::Ordering::Equal,
+            })
     });
     let protected = protected_dirs();
     for item in items {
@@ -340,7 +477,8 @@ fn run_action(
                     b.add_file(Path::new(&file))?;
                 }
             }
-            let (code, out) = platform::run_hidden("schtasks.exe", &["/Delete", "/TN", name, "/F"])?;
+            let (code, out) =
+                platform::run_hidden("schtasks.exe", &["/Delete", "/TN", name, "/F"])?;
             if code == 0 {
                 Ok("deleted".into())
             } else if !Path::new(&file).exists() {
@@ -373,7 +511,9 @@ fn run_action(
             if is_protected_dir(path, protected) {
                 anyhow::bail!("refusing to delete protected folder");
             }
-            let empty = std::fs::read_dir(p).map(|mut d| d.next().is_none()).unwrap_or(false);
+            let empty = std::fs::read_dir(p)
+                .map(|mut d| d.next().is_none())
+                .unwrap_or(false);
             if empty {
                 if let Some(b) = backup.as_deref_mut() {
                     b.add_dir(p)?;
@@ -406,7 +546,11 @@ fn run_action(
                 Err(e) => {
                     // Something is locked: remove what we can, schedule the rest.
                     let mut scheduled = 0;
-                    for f in walkdir::WalkDir::new(p).contents_first(true).into_iter().flatten() {
+                    for f in walkdir::WalkDir::new(p)
+                        .contents_first(true)
+                        .into_iter()
+                        .flatten()
+                    {
                         let fp = f.path();
                         let gone = if f.file_type().is_dir() {
                             std::fs::remove_dir(fp).is_ok()
@@ -418,7 +562,9 @@ fn run_action(
                         }
                     }
                     if scheduled > 0 {
-                        Ok(format!("{scheduled} locked items will be deleted at next restart"))
+                        Ok(format!(
+                            "{scheduled} locked items will be deleted at next restart"
+                        ))
                     } else if p.exists() {
                         Err(e.into())
                     } else {
@@ -441,7 +587,11 @@ fn run_action(
             Ok("deleted".into())
         }
         Action::DeleteValue { key, name } => {
-            if reg.read_key(key).and_then(|k| k.get(name).cloned()).is_none() {
+            if reg
+                .read_key(key)
+                .and_then(|k| k.get(name).cloned())
+                .is_none()
+            {
                 return Ok("already gone".into());
             }
             if let Some(b) = backup.as_deref_mut() {
@@ -469,12 +619,22 @@ fn run_action(
             platform::write_tree(reg, std::slice::from_ref(key))?;
             Ok("recreated".into())
         }
-        Action::EditList { key, name, remove, add_back } => {
+        Action::EditList {
+            key,
+            name,
+            remove,
+            add_back,
+        } => {
             let cur = reg.read_key(key).and_then(|k| k.get(name).cloned());
-            let Some(cur) = cur else { return Ok("value no longer exists".into()) };
+            let Some(cur) = cur else {
+                return Ok("value no longer exists".into());
+            };
             let text = cur.as_string().unwrap_or_default();
             let rm: BTreeSet<String> = remove.iter().map(|s| fold(s)).collect();
-            let mut list: Vec<String> = split_list(&text).into_iter().filter(|s| !rm.contains(&fold(s))).collect();
+            let mut list: Vec<String> = split_list(&text)
+                .into_iter()
+                .filter(|s| !rm.contains(&fold(s)))
+                .collect();
             for a in add_back {
                 if !list.iter().any(|s| fold(s) == fold(a)) {
                     list.push(a.clone());
@@ -484,10 +644,14 @@ fn run_action(
             if new_text == text {
                 return Ok("nothing to change".into());
             }
-            if let Some(b) = backup.as_deref_mut() {
+            if let Some(b) = backup {
                 b.add_value(reg, key, name)?;
             }
-            let nv = RegValue { name: cur.name.clone(), kind: cur.kind, data: encode_utf16z(&new_text) };
+            let nv = RegValue {
+                name: cur.name.clone(),
+                kind: cur.kind,
+                data: encode_utf16z(&new_text),
+            };
             reg.set_value(key, &nv)?;
             Ok("updated".into())
         }
@@ -509,12 +673,23 @@ mod tests {
         let reg = MemRegistry::new();
         let env = "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";
         reg.put(KeyData::new(env).with(RegValue::string("Path", "C:\\Windows;C:\\Tools")));
-        reg.put(KeyData::new("HKCU\\Software\\Shared").with(RegValue::dword("level", 1)).with(RegValue::dword("old", 7)));
+        reg.put(
+            KeyData::new("HKCU\\Software\\Shared")
+                .with(RegValue::dword("level", 1))
+                .with(RegValue::dword("old", 7)),
+        );
         reg.put(KeyData::new("HKCU\\Software\\Doomed").with(RegValue::string("x", "y")));
         let settings = Settings {
-            registry_roots: vec!["HKLM\\SYSTEM".into(), "HKCU\\Software".into(), "HKLM\\SOFTWARE".into()],
+            registry_roots: vec![
+                "HKLM\\SYSTEM".into(),
+                "HKCU\\Software".into(),
+                "HKLM\\SOFTWARE".into(),
+            ],
             registry_exclusions: vec![],
-            file_roots: vec![FileRoot { path: root.to_string_lossy().into(), recursive: true }],
+            file_roots: vec![FileRoot {
+                path: root.to_string_lossy().into(),
+                recursive: true,
+            }],
             file_exclusions: vec![],
             ..Settings::default()
         };
@@ -523,9 +698,18 @@ mod tests {
 
         // The "installer".
         reg.put(KeyData::new("HKLM\\SOFTWARE\\Acme\\Widget\\Sub").with(RegValue::string("a", "b")));
-        reg.set_value(env, &RegValue { kind: reg_type::EXPAND_SZ, ..RegValue::string("Path", "C:\\Windows;C:\\Tools;C:\\Acme") }).unwrap();
-        reg.set_value("HKCU\\Software\\Shared", &RegValue::dword("level", 2)).unwrap();
-        reg.set_value("HKCU\\Software\\Shared", &RegValue::dword("acme", 1)).unwrap();
+        reg.set_value(
+            env,
+            &RegValue {
+                kind: reg_type::EXPAND_SZ,
+                ..RegValue::string("Path", "C:\\Windows;C:\\Tools;C:\\Acme")
+            },
+        )
+        .unwrap();
+        reg.set_value("HKCU\\Software\\Shared", &RegValue::dword("level", 2))
+            .unwrap();
+        reg.set_value("HKCU\\Software\\Shared", &RegValue::dword("acme", 1))
+            .unwrap();
         reg.delete_value("HKCU\\Software\\Shared", "old").unwrap();
         reg.delete_tree("HKCU\\Software\\Doomed").unwrap();
         let app = root.join("Acme");
@@ -538,12 +722,16 @@ mod tests {
 
         // The user adds their own PATH entry after installing.
         let cur = reg.read_key(env).unwrap().get_string("Path").unwrap();
-        reg.set_value(env, &RegValue::string("Path", &format!("{cur};D:\\Mine"))).unwrap();
+        reg.set_value(env, &RegValue::string("Path", &format!("{cur};D:\\Mine")))
+            .unwrap();
         // ...and the app writes a settings file later.
         std::fs::write(app.join("settings.ini"), "user").unwrap();
 
         let plan = build_plan(&cs, &reg);
-        assert!(plan.items.iter().any(|i| matches!(i.action, Action::EditList { .. })));
+        assert!(plan
+            .items
+            .iter()
+            .any(|i| matches!(i.action, Action::EditList { .. })));
         let broot = tmp.path().join("backups");
         let mut bw = BackupWriter::new(&broot, "revert").unwrap();
         let res = execute_plan(&plan, &reg, Some(&mut bw), &ExecOptions::default());
@@ -551,19 +739,36 @@ mod tests {
 
         // Registry back to pre-install state, except the user's own PATH entry.
         assert!(!reg.exists("HKLM\\SOFTWARE\\Acme"));
-        assert_eq!(reg.read_key(env).unwrap().get_string("Path").unwrap(), "C:\\Windows;C:\\Tools;D:\\Mine");
+        assert_eq!(
+            reg.read_key(env).unwrap().get_string("Path").unwrap(),
+            "C:\\Windows;C:\\Tools;D:\\Mine"
+        );
         let shared = reg.read_key("HKCU\\Software\\Shared").unwrap();
         assert_eq!(shared.get_u32("level"), Some(1));
         assert_eq!(shared.get_u32("old"), Some(7));
         assert!(shared.get("acme").is_none());
-        assert_eq!(reg.read_key("HKCU\\Software\\Doomed").unwrap().get_string("x").unwrap(), "y");
+        assert_eq!(
+            reg.read_key("HKCU\\Software\\Doomed")
+                .unwrap()
+                .get_string("x")
+                .unwrap(),
+            "y"
+        );
         // Logged files gone, folder with the user's later file kept.
         assert!(!app.join("bin").exists());
         assert!(!app.join("readme.txt").exists());
         assert!(app.join("settings.ini").exists());
 
         // With remove_unlogged the folder goes completely.
-        let res = execute_plan(&plan, &reg, Some(&mut bw), &ExecOptions { remove_unlogged: true, dry_run: false });
+        let res = execute_plan(
+            &plan,
+            &reg,
+            Some(&mut bw),
+            &ExecOptions {
+                remove_unlogged: true,
+                dry_run: false,
+            },
+        );
         assert!(res.iter().all(|r| r.ok), "{res:#?}");
         assert!(!app.exists());
 
@@ -574,18 +779,32 @@ mod tests {
         assert!(app.join("bin").join("w.exe").exists());
         assert!(app.join("settings.ini").exists());
         assert!(reg.exists("HKLM\\SOFTWARE\\Acme\\Widget\\Sub"));
-        assert!(reg.read_key(env).unwrap().get_string("Path").unwrap().contains("C:\\Acme"));
+        assert!(reg
+            .read_key(env)
+            .unwrap()
+            .get_string("Path")
+            .unwrap()
+            .contains("C:\\Acme"));
     }
 
     #[test]
     fn protected_items_are_never_selected() {
         let reg = MemRegistry::new();
         reg.put(KeyData::new("HKLM\\SOFTWARE\\Classes"));
-        let cs = ChangeSet { keys_added: vec![KeyData::new("HKLM\\SOFTWARE\\Classes")], ..Default::default() };
+        let cs = ChangeSet {
+            keys_added: vec![KeyData::new("HKLM\\SOFTWARE\\Classes")],
+            ..Default::default()
+        };
         let plan = build_plan(&cs, &reg);
         assert_eq!(plan.selected(), 0);
         let res = execute_plan(
-            &Plan { items: vec![PlanItem { selected: true, ..plan.items[0].clone() }], info: vec![] },
+            &Plan {
+                items: vec![PlanItem {
+                    selected: true,
+                    ..plan.items[0].clone()
+                }],
+                info: vec![],
+            },
             &reg,
             None,
             &ExecOptions::default(),

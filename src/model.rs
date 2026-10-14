@@ -49,7 +49,7 @@ pub mod hexbytes {
     }
 
     pub fn from_hex(s: &str) -> Result<Vec<u8>, String> {
-        if s.len() % 2 != 0 {
+        if !s.len().is_multiple_of(2) {
             return Err("odd-length hex string".into());
         }
         (0..s.len())
@@ -71,11 +71,19 @@ pub struct RegValue {
 
 impl RegValue {
     pub fn string(name: &str, s: &str) -> Self {
-        RegValue { name: name.into(), kind: reg_type::SZ, data: encode_utf16z(s) }
+        RegValue {
+            name: name.into(),
+            kind: reg_type::SZ,
+            data: encode_utf16z(s),
+        }
     }
 
     pub fn dword(name: &str, v: u32) -> Self {
-        RegValue { name: name.into(), kind: reg_type::DWORD, data: v.to_le_bytes().to_vec() }
+        RegValue {
+            name: name.into(),
+            kind: reg_type::DWORD,
+            data: v.to_le_bytes().to_vec(),
+        }
     }
 
     /// The value interpreted as text, when it is a string type.
@@ -89,12 +97,18 @@ impl RegValue {
 
     pub fn as_u32(&self) -> Option<u32> {
         match self.kind {
-            reg_type::DWORD if self.data.len() >= 4 => {
-                Some(u32::from_le_bytes([self.data[0], self.data[1], self.data[2], self.data[3]]))
-            }
-            reg_type::DWORD_BIG_ENDIAN if self.data.len() >= 4 => {
-                Some(u32::from_be_bytes([self.data[0], self.data[1], self.data[2], self.data[3]]))
-            }
+            reg_type::DWORD if self.data.len() >= 4 => Some(u32::from_le_bytes([
+                self.data[0],
+                self.data[1],
+                self.data[2],
+                self.data[3],
+            ])),
+            reg_type::DWORD_BIG_ENDIAN if self.data.len() >= 4 => Some(u32::from_be_bytes([
+                self.data[0],
+                self.data[1],
+                self.data[2],
+                self.data[3],
+            ])),
             _ => None,
         }
     }
@@ -160,13 +174,19 @@ pub fn encode_utf16z(s: &str) -> Vec<u8> {
 }
 
 pub fn decode_utf16z(data: &[u8]) -> String {
-    let units: Vec<u16> = data.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+    let units: Vec<u16> = data
+        .chunks_exact(2)
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .collect();
     let end = units.iter().position(|&u| u == 0).unwrap_or(units.len());
     String::from_utf16_lossy(&units[..end])
 }
 
 pub fn decode_multi_sz(data: &[u8]) -> Vec<String> {
-    let units: Vec<u16> = data.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+    let units: Vec<u16> = data
+        .chunks_exact(2)
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .collect();
     units
         .split(|&u| u == 0)
         .filter(|s| !s.is_empty())
@@ -185,7 +205,10 @@ pub struct KeyData {
 
 impl KeyData {
     pub fn new(path: &str) -> Self {
-        KeyData { path: path.to_string(), values: BTreeMap::new() }
+        KeyData {
+            path: path.to_string(),
+            values: BTreeMap::new(),
+        }
     }
 
     pub fn with(mut self, v: RegValue) -> Self {
@@ -198,7 +221,9 @@ impl KeyData {
     }
 
     pub fn get_string(&self, name: &str) -> Option<String> {
-        self.get(name).and_then(|v| v.as_string()).filter(|s| !s.trim().is_empty())
+        self.get(name)
+            .and_then(|v| v.as_string())
+            .filter(|s| !s.trim().is_empty())
     }
 
     pub fn get_u32(&self, name: &str) -> Option<u32> {
@@ -303,7 +328,11 @@ impl ChangeSet {
             keys_added: self.keys_added.len(),
             keys_removed: self.keys_removed.len(),
             values_added: self.values_added.len()
-                + self.keys_added.iter().map(|k| k.values.len()).sum::<usize>(),
+                + self
+                    .keys_added
+                    .iter()
+                    .map(|k| k.values.len())
+                    .sum::<usize>(),
             values_removed: self.values_removed.len(),
             values_modified: self.values_modified.len(),
             files_added: self.files_added.iter().filter(|f| !f.is_dir).count(),

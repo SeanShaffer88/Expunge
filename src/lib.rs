@@ -9,14 +9,19 @@
 //! any later version. See LICENSE for details.
 
 pub mod backup;
+pub mod cleaner;
+pub mod i18n;
 pub mod leftovers;
 pub mod model;
 pub mod platform;
 pub mod programs;
+pub mod report;
 pub mod revert;
 pub mod settings;
 pub mod snapshot;
+pub mod startup;
 pub mod store;
+pub mod updates;
 pub mod util;
 
 pub const APP_NAME: &str = "Expunge";

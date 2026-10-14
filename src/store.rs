@@ -29,7 +29,9 @@ pub struct Store {
 impl Store {
     /// Open the default data folder for this installation.
     pub fn open() -> Result<Store> {
-        let exe_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf));
+        let exe_dir = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(Path::to_path_buf));
         if let Some(dir) = &exe_dir {
             if dir.join("portable").exists() || dir.join("portable.txt").exists() {
                 let mut s = Store::at(&dir.join("ExpungeData"))?;
@@ -39,16 +41,22 @@ impl Store {
         }
         let base = std::env::var("LOCALAPPDATA")
             .map(PathBuf::from)
-            .or_else(|_| std::env::var("HOME").map(|h| PathBuf::from(h).join(".local").join("share")))
+            .or_else(|_| {
+                std::env::var("HOME").map(|h| PathBuf::from(h).join(".local").join("share"))
+            })
             .unwrap_or_else(|_| PathBuf::from("."));
         Store::at(&base.join("Expunge"))
     }
 
     pub fn at(root: &Path) -> Result<Store> {
         for d in ["logs", "backups", "pending"] {
-            std::fs::create_dir_all(root.join(d)).with_context(|| format!("create {}", root.join(d).display()))?;
+            std::fs::create_dir_all(root.join(d))
+                .with_context(|| format!("create {}", root.join(d).display()))?;
         }
-        Ok(Store { root: root.to_path_buf(), portable: false })
+        Ok(Store {
+            root: root.to_path_buf(),
+            portable: false,
+        })
     }
 
     pub fn logs_dir(&self) -> PathBuf {
@@ -124,9 +132,16 @@ impl Store {
 
     // -- pending monitoring session ------------------------------------------
 
-    pub fn save_pending(&self, session: &PendingSession, before: &crate::model::Snapshot) -> Result<()> {
+    pub fn save_pending(
+        &self,
+        session: &PendingSession,
+        before: &crate::model::Snapshot,
+    ) -> Result<()> {
         save_snapshot(&self.pending_dir().join("before.snap"), before)?;
-        std::fs::write(self.pending_dir().join("session.json"), serde_json::to_string_pretty(session)?)?;
+        std::fs::write(
+            self.pending_dir().join("session.json"),
+            serde_json::to_string_pretty(session)?,
+        )?;
         Ok(())
     }
 
@@ -154,11 +169,16 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let st = Store::at(tmp.path()).unwrap();
         let mut s = st.load_settings();
-        s.theme = crate::settings::ThemePref::Dark;
+        s.language = "de".into();
         st.save_settings(&s).unwrap();
-        assert_eq!(st.load_settings().theme, crate::settings::ThemePref::Dark);
+        assert_eq!(st.load_settings().language, "de");
 
-        let log = InstallLog { id: "a".into(), name: "App".into(), created: "2026".into(), ..Default::default() };
+        let log = InstallLog {
+            id: "a".into(),
+            name: "App".into(),
+            created: "2026".into(),
+            ..Default::default()
+        };
         st.save_log(&log).unwrap();
         assert_eq!(st.list_logs().len(), 1);
         let exported = tmp.path().join("exp.json");
@@ -170,7 +190,14 @@ mod tests {
         assert_eq!(st.list_logs().len(), 1);
 
         assert!(st.pending().is_none());
-        st.save_pending(&PendingSession { name: "x".into(), ..Default::default() }, &Default::default()).unwrap();
+        st.save_pending(
+            &PendingSession {
+                name: "x".into(),
+                ..Default::default()
+            },
+            &Default::default(),
+        )
+        .unwrap();
         assert_eq!(st.pending().unwrap().name, "x");
         assert!(st.pending_snapshot().is_ok());
         st.clear_pending();

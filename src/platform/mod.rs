@@ -86,7 +86,8 @@ impl MemRegistry {
         let mut keys = self.keys.lock().unwrap();
         let mut p = key.path.as_str();
         while let Some(parent) = parent_path(p) {
-            keys.entry(fold(parent)).or_insert_with(|| KeyData::new(parent));
+            keys.entry(fold(parent))
+                .or_insert_with(|| KeyData::new(parent));
             p = parent;
         }
         keys.insert(fold(&key.path), key);
@@ -138,15 +139,21 @@ impl Registry for MemRegistry {
     fn set_value(&self, key: &str, value: &RegValue) -> Result<()> {
         self.create_key(key)?;
         let mut keys = self.keys.lock().unwrap();
-        let k = keys.get_mut(&fold(key)).ok_or_else(|| anyhow!("key missing"))?;
+        let k = keys
+            .get_mut(&fold(key))
+            .ok_or_else(|| anyhow!("key missing"))?;
         k.values.insert(fold(&value.name), value.clone());
         Ok(())
     }
 
     fn delete_value(&self, key: &str, name: &str) -> Result<()> {
         let mut keys = self.keys.lock().unwrap();
-        let k = keys.get_mut(&fold(key)).ok_or_else(|| anyhow!("key not found: {key}"))?;
-        k.values.remove(&fold(name)).ok_or_else(|| anyhow!("value not found: {name}"))?;
+        let k = keys
+            .get_mut(&fold(key))
+            .ok_or_else(|| anyhow!("key not found: {key}"))?;
+        k.values
+            .remove(&fold(name))
+            .ok_or_else(|| anyhow!("value not found: {name}"))?;
         Ok(())
     }
 
@@ -219,7 +226,10 @@ pub fn delete_on_reboot(path: &std::path::Path) -> Result<()> {
     }
     #[cfg(not(windows))]
     {
-        Err(anyhow!("delete-on-reboot is only available on Windows: {}", path.display()))
+        Err(anyhow!(
+            "delete-on-reboot is only available on Windows: {}",
+            path.display()
+        ))
     }
 }
 
@@ -265,7 +275,9 @@ pub fn run_hidden(program: &str, args: &[&str]) -> Result<(i32, String)> {
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         c.creation_flags(CREATE_NO_WINDOW);
     }
-    let out = c.output().map_err(|e| anyhow!("could not run {program}: {e}"))?;
+    let out = c
+        .output()
+        .map_err(|e| anyhow!("could not run {program}: {e}"))?;
     let mut text = String::from_utf8_lossy(&out.stdout).to_string();
     text.push_str(&String::from_utf8_lossy(&out.stderr));
     Ok((out.status.code().unwrap_or(-1), text.trim().to_string()))
@@ -278,7 +290,9 @@ pub fn computer_name() -> String {
 }
 
 pub fn user_name() -> String {
-    std::env::var("USERNAME").or_else(|_| std::env::var("USER")).unwrap_or_else(|_| "unknown".into())
+    std::env::var("USERNAME")
+        .or_else(|_| std::env::var("USER"))
+        .unwrap_or_else(|_| "unknown".into())
 }
 
 /// The live system registry on Windows; an empty in-memory one elsewhere.
@@ -291,6 +305,99 @@ pub fn system_registry() -> Box<dyn Registry> {
     {
         Box::new(MemRegistry::new())
     }
+}
+
+#[cfg(windows)]
+pub use windows::{spawn_command_line, ChildProcess};
+
+/// A started process that can be polled for completion.
+#[cfg(not(windows))]
+pub struct ChildProcess(Mutex<std::process::Child>);
+
+#[cfg(not(windows))]
+impl ChildProcess {
+    pub fn try_wait(&self) -> Option<u32> {
+        self.0
+            .lock()
+            .unwrap()
+            .try_wait()
+            .ok()
+            .flatten()
+            .map(|s| s.code().unwrap_or(0) as u32)
+    }
+    pub fn wait(&self) -> u32 {
+        self.0
+            .lock()
+            .unwrap()
+            .wait()
+            .map(|s| s.code().unwrap_or(0) as u32)
+            .unwrap_or(0)
+    }
+}
+
+/// Run a raw command line (development stand-in for the Windows version).
+#[cfg(not(windows))]
+pub fn spawn_command_line(cmdline: &str) -> Result<ChildProcess> {
+    let child = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(cmdline)
+        .spawn()?;
+    Ok(ChildProcess(Mutex::new(child)))
+}
+
+/// Open a file, folder or URL with its default handler.
+pub fn shell_open(target: &str) {
+    #[cfg(windows)]
+    windows::shell_open(target);
+    #[cfg(not(windows))]
+    {
+        let _ = std::process::Command::new("xdg-open").arg(target).spawn();
+    }
+}
+
+/// Show a file selected in Explorer (or open its folder).
+pub fn reveal(path: &str) {
+    #[cfg(windows)]
+    {
+        if std::path::Path::new(path).is_file() {
+            let _ =
+                windows::shell_execute_wait("explorer.exe", &format!("/select,\"{path}\""), false);
+            return;
+        }
+    }
+    shell_open(path);
+}
+
+pub fn open_in_regedit(path: &str) -> Result<()> {
+    #[cfg(windows)]
+    {
+        windows::open_in_regedit(path)
+    }
+    #[cfg(not(windows))]
+    {
+        Err(anyhow!(
+            "Registry Editor is only available on Windows ({path})"
+        ))
+    }
+}
+
+/// Restart elevated; true if the new instance started.
+pub fn relaunch_elevated() -> bool {
+    #[cfg(windows)]
+    {
+        windows::relaunch_elevated()
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
+
+pub fn apply_window_style(border_rgb: (u8, u8, u8), dark: bool) {
+    #[cfg(windows)]
+    windows::apply_window_style(border_rgb, dark);
+    #[cfg(not(windows))]
+    let _ = (border_rgb, dark);
 }
 
 pub fn is_elevated() -> bool {
@@ -310,8 +417,14 @@ mod tests {
 
     #[test]
     fn hive_parsing() {
-        assert_eq!(split_hive("HKEY_LOCAL_MACHINE\\Software"), Some(("HKLM", "Software")));
-        assert_eq!(normalize_reg_path("hkcu\\\\Software\\X\\"), "HKCU\\Software\\X");
+        assert_eq!(
+            split_hive("HKEY_LOCAL_MACHINE\\Software"),
+            Some(("HKLM", "Software"))
+        );
+        assert_eq!(
+            normalize_reg_path("hkcu\\\\Software\\X\\"),
+            "HKCU\\Software\\X"
+        );
         assert_eq!(split_hive("Nope\\x"), None);
     }
 
@@ -326,7 +439,10 @@ mod tests {
         r.delete_tree("HKLM\\SOFTWARE\\A").unwrap();
         assert!(!r.exists("HKLM\\SOFTWARE\\A\\B"));
         write_tree(&r, &t).unwrap();
-        assert_eq!(r.read_key("HKLM\\SOFTWARE\\A\\B").unwrap().get_u32("x"), Some(1));
+        assert_eq!(
+            r.read_key("HKLM\\SOFTWARE\\A\\B").unwrap().get_u32("x"),
+            Some(1)
+        );
     }
 
     #[test]

@@ -1,0 +1,8 @@
+name: Feature request
+description: Suggest an idea for Expunge
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes: { label: What would you like Expunge to do?, description: "And what problem would it solve for you?" }
+    validations: { required: true }

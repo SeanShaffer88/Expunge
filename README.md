@@ -1,0 +1,128 @@
+<p align="center">
+  <img src="assets/logo-wide.png" alt="Expunge" width="600">
+</p>
+
+<p align="center">
+  <b>Open-source install monitor and complete uninstaller for Windows 11.</b><br>
+  Record what an installation changes. Remove exactly that — and nothing else.
+</p>
+
+<p align="center">
+  <a href="https://github.com/SeanShaffer88/ExpungeUninstaller/releases/latest"><img alt="Download" src="https://img.shields.io/github/v/release/SeanShaffer88/ExpungeUninstaller?label=download&color=e53935"></a>
+  <a href="https://github.com/SeanShaffer88/ExpungeUninstaller/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/SeanShaffer88/ExpungeUninstaller/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="License: GPL v3" src="https://img.shields.io/badge/license-GPLv3-blue"></a>
+</p>
+
+---
+
+Most uninstallers run the vendor's uninstaller and then *guess* what was left behind. Free tools like Regshot can show you a before/after diff, but stop there.
+
+**Expunge closes that gap.** It snapshots the system before and after an installation, saves the exact list of files, folders, registry keys and values, services and scheduled tasks that changed, and later turns that record into a precise, reversible removal plan. Everything it deletes is backed up first, so every removal can be undone.
+
+It is a free, GPL-licensed alternative to commercial tools like Total Uninstall Pro.
+
+## Features
+
+**Install monitoring**
+- **Install and monitor** — pick an installer; Expunge snapshots, runs it, and records every change.
+- **Manual monitoring** for anything else (Microsoft Store, winget, scripts, portable apps).
+- Monitoring **survives restarts**, so installers that need a reboot are captured correctly.
+- Review the capture before saving and drop background noise with one click.
+- Detects the program's name, publisher and version automatically.
+
+**Precise uninstall**
+- Reverts a monitored installation exactly: deletes added files, folders, keys and values, **restores** values the installer changed or removed, stops and deletes services, removes scheduled tasks.
+- **Smart PATH repair** — removes only the entries the installer added to `PATH`, keeping changes you made since.
+- Files the program created later (settings, caches) are kept unless you choose to remove them.
+- Locked files are scheduled for deletion at the next restart.
+
+**Classic uninstaller (for programs that weren't monitored)**
+- Lists desktop programs (64-bit, 32-bit, per-user) and Microsoft Store apps.
+- Runs the vendor uninstaller, then scans for leftovers: folders, shortcuts, registry keys, autostart entries, App Paths, services.
+- **Batch uninstall** several programs in one go, with one combined leftover scan.
+- **Quiet uninstall** where supported, and **forced removal** when the uninstaller is broken.
+- **Broken entry finder** for programs whose uninstaller or folder no longer exists.
+- Real folder sizes for programs that don't report one.
+
+**Safety first**
+- Automatic **backups** of everything removed or changed; restore any operation from the Backups page.
+- Optional **System Restore point** before uninstalling.
+- Hard-coded protection for critical folders and registry keys — they can never be deleted, whatever a log says.
+
+**Tools**
+- **Windows Updates** window: list installed updates and uninstall individual ones (uses DISM, which works for modern cumulative updates; permanent servicing-stack updates are labelled).
+- **Startup manager**: Run keys and Startup folders (Task Manager-compatible enable/disable), services, scheduled tasks.
+- **Junk cleaner**: temp files, crash dumps, shader caches, Windows Update downloads, browser caches, Recycle Bin.
+- **"Which program created this?"** — search any file or registry path across all monitored installs.
+- **Export** install logs as an HTML report, a `.reg` undo script, a PowerShell removal script, or JSON (import them on another PC).
+
+**And**
+- Dark interface with a native red Windows 11 window border.
+- **9 languages**: English, Español, Deutsch, Français, Português (Brasil), Italiano, Русский, 简体中文, 日本語 — add more without recompiling (see [Translating](docs/TRANSLATING.md)).
+- Admin check at every launch, with one-click relaunch as administrator.
+- **No dependencies**: a single native exe; no .NET, no Visual C++ runtime, nothing to download.
+- Installer **or** portable mode.
+- Full **command line** for scripting.
+
+## Download
+
+Get the latest version from the [Releases page](https://github.com/SeanShaffer88/ExpungeUninstaller/releases/latest):
+
+| File | What it is |
+|---|---|
+| `Expunge-Setup-x.y.z.exe` | Installer: Program Files, Start menu, Apps & features entry |
+| `Expunge-x.y.z-portable.zip` | Portable: unzip anywhere; data stays next to the exe |
+
+Requirements: Windows 11 (or Windows 10), 64-bit. Run as administrator for full functionality — Expunge offers to relaunch itself elevated.
+
+## How to use it
+
+1. **Monitor → Choose installer…** and pick a setup file. Wait for the "before" snapshot.
+2. Install the program normally (run it once if you like, so first-run settings are captured too).
+3. Click **Finish monitoring**, review the changes, and **Save install log**.
+4. Later: **Programs** (or **Install logs**) → **Uninstall**. Review the plan and remove. Changed your mind? **Backups → Restore**.
+
+## Command line
+
+```
+expunge monitor --name "Photo Editor" -- C:\Downloads\setup.exe
+expunge logs
+expunge revert <log-id> --dry-run
+expunge revert <log-id>
+expunge export <log-id> reg undo.reg
+expunge backups
+expunge restore <backup-id>
+expunge --help
+```
+
+## Building from source
+
+```
+git clone https://github.com/SeanShaffer88/ExpungeUninstaller
+cd ExpungeUninstaller
+cargo build --release
+```
+
+Builds with Rust (stable) on Windows. **No Visual Studio on your PC?** Push to GitHub and let the included Actions workflow build it, or cross-compile from Linux (see `scripts/cross-env.sh`). Releases are built automatically when a `v*` tag is pushed.
+
+The engine (`src/` minus `gui/`) is platform-independent and fully unit-tested with an in-memory registry: `cargo test --lib`.
+
+## How it works
+
+| Step | What happens |
+|---|---|
+| Snapshot | Registry keys and values (raw data, every type) and file metadata under configurable roots, skipping known Windows noise |
+| Diff | Added/removed/changed keys, values and files, compared case-insensitively like Windows |
+| Plan | Services and tasks first, then files, folders (deepest first), registry deletions, then restores |
+| Execute | Every step is backed up first; protected locations are refused; locked files go to delete-on-reboot |
+| Undo | Backups replay in reverse to put everything back |
+
+## Roadmap
+
+See [ROADMAP.md](ROADMAP.md). Ideas and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+Copyright © 2026 Sean Shaffer.
+
+Expunge is free software: you can redistribute it and/or modify it under the terms of the **GNU General Public License v3** (or any later version). See [LICENSE](LICENSE).

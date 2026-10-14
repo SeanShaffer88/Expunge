@@ -10,13 +10,21 @@ use std::path::{Path, PathBuf};
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum BackupItem {
     /// A file copied into the backup before deletion.
-    File { original: String, stored: String, size: u64 },
+    File {
+        original: String,
+        stored: String,
+        size: u64,
+    },
     /// A folder that existed (recreated on restore).
     Dir { original: String },
     /// A registry subtree captured before deletion.
     RegTree { keys: Vec<KeyData> },
     /// A value's previous state (`None` = it did not exist).
-    RegValue { key: String, name: String, previous: Option<RegValue> },
+    RegValue {
+        key: String,
+        name: String,
+        previous: Option<RegValue>,
+    },
     /// A key that did not exist before the operation created it.
     KeyAbsent { path: String },
 }
@@ -35,7 +43,13 @@ impl Backup {
     pub fn bytes(&self) -> u64 {
         self.items
             .iter()
-            .map(|i| if let BackupItem::File { size, .. } = i { *size } else { 0 })
+            .map(|i| {
+                if let BackupItem::File { size, .. } = i {
+                    *size
+                } else {
+                    0
+                }
+            })
             .sum()
     }
 
@@ -49,7 +63,10 @@ impl Backup {
                 _ => {}
             }
         }
-        format!("{files} files ({}), {keys} keys, {values} values", crate::model::human_size(self.bytes()))
+        format!(
+            "{files} files ({}), {keys} keys, {values} values",
+            crate::model::human_size(self.bytes())
+        )
     }
 }
 
@@ -63,10 +80,18 @@ pub struct ActionResult {
 
 impl ActionResult {
     pub fn ok(desc: impl Into<String>, msg: impl Into<String>) -> Self {
-        ActionResult { description: desc.into(), ok: true, message: msg.into() }
+        ActionResult {
+            description: desc.into(),
+            ok: true,
+            message: msg.into(),
+        }
     }
     pub fn err(desc: impl Into<String>, msg: impl Into<String>) -> Self {
-        ActionResult { description: desc.into(), ok: false, message: msg.into() }
+        ActionResult {
+            description: desc.into(),
+            ok: false,
+            message: msg.into(),
+        }
     }
 }
 
@@ -81,10 +106,16 @@ impl BackupWriter {
     pub fn new(backups_root: &Path, title: &str) -> Result<Self> {
         let id = crate::util::new_id();
         let dir = backups_root.join(&id);
-        std::fs::create_dir_all(dir.join("files")).with_context(|| format!("create {}", dir.display()))?;
+        std::fs::create_dir_all(dir.join("files"))
+            .with_context(|| format!("create {}", dir.display()))?;
         let w = BackupWriter {
             dir,
-            backup: Backup { id, title: title.to_string(), created: crate::util::now_string(), ..Default::default() },
+            backup: Backup {
+                id,
+                title: title.to_string(),
+                created: crate::util::now_string(),
+                ..Default::default()
+            },
             counter: 0,
         };
         w.save()?;
@@ -104,7 +135,10 @@ impl BackupWriter {
     pub fn add_file(&mut self, path: &Path) -> Result<()> {
         let meta = std::fs::metadata(path)?;
         self.counter += 1;
-        let ext = path.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+        let ext = path
+            .extension()
+            .map(|e| format!(".{}", e.to_string_lossy()))
+            .unwrap_or_default();
         let stored = format!("{:06}{ext}", self.counter);
         std::fs::copy(path, self.dir.join("files").join(&stored))
             .with_context(|| format!("back up {}", path.display()))?;
@@ -118,9 +152,15 @@ impl BackupWriter {
 
     /// Back up a whole folder: the folder entries and every file inside.
     pub fn add_dir_tree(&mut self, path: &Path) -> Result<()> {
-        for e in walkdir::WalkDir::new(path).follow_links(false).into_iter().flatten() {
+        for e in walkdir::WalkDir::new(path)
+            .follow_links(false)
+            .into_iter()
+            .flatten()
+        {
             if e.file_type().is_dir() {
-                self.backup.items.push(BackupItem::Dir { original: e.path().to_string_lossy().to_string() });
+                self.backup.items.push(BackupItem::Dir {
+                    original: e.path().to_string_lossy().to_string(),
+                });
             } else if e.file_type().is_file() {
                 self.add_file(e.path())?;
             }
@@ -129,7 +169,9 @@ impl BackupWriter {
     }
 
     pub fn add_dir(&mut self, path: &Path) -> Result<()> {
-        self.backup.items.push(BackupItem::Dir { original: path.to_string_lossy().to_string() });
+        self.backup.items.push(BackupItem::Dir {
+            original: path.to_string_lossy().to_string(),
+        });
         self.save()
     }
 
@@ -143,12 +185,18 @@ impl BackupWriter {
 
     pub fn add_value(&mut self, reg: &dyn Registry, key: &str, name: &str) -> Result<()> {
         let previous = reg.read_key(key).and_then(|k| k.get(name).cloned());
-        self.backup.items.push(BackupItem::RegValue { key: key.into(), name: name.into(), previous });
+        self.backup.items.push(BackupItem::RegValue {
+            key: key.into(),
+            name: name.into(),
+            previous,
+        });
         self.save()
     }
 
     pub fn add_key_absent(&mut self, path: &str) -> Result<()> {
-        self.backup.items.push(BackupItem::KeyAbsent { path: path.into() });
+        self.backup
+            .items
+            .push(BackupItem::KeyAbsent { path: path.into() });
         self.save()
     }
 
@@ -207,7 +255,9 @@ pub fn restore_backup(root: &Path, id: &str, reg: &dyn Registry) -> Result<Vec<A
     for item in backup.items.iter().rev() {
         let r = match item {
             BackupItem::Dir { .. } => continue,
-            BackupItem::File { original, stored, .. } => {
+            BackupItem::File {
+                original, stored, ..
+            } => {
                 let desc = format!("File {original}");
                 let dest = Path::new(original);
                 let res = dest
@@ -221,14 +271,24 @@ pub fn restore_backup(root: &Path, id: &str, reg: &dyn Registry) -> Result<Vec<A
                 }
             }
             BackupItem::RegTree { keys } => {
-                let desc = format!("Key {}", keys.first().map(|k| k.path.as_str()).unwrap_or("?"));
+                let desc = format!(
+                    "Key {}",
+                    keys.first().map(|k| k.path.as_str()).unwrap_or("?")
+                );
                 match platform::write_tree(reg, keys) {
                     Ok(()) => ActionResult::ok(desc, format!("restored {} keys", keys.len())),
                     Err(e) => ActionResult::err(desc, e.to_string()),
                 }
             }
-            BackupItem::RegValue { key, name, previous } => {
-                let desc = format!("Value {key}\\{}", if name.is_empty() { "(Default)" } else { name });
+            BackupItem::RegValue {
+                key,
+                name,
+                previous,
+            } => {
+                let desc = format!(
+                    "Value {key}\\{}",
+                    if name.is_empty() { "(Default)" } else { name }
+                );
                 let res = match previous {
                     Some(v) => reg.set_value(key, v),
                     None => match reg.read_key(key).and_then(|k| k.get(name).cloned()) {
@@ -287,13 +347,24 @@ mod tests {
         // Destroy things.
         std::fs::remove_dir_all(&work).unwrap();
         reg.delete_tree("HKCU\\Software\\X").unwrap();
-        reg.set_value("HKCU\\Software\\Z", &RegValue::dword("n", 99)).unwrap();
-        reg.set_value("HKCU\\Software\\Z", &RegValue::dword("new", 1)).unwrap();
+        reg.set_value("HKCU\\Software\\Z", &RegValue::dword("n", 99))
+            .unwrap();
+        reg.set_value("HKCU\\Software\\Z", &RegValue::dword("new", 1))
+            .unwrap();
 
         let res = restore_backup(&broot, &b.id, &reg).unwrap();
         assert!(res.iter().all(|r| r.ok), "{res:?}");
-        assert_eq!(std::fs::read_to_string(work.join("sub").join("a.txt")).unwrap(), "hello");
-        assert_eq!(reg.read_key("HKCU\\Software\\X\\Y").unwrap().get_string("v").unwrap(), "1");
+        assert_eq!(
+            std::fs::read_to_string(work.join("sub").join("a.txt")).unwrap(),
+            "hello"
+        );
+        assert_eq!(
+            reg.read_key("HKCU\\Software\\X\\Y")
+                .unwrap()
+                .get_string("v")
+                .unwrap(),
+            "1"
+        );
         let z = reg.read_key("HKCU\\Software\\Z").unwrap();
         assert_eq!(z.get_u32("n"), Some(5));
         assert!(z.get("new").is_none());

@@ -38,7 +38,11 @@ impl Progress {
 }
 
 /// Capture the configured registry roots and folders.
-pub fn take_snapshot(reg: &dyn Registry, settings: &Settings, progress: &Progress) -> Result<Snapshot> {
+pub fn take_snapshot(
+    reg: &dyn Registry,
+    settings: &Settings,
+    progress: &Progress,
+) -> Result<Snapshot> {
     let mut snap = Snapshot {
         created: crate::util::now_string(),
         computer: platform::computer_name(),
@@ -54,14 +58,24 @@ pub fn take_snapshot(reg: &dyn Registry, settings: &Settings, progress: &Progres
             anyhow::bail!("cancelled");
         }
     }
-    let file_excl: Vec<String> = settings.file_exclusions.iter().map(|s| expand_env(s)).collect();
+    let file_excl: Vec<String> = settings
+        .file_exclusions
+        .iter()
+        .map(|s| expand_env(s))
+        .collect();
     for root in &settings.file_roots {
         let path = expand_env(&root.path);
         if path.contains('%') || !Path::new(&path).exists() {
             continue;
         }
         progress.set_phase(format!("Files: {path}"));
-        capture_files(Path::new(&path), root.recursive, &file_excl, &mut snap, progress);
+        capture_files(
+            Path::new(&path),
+            root.recursive,
+            &file_excl,
+            &mut snap,
+            progress,
+        );
         if progress.cancelled() {
             anyhow::bail!("cancelled");
         }
@@ -71,7 +85,13 @@ pub fn take_snapshot(reg: &dyn Registry, settings: &Settings, progress: &Progres
 }
 
 /// Depth-first walk of a registry subtree, skipping excluded branches.
-pub fn capture_registry(reg: &dyn Registry, root: &str, excl: &[String], snap: &mut Snapshot, progress: &Progress) {
+pub fn capture_registry(
+    reg: &dyn Registry,
+    root: &str,
+    excl: &[String],
+    snap: &mut Snapshot,
+    progress: &Progress,
+) {
     let mut stack = vec![root.to_string()];
     while let Some(path) = stack.pop() {
         if progress.cancelled() {
@@ -105,7 +125,13 @@ fn mtime_of(meta: &std::fs::Metadata) -> i64 {
 }
 
 /// Record every file and folder under `root` (not following links/junctions).
-pub fn capture_files(root: &Path, recursive: bool, excl: &[String], snap: &mut Snapshot, progress: &Progress) {
+pub fn capture_files(
+    root: &Path,
+    recursive: bool,
+    excl: &[String],
+    snap: &mut Snapshot,
+    progress: &Progress,
+) {
     let walker = walkdir::WalkDir::new(root)
         .min_depth(1)
         .max_depth(if recursive { usize::MAX } else { 1 })
@@ -120,7 +146,8 @@ pub fn capture_files(root: &Path, recursive: bool, excl: &[String], snap: &mut S
             Ok(e) => e,
             Err(e) => {
                 if let Some(p) = e.path() {
-                    snap.warnings.push(format!("Could not read {}", p.display()));
+                    snap.warnings
+                        .push(format!("Could not read {}", p.display()));
                 }
                 continue;
             }
@@ -150,7 +177,10 @@ pub fn diff(before: &Snapshot, after: &Snapshot) -> ChangeSet {
             Some(bk) => {
                 for (fv, av) in &ak.values {
                     match bk.values.get(fv) {
-                        None => cs.values_added.push(ValueRef { key: ak.path.clone(), value: av.clone() }),
+                        None => cs.values_added.push(ValueRef {
+                            key: ak.path.clone(),
+                            value: av.clone(),
+                        }),
                         Some(bv) if bv.kind != av.kind || bv.data != av.data => {
                             cs.values_modified.push(ValueChange {
                                 key: ak.path.clone(),
@@ -163,7 +193,10 @@ pub fn diff(before: &Snapshot, after: &Snapshot) -> ChangeSet {
                 }
                 for (fv, bv) in &bk.values {
                     if !ak.values.contains_key(fv) {
-                        cs.values_removed.push(ValueRef { key: ak.path.clone(), value: bv.clone() });
+                        cs.values_removed.push(ValueRef {
+                            key: ak.path.clone(),
+                            value: bv.clone(),
+                        });
                     }
                 }
             }
@@ -182,7 +215,10 @@ pub fn diff(before: &Snapshot, after: &Snapshot) -> ChangeSet {
                 // Folder timestamps change whenever their contents do; only
                 // files count as modified.
                 if !af.is_dir && (bf.size != af.size || bf.mtime != af.mtime || bf.is_dir) {
-                    cs.files_modified.push(FileChange { before: bf.clone(), after: af.clone() });
+                    cs.files_modified.push(FileChange {
+                        before: bf.clone(),
+                        after: af.clone(),
+                    });
                 }
             }
         }
@@ -203,10 +239,13 @@ pub fn filter_changes(cs: &mut ChangeSet, reg_excl: &[String], file_excl: &[Stri
     cs.keys_removed.retain(|k| !is_excluded(&k.path, reg_excl));
     cs.values_added.retain(|v| !is_excluded(&v.key, reg_excl));
     cs.values_removed.retain(|v| !is_excluded(&v.key, reg_excl));
-    cs.values_modified.retain(|v| !is_excluded(&v.key, reg_excl));
+    cs.values_modified
+        .retain(|v| !is_excluded(&v.key, reg_excl));
     cs.files_added.retain(|f| !is_excluded(&f.path, &file_excl));
-    cs.files_removed.retain(|f| !is_excluded(&f.path, &file_excl));
-    cs.files_modified.retain(|f| !is_excluded(&f.after.path, &file_excl));
+    cs.files_removed
+        .retain(|f| !is_excluded(&f.path, &file_excl));
+    cs.files_modified
+        .retain(|f| !is_excluded(&f.after.path, &file_excl));
 }
 
 /// Program identity found in a change set (from a new Uninstall entry).
@@ -237,19 +276,29 @@ pub fn detect_program(cs: &ChangeSet) -> Option<DetectedProgram> {
             version: k.get_string("DisplayVersion").unwrap_or_default(),
         })
     };
-    let mut found: Vec<DetectedProgram> =
-        cs.keys_added.iter().filter(|k| is_uninstall_entry(&k.path)).filter_map(from_key).collect();
+    let mut found: Vec<DetectedProgram> = cs
+        .keys_added
+        .iter()
+        .filter(|k| is_uninstall_entry(&k.path))
+        .filter_map(from_key)
+        .collect();
     if found.is_empty() {
         // An upgrade rewrites an existing entry instead.
         let mut keys: std::collections::BTreeMap<String, KeyData> = Default::default();
         for v in &cs.values_modified {
             if is_uninstall_entry(&v.key) {
-                keys.entry(fold(&v.key)).or_insert_with(|| KeyData::new(&v.key)).values.insert(fold(&v.after.name), v.after.clone());
+                keys.entry(fold(&v.key))
+                    .or_insert_with(|| KeyData::new(&v.key))
+                    .values
+                    .insert(fold(&v.after.name), v.after.clone());
             }
         }
         for v in &cs.values_added {
             if is_uninstall_entry(&v.key) {
-                keys.entry(fold(&v.key)).or_insert_with(|| KeyData::new(&v.key)).values.insert(fold(&v.value.name), v.value.clone());
+                keys.entry(fold(&v.key))
+                    .or_insert_with(|| KeyData::new(&v.key))
+                    .values
+                    .insert(fold(&v.value.name), v.value.clone());
             }
         }
         found = keys.values().filter_map(from_key).collect();
@@ -264,7 +313,8 @@ pub fn save_snapshot(path: &Path, snap: &Snapshot) -> Result<()> {
         std::fs::create_dir_all(p)?;
     }
     let f = std::fs::File::create(path).with_context(|| format!("create {}", path.display()))?;
-    let mut gz = flate2::write::GzEncoder::new(std::io::BufWriter::new(f), flate2::Compression::fast());
+    let mut gz =
+        flate2::write::GzEncoder::new(std::io::BufWriter::new(f), flate2::Compression::fast());
     serde_json::to_writer(&mut gz, snap)?;
     gz.finish()?.flush()?;
     Ok(())
@@ -286,7 +336,10 @@ mod tests {
         Settings {
             registry_roots: vec!["HKLM\\SOFTWARE".into()],
             registry_exclusions: vec!["HKLM\\SOFTWARE\\Noise".into()],
-            file_roots: vec![crate::settings::FileRoot { path: root.into(), recursive: true }],
+            file_roots: vec![crate::settings::FileRoot {
+                path: root.into(),
+                recursive: true,
+            }],
             file_exclusions: vec!["*cache".into()],
             ..Settings::default()
         }
@@ -297,7 +350,11 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path().to_string_lossy().to_string();
         let reg = MemRegistry::new();
-        reg.put(KeyData::new("HKLM\\SOFTWARE\\Existing").with(RegValue::dword("a", 1)).with(RegValue::dword("gone", 9)));
+        reg.put(
+            KeyData::new("HKLM\\SOFTWARE\\Existing")
+                .with(RegValue::dword("a", 1))
+                .with(RegValue::dword("gone", 9)),
+        );
         reg.put(KeyData::new("HKLM\\SOFTWARE\\Old"));
         std::fs::write(tmp.path().join("keep.txt"), "x").unwrap();
         let s = settings_for(&root);
@@ -306,11 +363,20 @@ mod tests {
 
         // "Install"
         let un = "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Foo";
-        reg.put(KeyData::new(un).with(RegValue::string("DisplayName", "Foo App")).with(RegValue::string("Publisher", "FooCorp")));
-        reg.put(KeyData::new("HKLM\\SOFTWARE\\FooCorp\\Foo").with(RegValue::string("Path", "C:\\Foo")));
-        reg.set_value("HKLM\\SOFTWARE\\Existing", &RegValue::dword("a", 2)).unwrap();
-        reg.set_value("HKLM\\SOFTWARE\\Existing", &RegValue::dword("b", 3)).unwrap();
-        reg.delete_value("HKLM\\SOFTWARE\\Existing", "gone").unwrap();
+        reg.put(
+            KeyData::new(un)
+                .with(RegValue::string("DisplayName", "Foo App"))
+                .with(RegValue::string("Publisher", "FooCorp")),
+        );
+        reg.put(
+            KeyData::new("HKLM\\SOFTWARE\\FooCorp\\Foo").with(RegValue::string("Path", "C:\\Foo")),
+        );
+        reg.set_value("HKLM\\SOFTWARE\\Existing", &RegValue::dword("a", 2))
+            .unwrap();
+        reg.set_value("HKLM\\SOFTWARE\\Existing", &RegValue::dword("b", 3))
+            .unwrap();
+        reg.delete_value("HKLM\\SOFTWARE\\Existing", "gone")
+            .unwrap();
         reg.delete_tree("HKLM\\SOFTWARE\\Old").unwrap();
         reg.put(KeyData::new("HKLM\\SOFTWARE\\Noise\\X"));
         std::fs::create_dir_all(tmp.path().join("Foo").join("cache")).unwrap();
@@ -349,7 +415,11 @@ mod tests {
 
     #[test]
     fn uninstall_entry_detection() {
-        assert!(is_uninstall_entry("HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\X"));
-        assert!(!is_uninstall_entry("HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\X\\Sub"));
+        assert!(is_uninstall_entry(
+            "HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\X"
+        ));
+        assert!(!is_uninstall_entry(
+            "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\X\\Sub"
+        ));
     }
 }
