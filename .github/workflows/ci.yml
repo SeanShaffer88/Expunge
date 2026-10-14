@@ -19,7 +19,17 @@ jobs:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
       - name: Unit tests
-        run: cargo test --lib --locked
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          cargo test --lib --locked 2>&1 | Tee-Object -FilePath test.log
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            # Surface the failure as annotations so it is visible without the log.
+            Get-Content test.log | Select-String -Pattern 'error|panicked|FAILED|failed|left:|right:' |
+              Select-Object -First 40 | ForEach-Object { Write-Output "::error::$($_.Line)" }
+            exit $code
+          }
       - name: Clippy
         run: cargo clippy --all-targets --locked
       - name: Release build
