@@ -23,6 +23,8 @@ const BUILTIN: &[(&str, &str)] = &[
     ("ru", include_str!("../lang/ru.json")),
     ("zh-CN", include_str!("../lang/zh-CN.json")),
     ("ja", include_str!("../lang/ja.json")),
+    ("ko", include_str!("../lang/ko.json")),
+    ("pl", include_str!("../lang/pl.json")),
 ];
 
 static CURRENT: RwLock<Option<HashMap<String, String>>> = RwLock::new(None);
@@ -170,7 +172,9 @@ mod tests {
         assert_eq!(best_match("de-AT", &langs), "de");
         assert_eq!(best_match("pt-PT", &langs), "pt-BR");
         assert_eq!(best_match("zh-TW", &langs), "zh-CN");
-        assert_eq!(best_match("ko-KR", &langs), "en");
+        assert_eq!(best_match("ko-KR", &langs), "ko");
+        assert_eq!(best_match("pl-PL", &langs), "pl");
+        assert_eq!(best_match("nl-NL", &langs), "en");
         set_language("de");
         assert_eq!(t("Uninstall"), "Deinstallieren");
         assert_eq!(t("No such string"), "No such string");

@@ -134,7 +134,7 @@ For programs that were installed without monitoring:
 
 ### Design and distribution
 - **Built for Windows 11:** a dark interface with a native red Windows 11 window border.
-- **Nine languages:** English, Español, Deutsch, Français, Português (Brasil), Italiano, Русский, 简体中文, and 日本語. Additional languages can be added without recompiling (see [Translating](docs/TRANSLATING.md)).
+- **Eleven languages:** English, Español, Deutsch, Français, Português (Brasil), Italiano, Polski, Русский, 简体中文, 日本語, and 한국어. Additional languages can be added without recompiling (see [Translating](docs/TRANSLATING.md)).
 - **Administrator check** at every launch, with a one-click relaunch as administrator.
 - **No dependencies:** a single native executable, with no .NET, no Visual C++ runtime, and nothing else to download.
 - **Installer or portable:** use whichever suits you.

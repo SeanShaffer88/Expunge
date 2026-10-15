@@ -24,7 +24,7 @@ Everything planned as *Next* has been built; the items below are the next candid
 
 **Everything else**
 - **More integration tests** — add WiX bundles and Squirrel installers, and run on Windows 11 client images when GitHub offers them.
-- More languages — see [docs/TRANSLATING.md](docs/TRANSLATING.md).
+- More languages and native-speaker reviews of the existing ones — see [docs/TRANSLATING.md](docs/TRANSLATING.md).
 
 ## Considered and not planned
 - **Kernel minifilter driver for monitoring** — a driver must be signed by Microsoft, which open-source projects can't easily get, and a driver bug can crash Windows. Snapshots plus event tracing (above) capture the same changes safely.

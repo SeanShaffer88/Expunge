@@ -76,6 +76,8 @@ VIAddVersionKey /LANG=1033 "ProductVersion" "${VERSION}"
 !insertmacro MUI_LANGUAGE "Russian"
 !insertmacro MUI_LANGUAGE "SimpChinese"
 !insertmacro MUI_LANGUAGE "Japanese"
+!insertmacro MUI_LANGUAGE "Korean"
+!insertmacro MUI_LANGUAGE "Polish"
 !insertmacro MUI_RESERVEFILE_LANGDLL
 
 Function .onInit
