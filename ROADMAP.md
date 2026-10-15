@@ -27,7 +27,6 @@ Everything planned as *Next* has been built; the items below are the next candid
 **Everything else**
 - **System health dashboard** — disk space trend, memory use, and services that stopped unexpectedly.
 - **Integration tests on clean Windows 11 virtual machines** — real NSIS, Inno Setup, MSI and WiX installers installed, monitored, uninstalled and verified clean on every release.
-- **Arm64 builds.**
 - More languages — see [docs/TRANSLATING.md](docs/TRANSLATING.md).
 
 ## Considered and not planned

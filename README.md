@@ -144,8 +144,9 @@ Download the latest version from the [Releases page](https://github.com/SeanShaf
 |---|---|
 | `Expunge-Setup-x.y.z.exe` | Installer: installs to Program Files and adds a Start menu shortcut and an *Installed apps* entry. |
 | `Expunge-x.y.z-portable.zip` | Portable: unzip anywhere; all data is stored next to the executable. |
+| `Expunge-x.y.z-arm64-portable.zip` | Portable build for Windows 11 on Arm PCs. |
 
-**System requirements:** 64-bit Windows 11 (build 22000 or later). Expunge is designed exclusively for Windows 11 and will not start on earlier versions of Windows. Administrator rights are required for full functionality; Expunge offers to relaunch itself with elevated rights.
+**System requirements:** 64-bit Windows 11 (build 22000 or later), on x64 or Arm64. Expunge is designed exclusively for Windows 11 and will not start on earlier versions of Windows. Administrator rights are required for full functionality; Expunge offers to relaunch itself with elevated rights.
 
 ## Getting started
 

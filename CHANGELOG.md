@@ -7,6 +7,7 @@ All notable changes to Expunge are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Arm64 builds**: releases include a portable build for Windows 11 on Arm (Snapdragon and other Arm PCs), and CI builds it on every push.
 - **Find a program by its window** (Programs > *Find by window*): click the button, then click any window, and Expunge selects the installed program it belongs to. Dropping a shortcut or program file onto the Programs page does the same.
 - **Pre- and post-uninstall scripts** (Advanced mode; program details > *Uninstall scripts*): commands that run before a program's uninstaller starts (for example to export settings or stop a service) and after it finishes. Scripts receive the program's name and folder in `%EXPUNGE_PROGRAM%` and `%EXPUNGE_INSTALL_DIR%`, and their outcome appears in the uninstall report.
 - **Startup impact**: the Startup page shows how long the last Windows startup took and how much each startup program slowed it down (High, Medium or Low), measured by Windows' own boot diagnostics (needs Administrator rights). Also in `expunge startup`.

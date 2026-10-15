@@ -49,6 +49,18 @@ jobs:
           name: Expunge-dev
           path: target/release/expunge.exe
 
+  arm64:
+    name: Build (Windows Arm64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release --locked --target aarch64-pc-windows-msvc
+
   perf:
     name: Performance budget (Windows)
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'

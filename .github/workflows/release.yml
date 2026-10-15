@@ -33,6 +33,11 @@ jobs:
       - name: Build
         run: cargo build --release --locked
 
+      - name: Build for Arm64
+        run: |
+          rustup target add aarch64-pc-windows-msvc
+          cargo build --release --locked --target aarch64-pc-windows-msvc
+
       - name: Install NSIS
         shell: pwsh
         run: |
@@ -51,6 +56,13 @@ jobs:
           Copy-Item README.md dist/portable/README.md
           New-Item dist/portable/portable -ItemType File | Out-Null
           Compress-Archive -Path dist/portable/* -DestinationPath "dist/Expunge-$v-portable.zip"
+          # Arm64 portable build (Snapdragon and other Arm PCs).
+          New-Item -ItemType Directory dist/portable-arm64 | Out-Null
+          Copy-Item target/aarch64-pc-windows-msvc/release/expunge.exe dist/portable-arm64/Expunge.exe
+          Copy-Item LICENSE dist/portable-arm64/LICENSE.txt
+          Copy-Item README.md dist/portable-arm64/README.md
+          New-Item dist/portable-arm64/portable -ItemType File | Out-Null
+          Compress-Archive -Path dist/portable-arm64/* -DestinationPath "dist/Expunge-$v-arm64-portable.zip"
           makensis "-DVERSION=$v" "-DEXE=..\target\release\expunge.exe" "-DOUTDIR=..\dist" installer\expunge.nsi
           Get-ChildItem dist -File | ForEach-Object {
             "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
