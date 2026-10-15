@@ -90,8 +90,8 @@ jobs:
             Stop-Process $p -Force
             $runs += [pscustomobject]@{ start = $startMs; idle = $idle; ram = $ram; priv = $priv }
           }
-          $start = ($runs | Measure-Object start -Median -ErrorAction SilentlyContinue).Median
-          if (-not $start) { $start = ($runs.start | Sort-Object)[1] }
+          $runs | ForEach-Object { Write-Host "run: window $($_.start) ms, idle $($_.idle) %, $($_.ram) MB" }
+          $start = ($runs.start | Sort-Object)[1]
           $idle = ($runs.idle | Measure-Object -Maximum).Maximum
           $ram = ($runs.ram | Measure-Object -Maximum).Maximum
           $priv = ($runs.priv | Measure-Object -Maximum).Maximum
