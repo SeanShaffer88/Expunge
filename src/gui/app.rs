@@ -21,6 +21,7 @@ pub enum Tab {
     Cleaner,
     Restore,
     Lab,
+    Builder,
     Settings,
 }
 
@@ -70,6 +71,7 @@ pub struct App {
     pub languages: Vec<(String, String)>,
     pub programs: programs::ProgramsState,
     pub restore: super::restore_ui::RestoreState,
+    pub builder: super::builder::BuilderState,
     /// Live activity while monitoring an installation.
     pub live: Option<expunge_core::live::LiveWatcher>,
     /// Whether background monitoring is on (read from Task Scheduler once).
@@ -148,6 +150,7 @@ impl App {
             languages,
             programs: Default::default(),
             restore: Default::default(),
+            builder: Default::default(),
             live: None,
             auto_watch: None,
             auto_watch_job: None,
@@ -360,6 +363,10 @@ impl App {
                             ui.close();
                             self.tab = Tab::Restore;
                         }
+                        if ui.button(t("Portable App Builder")).clicked() {
+                            ui.close();
+                            self.tab = Tab::Builder;
+                        }
                         if ui.button(t("Junk cleaner")).clicked() {
                             ui.close();
                             self.tab = Tab::Cleaner;
@@ -532,8 +539,14 @@ impl App {
                 ui.add_space(14.0);
                 ui.label(RichText::new(t("TOOLS")).small().color(theme::MUTED));
                 ui.add_space(2.0);
-                if theme::nav_item(ui, "⏪", &t("System Restore"), self.tab == Tab::Restore, None)
-                    .clicked()
+                if theme::nav_item(
+                    ui,
+                    "⏪",
+                    &t("System Restore"),
+                    self.tab == Tab::Restore,
+                    None,
+                )
+                .clicked()
                 {
                     self.tab = Tab::Restore;
                 }
@@ -542,6 +555,17 @@ impl App {
                     self.tab = Tab::Lab;
                     self.reload_logs();
                     self.on_lab_opened();
+                }
+                if theme::nav_item(
+                    ui,
+                    "📦",
+                    &t("Portable App Builder"),
+                    self.tab == Tab::Builder,
+                    None,
+                )
+                .clicked()
+                {
+                    self.tab = Tab::Builder;
                 }
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
                     if !self.elevated
@@ -588,6 +612,10 @@ impl App {
             Tab::Lab => (
                 "Snapshots",
                 "Capture the system at any moment and compare any two captures",
+            ),
+            Tab::Builder => (
+                "Portable App Builder",
+                "Capture an installation and turn it into a PortableApps.com package",
             ),
             Tab::Settings => ("Settings", ""),
         };
@@ -684,7 +712,7 @@ impl App {
                 ui.label(t(
                     "Expunge is not running as Administrator. It needs admin rights to work effectively: \
                      to monitor and undo installations system-wide, remove programs installed for all users, \
-                     manage services and Windows updates, and clean protected folders.",
+                     manage services, and clean protected folders.",
                 ));
                 ui.add_space(4.0);
                 small_muted(ui, t("Without them, many changes will fail with \"access denied\"."));
@@ -790,6 +818,7 @@ impl App {
         self.poll_backups();
         self.poll_removal();
         self.poll_lab();
+        self.poll_builder(ctx);
         if let Some(job) = &self.programs.restore_job {
             if let Some(r) = job.poll() {
                 self.programs.restore_job = None;
@@ -894,6 +923,11 @@ fn page_help(tab: Tab) -> &'static [&'static str] {
             "A snapshot records the registry and files at one moment. Take one, make changes (install something, change settings), take another and compare the two to see exactly what changed.",
             "The differences can be saved as an install log, so they can be undone like a monitored installation. Everything is also available from the command line (expunge --help).",
         ],
+        Tab::Builder => &[
+            "Choose a program's installer and describe the program. Expunge snapshots Windows, runs the installer, lets you start the program once, snapshots again and builds a PortableApps.com Format package from the difference.",
+            "In Windows Sandbox nothing touches this PC. On this PC, the installation is recorded so you can remove it precisely afterwards.",
+            "With the PortableApps.com Launcher and Installer installed, Expunge also makes the launcher and the .paf.exe installer. Review the Launcher settings it wrote before publishing.",
+        ],
         Tab::Settings => &[
             "Simple mode keeps the interface focused and plain. Advanced mode shows technical details, services and scheduled tasks.",
             "The monitoring scope decides which parts of the system snapshots look at. The defaults suit almost everyone.",
@@ -914,7 +948,10 @@ impl App {
                 ui.add(egui::Image::new(&self.logo).fit_to_exact_size(egui::vec2(48.0, 48.0)));
                 ui.vertical(|ui| {
                     ui.heading(RichText::new(t("Welcome to Expunge")).strong());
-                    small_muted(ui, t("Remove programs completely — and only what belongs to them."));
+                    small_muted(
+                        ui,
+                        t("Remove programs completely — and only what belongs to them."),
+                    );
                 });
             });
             ui.add_space(10.0);
@@ -926,21 +963,43 @@ impl App {
                     .find(|(c, _)| *c == self.settings.language)
                     .map(|(_, n)| n.clone())
                     .unwrap_or_else(|| t("Windows default"));
-                egui::ComboBox::from_id_salt("welcome_lang").selected_text(current).show_ui(ui, |ui| {
-                    let mut changed = ui.selectable_value(&mut self.settings.language, String::new(), t("Windows default")).changed();
-                    for (code, name) in &self.languages {
-                        changed |= ui.selectable_value(&mut self.settings.language, code.clone(), name).changed();
-                    }
-                    if changed {
-                        i18n::set_language(&self.settings.language);
-                    }
-                });
+                egui::ComboBox::from_id_salt("welcome_lang")
+                    .selected_text(current)
+                    .show_ui(ui, |ui| {
+                        let mut changed = ui
+                            .selectable_value(
+                                &mut self.settings.language,
+                                String::new(),
+                                t("Windows default"),
+                            )
+                            .changed();
+                        for (code, name) in &self.languages {
+                            changed |= ui
+                                .selectable_value(&mut self.settings.language, code.clone(), name)
+                                .changed();
+                        }
+                        if changed {
+                            i18n::set_language(&self.settings.language);
+                        }
+                    });
             });
             ui.add_space(10.0);
             for (icon, title, body) in [
-                ("🗑", "Uninstall completely", "Remove programs plus the leftovers their uninstallers forget."),
-                ("📡", "Monitor installations", "Record what an installer changes so it can be undone precisely later."),
-                ("💾", "Undo anything", "Everything removed is backed up first and can be restored."),
+                (
+                    "🗑",
+                    "Uninstall completely",
+                    "Remove programs plus the leftovers their uninstallers forget.",
+                ),
+                (
+                    "📡",
+                    "Monitor installations",
+                    "Record what an installer changes so it can be undone precisely later.",
+                ),
+                (
+                    "💾",
+                    "Undo anything",
+                    "Everything removed is backed up first and can be restored.",
+                ),
             ] {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(icon).size(20.0).color(theme::ACCENT_TEXT));
@@ -955,15 +1014,27 @@ impl App {
             ui.label(RichText::new(t("How do you want Expunge to look?")).strong());
             ui.columns(2, |cols| {
                 for (i, (adv, title, body)) in [
-                    (false, "Simple", "Plain language, fewer technical details. Recommended if you're not sure."),
-                    (true, "Advanced", "All details: registry keys, services, scheduled tasks and every tool."),
+                    (
+                        false,
+                        "Simple",
+                        "Plain language, fewer technical details. Recommended if you're not sure.",
+                    ),
+                    (
+                        true,
+                        "Advanced",
+                        "All details: registry keys, services, scheduled tasks and every tool.",
+                    ),
                 ]
                 .into_iter()
                 .enumerate()
                 {
                     let selected = self.settings.advanced_mode == adv;
                     let resp = egui::Frame::new()
-                        .fill(if selected { theme::NAV_SELECTED } else { theme::CARD })
+                        .fill(if selected {
+                            theme::NAV_SELECTED
+                        } else {
+                            theme::CARD
+                        })
                         .corner_radius(12)
                         .inner_margin(12)
                         .show(&mut cols[i], |ui| {
@@ -982,7 +1053,10 @@ impl App {
                 }
             });
             ui.add_space(10.0);
-            small_muted(ui, t("You can change both at any time in Settings. Press F1 on any page for help."));
+            small_muted(
+                ui,
+                t("You can change both at any time in Settings. Press F1 on any page for help."),
+            );
             ui.add_space(6.0);
             let start = theme::wide_button(ui, t("Get started"), true);
             if ui.memory(|m| m.focused().is_none()) {
@@ -1068,6 +1142,7 @@ impl App {
             if let Some(back) = ctrl_tab {
                 let mut order = tabs.to_vec();
                 order.insert(8, Tab::Lab);
+                order.insert(9, Tab::Builder);
                 let pos = order.iter().position(|t| *t == self.tab).unwrap_or(0);
                 let n = order.len();
                 let next = if back {
@@ -1145,7 +1220,11 @@ impl eframe::App for App {
         // Benchmarks: record why each frame was drawn (EXPUNGE_REPAINT_LOG=file).
         if let Some(path) = std::env::var_os("EXPUNGE_REPAINT_LOG") {
             use std::io::Write;
-            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+            {
                 let causes: Vec<String> = ctx
                     .repaint_causes()
                     .iter()
@@ -1185,6 +1264,7 @@ impl eframe::App for App {
             Tab::Cleaner => self.ui_cleaner(ctx),
             Tab::Restore => self.ui_restore(ctx),
             Tab::Lab => self.ui_lab(ctx),
+            Tab::Builder => self.ui_builder(ctx),
             Tab::Settings => self.ui_settings(ctx),
         }
         self.ui_wizard(ctx);

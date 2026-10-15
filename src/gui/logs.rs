@@ -233,7 +233,7 @@ impl App {
         }
     }
 
-    fn uninstall_from_log(&mut self, log: &InstallLog) {
+    pub(super) fn uninstall_from_log(&mut self, log: &InstallLog) {
         let plan = build_plan(&log.changes, self.reg.as_ref());
         let mut flow = RemovalFlow::new(
             tf("Uninstall {name}", &[("name", log.name.clone())]),
@@ -252,6 +252,15 @@ impl App {
             "html" => (report::to_html(log), "HTML"),
             "reg" => (report::to_reg_undo(log), "Registry script"),
             "ps1" => (report::to_ps1(log), "PowerShell"),
+            "ini" => (
+                expunge_core::portable::launcher_ini(
+                    &log.changes,
+                    &log.name,
+                    &expunge_core::portable::Folders::current(),
+                )
+                .text,
+                "PortableApps.com Launcher settings",
+            ),
             _ => (
                 serde_json::to_string_pretty(log).unwrap_or_default(),
                 "Expunge log",
@@ -529,6 +538,7 @@ impl App {
                             ("reg", "Registry undo script (.reg)"),
                             ("ps1", "PowerShell removal script"),
                             ("json", "Install log (.json)"),
+                            ("ini", "PortableApps.com Launcher settings (.ini)"),
                         ] {
                             if ui.button(t(label)).clicked() {
                                 ui.close();

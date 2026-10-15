@@ -1,0 +1,627 @@
+//! Portable App Builder page: capture an installation (in Windows Sandbox or
+//! on this PC) and turn it into a PortableApps.com package.
+
+use super::app::App;
+use super::theme;
+use super::widgets::*;
+use super::Job;
+use egui::RichText;
+use expunge_core::i18n::{t, tf};
+use expunge_core::model::{human_size, InstallLog};
+use expunge_core::pafbuild::{self, AppDetails, Compiled, InstallerKind, PaTools, Package};
+use expunge_core::platform;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+
+#[derive(Default)]
+pub struct BuilderState {
+    pub installer: String,
+    kind: Option<InstallerKind>,
+    pub details: AppDetails,
+    silent: bool,
+    include_defaults: bool,
+    use_sandbox: bool,
+    sandbox: Option<bool>,
+    out_dir: String,
+    tools: Option<PaTools>,
+    tools_job: Option<Job<PaTools>>,
+    /// What the capture is doing, as shown to the user.
+    stage: Arc<Mutex<String>>,
+    /// Set when the user says the installation is finished (this-PC mode).
+    host_done: Arc<AtomicBool>,
+    waiting_for_user: Arc<AtomicBool>,
+    capture_job: Option<Job<Result<(InstallLog, Package), String>>>,
+    /// Sandbox capture: the work folder whose status.json is watched.
+    work_dir: Option<PathBuf>,
+    collect_job: Option<Job<Result<(PathBuf, Package), String>>>,
+    last_poll: Option<std::time::Instant>,
+    /// The finished package (its folder) and the capture's install log.
+    package: Option<(PathBuf, Package)>,
+    log: Option<InstallLog>,
+    on_this_pc: bool,
+    compile_job: Option<Job<Result<Compiled, String>>>,
+    compiled: Option<Compiled>,
+    error: Option<String>,
+    initialized: bool,
+}
+
+impl BuilderState {
+    fn busy(&self) -> bool {
+        self.capture_job.is_some()
+            || self.work_dir.is_some()
+            || self.collect_job.is_some()
+            || self.compile_job.is_some()
+    }
+}
+
+impl App {
+    fn builder_init(&mut self, ctx: &egui::Context) {
+        let b = &mut self.builder;
+        if b.initialized {
+            return;
+        }
+        b.initialized = true;
+        let available = pafbuild::sandbox_available();
+        b.sandbox = Some(available);
+        b.use_sandbox = available;
+        b.silent = false;
+        b.details.packager = self.settings.packager_name.clone();
+        b.out_dir = if self.settings.portable_out_dir.is_empty() {
+            std::env::var("USERPROFILE")
+                .map(|p| format!("{p}\\Documents\\Portable Apps"))
+                .unwrap_or_default()
+        } else {
+            self.settings.portable_out_dir.clone()
+        };
+        self.refresh_tools(ctx);
+    }
+
+    fn refresh_tools(&mut self, ctx: &egui::Context) {
+        let dir = self.settings.portableapps_dir.clone();
+        self.builder.tools_job = Some(Job::spawn(ctx, move |_| pafbuild::find_tools(&dir)));
+    }
+
+    pub fn poll_builder(&mut self, ctx: &egui::Context) {
+        let b = &mut self.builder;
+        if let Some(tools) = b.tools_job.as_ref().and_then(|j| j.poll()) {
+            b.tools_job = None;
+            b.tools = Some(tools);
+        }
+        if let Some(r) = b.capture_job.as_ref().and_then(|j| j.poll()) {
+            b.capture_job = None;
+            match r {
+                Ok((log, pkg)) => {
+                    let _ = self.store.save_log(&log);
+                    self.builder.package = Some((PathBuf::from(&pkg.dir), pkg));
+                    self.builder.log = Some(log);
+                    self.reload_logs();
+                    self.programs.needs_refresh = true;
+                    self.after_capture(ctx);
+                }
+                Err(e) => self.builder.error = Some(e),
+            }
+            return;
+        }
+        // Sandbox: watch status.json about once a second.
+        if let Some(work) = b.work_dir.clone() {
+            ctx.request_repaint_after(std::time::Duration::from_secs(1));
+            if b.last_poll.is_some_and(|t| t.elapsed().as_millis() < 900) {
+                return;
+            }
+            b.last_poll = Some(std::time::Instant::now());
+            if let Some(st) = pafbuild::read_status(&work) {
+                *b.stage.lock().unwrap() = st.phase.clone();
+                if st.done {
+                    b.work_dir = None;
+                    match (st.error, st.package) {
+                        (Some(e), _) => b.error = Some(e),
+                        (None, Some(pkg)) => {
+                            let out = PathBuf::from(&b.out_dir);
+                            b.collect_job = Some(Job::spawn(ctx, move |_| {
+                                pafbuild::collect_sandbox_package(&work, &pkg, &out)
+                                    .map(|dir| {
+                                        let mut pkg = pkg.clone();
+                                        pkg.dir = dir.to_string_lossy().to_string();
+                                        (dir, pkg)
+                                    })
+                                    .map_err(|e| e.to_string())
+                            }));
+                        }
+                        (None, None) => b.error = Some(t("No package was made.")),
+                    }
+                }
+            }
+        }
+        if let Some(r) = self.builder.collect_job.as_ref().and_then(|j| j.poll()) {
+            self.builder.collect_job = None;
+            match r {
+                Ok(p) => {
+                    self.builder.package = Some(p);
+                    self.after_capture(ctx);
+                }
+                Err(e) => self.builder.error = Some(e),
+            }
+        }
+        if let Some(r) = self.builder.compile_job.as_ref().and_then(|j| j.poll()) {
+            self.builder.compile_job = None;
+            match r {
+                Ok(c) => {
+                    if let Some(p) = &c.paf {
+                        self.set_status(tf("Made {file}", &[("file", p.display().to_string())]));
+                    }
+                    self.builder.compiled = Some(c);
+                }
+                Err(e) => self.builder.error = Some(e),
+            }
+        }
+    }
+
+    /// Compile straight away when both PortableApps.com tools are installed.
+    fn after_capture(&mut self, ctx: &egui::Context) {
+        let ready = self
+            .builder
+            .tools
+            .as_ref()
+            .is_some_and(|t| t.launcher_generator.is_some() && t.installer.is_some());
+        if ready {
+            self.start_compile(ctx);
+        }
+    }
+
+    fn start_compile(&mut self, ctx: &egui::Context) {
+        let Some((dir, pkg)) = self.builder.package.clone() else {
+            return;
+        };
+        let Some(tools) = self.builder.tools.clone() else {
+            return;
+        };
+        self.builder.error = None;
+        self.builder.compiled = None;
+        let stage = self.builder.stage.clone();
+        self.builder.compile_job = Some(Job::spawn(ctx, move |_| {
+            pafbuild::compile(&dir, &pkg.app_id, &tools, &|p| {
+                *stage.lock().unwrap() = p.to_string()
+            })
+            .map_err(|e| e.to_string())
+        }));
+    }
+
+    fn start_capture(&mut self, ctx: &egui::Context) {
+        self.settings.packager_name = self.builder.details.packager.clone();
+        self.settings.portable_out_dir = self.builder.out_dir.clone();
+        self.save_settings();
+        let b = &mut self.builder;
+        b.error = None;
+        b.package = None;
+        b.log = None;
+        b.compiled = None;
+        b.host_done.store(false, Ordering::SeqCst);
+        b.waiting_for_user.store(false, Ordering::SeqCst);
+        let job = pafbuild::Job {
+            details: b.details.clone(),
+            installer: b.installer.clone(),
+            silent: b.silent,
+            out_dir: b.out_dir.clone(),
+            include_defaults: b.include_defaults,
+            learn_seconds: 30,
+            sandbox: false,
+            settings: self.settings.clone(),
+        };
+        if b.use_sandbox {
+            let work = self
+                .store
+                .root
+                .join("builder")
+                .join(expunge_core::util::new_id());
+            *b.stage.lock().unwrap() = t("Starting Windows Sandbox");
+            match pafbuild::start_sandbox(&job, &work) {
+                Ok(()) => {
+                    b.on_this_pc = false;
+                    b.work_dir = Some(work);
+                    b.last_poll = None;
+                }
+                Err(e) => b.error = Some(e.to_string()),
+            }
+            return;
+        }
+        b.on_this_pc = true;
+        let reg = self.reg.clone();
+        let stage = b.stage.clone();
+        let done = b.host_done.clone();
+        let waiting = b.waiting_for_user.clone();
+        let ctx2 = ctx.clone();
+        b.capture_job = Some(Job::spawn(ctx, move |pr| {
+            let report = |p: &str| {
+                *stage.lock().unwrap() = p.to_string();
+                ctx2.request_repaint();
+            };
+            let ask = || {
+                waiting.store(true, Ordering::SeqCst);
+                ctx2.request_repaint();
+                while !done.load(Ordering::SeqCst) {
+                    std::thread::sleep(std::time::Duration::from_millis(200));
+                }
+                waiting.store(false, Ordering::SeqCst);
+            };
+            pafbuild::capture(&job, reg.as_ref(), &report, &ask, pr).map_err(|e| e.to_string())
+        }));
+    }
+
+    pub fn ui_builder(&mut self, ctx: &egui::Context) {
+        self.builder_init(ctx);
+        egui::CentralPanel::default()
+            .frame(theme::content_frame())
+            .show(ctx, |ui| {
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        if let Some(e) = self.builder.error.clone() {
+                            theme::warning_banner(ui, e);
+                            ui.add_space(6.0);
+                        }
+                        if self.builder.busy() {
+                            self.ui_builder_running(ui);
+                        } else if self.builder.package.is_some() {
+                            self.ui_builder_result(ui);
+                        } else {
+                            self.ui_builder_setup(ui);
+                        }
+                    });
+            });
+    }
+
+    fn ui_builder_setup(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
+        theme::card(ui, |ui| {
+            ui.label(RichText::new(t("1. Installer")).strong());
+            ui.horizontal(|ui| {
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.builder.installer)
+                        .hint_text(t("The program's setup file (.exe or .msi)"))
+                        .desired_width(420.0),
+                );
+                if ui.button(t("Browse…")).clicked() {
+                    if let Some(p) =
+                        pick_file(&t("Choose the installer"), "Installer", &["exe", "msi"])
+                    {
+                        self.builder.installer = p.to_string_lossy().to_string();
+                        self.builder.kind = None;
+                        if self.builder.details.name.is_empty() {
+                            let stem = p
+                                .file_stem()
+                                .map(|s| s.to_string_lossy().to_string())
+                                .unwrap_or_default();
+                            // "Foo-1.2.3-setup-x64" → "Foo"
+                            let name: String = stem
+                                .split(['-', '_', ' '])
+                                .take_while(|w| {
+                                    !w.chars().next().is_some_and(|c| c.is_ascii_digit())
+                                        && !w.eq_ignore_ascii_case("setup")
+                                        && !w.eq_ignore_ascii_case("installer")
+                                        && !w.starts_with('v')
+                                })
+                                .collect::<Vec<_>>()
+                                .join(" ");
+                            self.builder.details.name = if name.is_empty() { stem } else { name };
+                        }
+                    }
+                }
+            });
+            if !self.builder.installer.is_empty() && self.builder.kind.is_none() {
+                let p = PathBuf::from(&self.builder.installer);
+                if p.is_file() {
+                    self.builder.kind = Some(pafbuild::detect_installer(&p));
+                }
+            }
+            if let Some(k) = self.builder.kind {
+                small_muted(ui, tf("Installer type: {kind}", &[("kind", t(k.label()))]));
+                ui.add_enabled_ui(k.can_be_silent(), |ui| {
+                    ui.checkbox(
+                        &mut self.builder.silent,
+                        t("Install silently (no questions; uses the default choices)"),
+                    );
+                });
+                if !k.can_be_silent() {
+                    self.builder.silent = false;
+                }
+            }
+        });
+        ui.add_space(8.0);
+        theme::card(ui, |ui| {
+            ui.label(RichText::new(t("2. About the program")).strong());
+            let d = &mut self.builder.details;
+            egui::Grid::new("pa_details")
+                .num_columns(2)
+                .spacing([12.0, 6.0])
+                .show(ui, |ui| {
+                    ui.label(t("Name"));
+                    ui.add(
+                        egui::TextEdit::singleline(&mut d.name)
+                            .hint_text("Notepad++")
+                            .desired_width(320.0),
+                    );
+                    ui.end_row();
+                    ui.label(t("Version"));
+                    ui.add(
+                        egui::TextEdit::singleline(&mut d.version)
+                            .hint_text(t("Read from the installation when empty"))
+                            .desired_width(320.0),
+                    );
+                    ui.end_row();
+                    ui.label(t("Publisher"));
+                    ui.add(
+                        egui::TextEdit::singleline(&mut d.publisher)
+                            .hint_text(t("Read from the installation when empty"))
+                            .desired_width(320.0),
+                    );
+                    ui.end_row();
+                    ui.label(t("Packaged by"));
+                    ui.add(
+                        egui::TextEdit::singleline(&mut d.packager)
+                            .hint_text(t("Your name (optional)"))
+                            .desired_width(320.0),
+                    );
+                    ui.end_row();
+                    ui.label(t("Category"));
+                    egui::ComboBox::from_id_salt("pa_cat")
+                        .selected_text(t(&d.category))
+                        .show_ui(ui, |ui| {
+                            for c in pafbuild::CATEGORIES {
+                                ui.selectable_value(&mut d.category, c.to_string(), t(c));
+                            }
+                        });
+                    ui.end_row();
+                    ui.label(t("Description"));
+                    ui.add(
+                        egui::TextEdit::singleline(&mut d.description)
+                            .char_limit(512)
+                            .desired_width(420.0),
+                    );
+                    ui.end_row();
+                    ui.label(t("Homepage"));
+                    ui.add(
+                        egui::TextEdit::singleline(&mut d.homepage)
+                            .hint_text("https://")
+                            .desired_width(420.0),
+                    );
+                    ui.end_row();
+                    ui.label(t("License"));
+                    ui.horizontal_wrapped(|ui| {
+                        ui.checkbox(&mut d.freeware, t("Free"));
+                        ui.checkbox(&mut d.open_source, t("Open source"));
+                        ui.checkbox(&mut d.commercial_use, t("Business use allowed"));
+                        ui.checkbox(&mut d.shareable, t("May be shared"));
+                    });
+                    ui.end_row();
+                });
+            if !d.name.trim().is_empty() {
+                small_muted(
+                    ui,
+                    tf(
+                        "Package: {name} ({id})",
+                        &[("name", d.display_name()), ("id", d.app_id())],
+                    ),
+                );
+            }
+        });
+        ui.add_space(8.0);
+        theme::card(ui, |ui| {
+            ui.label(RichText::new(t("3. Where to install it")).strong());
+            let available = self.builder.sandbox == Some(true);
+            ui.add_enabled_ui(available, |ui| {
+                ui.radio_value(
+                    &mut self.builder.use_sandbox,
+                    true,
+                    t("In Windows Sandbox (recommended: this PC is never touched)"),
+                );
+            });
+            if !available {
+                small_muted(ui, t("Windows Sandbox isn't turned on. It's part of Windows 11 Pro, Enterprise and Education: turn on \"Windows Sandbox\" in Windows Features and restart."));
+                self.builder.use_sandbox = false;
+            }
+            ui.radio_value(&mut self.builder.use_sandbox, false, t("On this PC (Expunge records the installation so you can remove it precisely afterwards)"));
+            ui.add_space(4.0);
+            ui.checkbox(
+                &mut self.builder.include_defaults,
+                t("Use the settings from the first run as the package's default settings"),
+            );
+            small_muted(ui, t("Expunge first watches Windows for 30 seconds to learn what changes on its own, so it can leave that out."));
+        });
+        ui.add_space(8.0);
+        theme::card(ui, |ui| {
+            ui.label(RichText::new(t("4. Package")).strong());
+            ui.horizontal(|ui| {
+                ui.label(t("Save to"));
+                ui.add(egui::TextEdit::singleline(&mut self.builder.out_dir).desired_width(380.0));
+                if ui.button(t("Browse…")).clicked() {
+                    if let Some(p) = pick_folder(&t("Choose where to save the package")) {
+                        self.builder.out_dir = p.to_string_lossy().to_string();
+                    }
+                }
+            });
+            self.ui_builder_tools(ui, &ctx);
+        });
+        ui.add_space(10.0);
+        let ok = PathBuf::from(&self.builder.installer).is_file()
+            && !self.builder.details.name.trim().is_empty()
+            && !self.builder.out_dir.trim().is_empty();
+        ui.add_enabled_ui(ok && (self.builder.use_sandbox || self.elevated), |ui| {
+            if theme::primary_button(ui, format!("📦 {}", t("Start"))).clicked() {
+                self.start_capture(&ctx);
+            }
+        });
+        if !self.builder.use_sandbox && !self.elevated {
+            small_muted(ui, t("Installing on this PC needs Administrator rights."));
+        }
+    }
+
+    fn ui_builder_tools(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let tools = self.builder.tools.clone();
+        match &tools {
+            None => {
+                spinner(ui);
+            }
+            Some(tools) => {
+                let row = |ui: &mut egui::Ui, name: &str, path: &Option<PathBuf>, url: &str| {
+                    ui.horizontal(|ui| match path {
+                        Some(p) => {
+                            ui.label(RichText::new("✔").color(theme::OK));
+                            ui.label(t(name));
+                            small_muted(ui, p.display().to_string());
+                        }
+                        None => {
+                            ui.label(RichText::new("✖").color(theme::WARN));
+                            ui.label(t(name));
+                            ui.hyperlink_to(t("Download"), url);
+                        }
+                    });
+                };
+                row(
+                    ui,
+                    "PortableApps.com Launcher",
+                    &tools.launcher_generator,
+                    pafbuild::LAUNCHER_URL,
+                );
+                row(
+                    ui,
+                    "PortableApps.com Installer",
+                    &tools.installer,
+                    pafbuild::INSTALLER_URL,
+                );
+                if tools.launcher_generator.is_none() || tools.installer.is_none() {
+                    small_muted(ui, t("Without them you still get the finished package folder. Install them in your PortableApps folder (or choose it below) to also get the launcher and the .paf.exe installer."));
+                }
+            }
+        }
+        ui.horizontal(|ui| {
+            ui.label(t("PortableApps folder"));
+            let mut dir = self.settings.portableapps_dir.clone();
+            let r = ui.add(
+                egui::TextEdit::singleline(&mut dir)
+                    .hint_text(t("Found automatically on any drive"))
+                    .desired_width(300.0),
+            );
+            let mut changed = r.lost_focus() && dir != self.settings.portableapps_dir;
+            if ui.button(t("Browse…")).clicked() {
+                if let Some(p) = pick_folder(&t("Choose your PortableApps folder")) {
+                    dir = p.to_string_lossy().to_string();
+                    changed = true;
+                }
+            }
+            self.settings.portableapps_dir = dir;
+            if changed {
+                self.save_settings();
+                self.refresh_tools(ctx);
+            }
+        });
+    }
+
+    fn ui_builder_running(&mut self, ui: &mut egui::Ui) {
+        let stage = self.builder.stage.lock().unwrap().clone();
+        theme::card(ui, |ui| {
+            ui.horizontal(|ui| {
+                spinner(ui);
+                ui.label(RichText::new(t(&stage)).strong());
+            });
+            if let Some(j) = &self.builder.capture_job {
+                let p = j.progress.phase();
+                if !p.is_empty() && p != "Done" {
+                    small_muted(ui, p);
+                }
+            }
+            if self.builder.work_dir.is_some() {
+                ui.add_space(4.0);
+                small_muted(ui, t("Follow the steps in the Windows Sandbox window. When the program is installed, start it once, set it up, close it and click OK in the sandbox. The sandbox closes by itself when the package is ready."));
+                if ui.button(t("Stop waiting")).clicked() {
+                    self.builder.work_dir = None;
+                    self.builder.error = Some(t(
+                        "Stopped. Close the Windows Sandbox window to discard it.",
+                    ));
+                }
+            }
+            if self.builder.waiting_for_user.load(Ordering::SeqCst) {
+                ui.add_space(6.0);
+                ui.label(t("When the installation has finished, start the program once, set it up the way you want it to start, and close it."));
+                if theme::primary_button(ui, t("Done: take the second snapshot")).clicked() {
+                    self.builder.host_done.store(true, Ordering::SeqCst);
+                }
+            }
+        });
+    }
+
+    fn ui_builder_result(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
+        let Some((dir, pkg)) = self.builder.package.clone() else {
+            return;
+        };
+        theme::card(ui, |ui| {
+            ui.label(
+                RichText::new(format!("✔ {}", t("The package is ready")))
+                    .strong()
+                    .color(theme::OK),
+            );
+            field(ui, "Folder", &dir.display().to_string());
+            field(ui, "Program", &pkg.main_exe);
+            field(
+                ui,
+                "Program files",
+                &format!("{} ({})", pkg.files, human_size(pkg.bytes)),
+            );
+            if let Some(c) = &self.builder.compiled {
+                if let Some(l) = &c.launcher {
+                    field(ui, "Launcher", &l.display().to_string());
+                }
+                if let Some(p) = &c.paf {
+                    field(ui, "Installer", &p.display().to_string());
+                }
+            }
+            for w in &pkg.warnings {
+                small_muted(ui, format!("⚠ {w}"));
+            }
+            ui.add_space(6.0);
+            ui.horizontal_wrapped(|ui| {
+                if ui.button(t("Open folder")).clicked() {
+                    platform::shell_open(&dir.to_string_lossy());
+                }
+                let launcher_ini = dir.join("App").join("AppInfo").join("Launcher").join(format!("{}.ini", pkg.app_id));
+                if ui.button(t("Edit Launcher settings")).clicked() {
+                    platform::shell_open(&launcher_ini.to_string_lossy());
+                }
+                let can_compile = self.builder.tools.as_ref().is_some_and(|t| t.launcher_generator.is_some() || t.installer.is_some());
+                if ui.add_enabled(can_compile, egui::Button::new(if self.builder.compiled.is_some() { t("Compile again") } else { t("Compile") }))
+                    .on_hover_text(t("Make the launcher and the .paf.exe installer with the PortableApps.com tools (do this again after editing the settings)."))
+                    .clicked()
+                {
+                    self.start_compile(&ctx);
+                }
+                if let Some(log) = self.builder.log.clone() {
+                    if self.builder.on_this_pc && ui.button(tf("Remove {name} from this PC", &[("name", log.name.clone())])).clicked() {
+                        self.uninstall_from_log(&log);
+                    }
+                }
+                if ui.button(t("Build another")).clicked() {
+                    self.builder.package = None;
+                    self.builder.compiled = None;
+                    self.builder.log = None;
+                    self.builder.error = None;
+                    self.builder.details = AppDetails { packager: self.builder.details.packager.clone(), ..Default::default() };
+                    self.builder.installer.clear();
+                    self.builder.kind = None;
+                }
+            });
+        });
+        ui.add_space(8.0);
+        egui::CollapsingHeader::new(t("Launcher settings"))
+            .default_open(true)
+            .show(ui, |ui| {
+                let mut text = pkg.launcher_ini.clone();
+                ui.add(
+                    egui::TextEdit::multiline(&mut text)
+                        .code_editor()
+                        .desired_width(f32::INFINITY)
+                        .interactive(true),
+                );
+            });
+    }
+}

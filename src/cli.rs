@@ -47,6 +47,16 @@ USAGE:
   expunge transfer check <package>          Check a package against this PC
   expunge transfer import <package> [--overwrite]
                                             Restore a package (undo from backups)
+  expunge export <log-id> portable <launcher.ini>
+                                            PortableApps.com Launcher settings
+                                            for what the log recorded
+  expunge portable-build <installer> --name NAME [--version V] [--publisher P]
+                 [--category C] [--silent] [--out DIR] [--here] [--defaults]
+                                            Capture an installation in Windows
+                                            Sandbox (or on this PC with --here)
+                                            and build a PortableApps.com package,
+                                            compiled when the PortableApps.com
+                                            Launcher and Installer are found
   expunge orphans [--json]                  List registrations left by removed
                                             programs (pointing to missing files)
   expunge uninstall <name>... [--silent] [--leftovers safe|none] [--dry-run]
@@ -115,6 +125,118 @@ fn st_log_path() -> anyhow::Result<PathBuf> {
 
 fn has(args: &[String], flag: &str) -> bool {
     args.iter().any(|a| a == flag)
+}
+
+/// `expunge portable-build`: capture an installation and build a
+/// PortableApps.com package.
+fn portable_build(args: &[String], reg: &dyn Registry) -> anyhow::Result<i32> {
+    use expunge_core::pafbuild::{self, AppDetails, Job};
+    let installer = args
+        .get(1)
+        .filter(|a| !a.starts_with("--"))
+        .ok_or_else(|| anyhow::anyhow!("usage: expunge portable-build <installer> --name NAME"))?;
+    let installer =
+        std::fs::canonicalize(installer).map_err(|e| anyhow::anyhow!("{installer}: {e}"))?;
+    let installer = installer
+        .to_string_lossy()
+        .trim_start_matches("\\\\?\\")
+        .to_string();
+    let st = store()?;
+    let settings = st.load_settings();
+    let name = arg_value(args, "--name").ok_or_else(|| anyhow::anyhow!("--name is required"))?;
+    let details = AppDetails {
+        name,
+        version: arg_value(args, "--version").unwrap_or_default(),
+        publisher: arg_value(args, "--publisher").unwrap_or_default(),
+        category: arg_value(args, "--category").unwrap_or_else(|| "Utilities".into()),
+        packager: settings.packager_name.clone(),
+        ..Default::default()
+    };
+    let out_dir = arg_value(args, "--out")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+    let job = Job {
+        details,
+        installer,
+        silent: has(args, "--silent"),
+        out_dir: out_dir.to_string_lossy().to_string(),
+        include_defaults: has(args, "--defaults"),
+        learn_seconds: 30,
+        sandbox: false,
+        settings: settings.clone(),
+    };
+    let here = has(args, "--here") || !pafbuild::sandbox_available();
+    let (pkg_dir, app_id) = if here {
+        if !has(args, "--here") {
+            eprintln!("Windows Sandbox isn't turned on, so the installation runs on this PC.");
+        }
+        let report = |p: &str| eprintln!("{p}…");
+        let ask = || {
+            eprintln!("When the installation has finished, start the program once, set it up, close it, then press Enter.");
+            let mut s = String::new();
+            let _ = std::io::stdin().read_line(&mut s);
+        };
+        let (log, pkg) = pafbuild::capture(&job, reg, &report, &ask, &Progress::default())?;
+        st.save_log(&log)?;
+        eprintln!(
+            "The installation was recorded as install log {}; remove it with: expunge revert {}",
+            log.id, log.id
+        );
+        for w in &pkg.warnings {
+            eprintln!("note: {w}");
+        }
+        (PathBuf::from(&pkg.dir), pkg.app_id)
+    } else {
+        let work = st.root.join("builder").join(expunge_core::util::new_id());
+        pafbuild::start_sandbox(&job, &work)?;
+        eprintln!("Windows Sandbox is starting. Follow the steps in the sandbox window.");
+        let mut last = String::new();
+        let status = loop {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            if let Some(s) = pafbuild::read_status(&work) {
+                if s.phase != last {
+                    eprintln!("{}…", s.phase);
+                    last = s.phase.clone();
+                }
+                if s.done {
+                    break s;
+                }
+            }
+        };
+        if let Some(e) = status.error {
+            anyhow::bail!(e);
+        }
+        let pkg = status
+            .package
+            .ok_or_else(|| anyhow::anyhow!("no package was made"))?;
+        for w in &pkg.warnings {
+            eprintln!("note: {w}");
+        }
+        if let Ok(b) = std::fs::read(work.join("install-log.json")) {
+            if let Ok(log) = serde_json::from_slice::<InstallLog>(&b) {
+                let _ = st.save_log(&log);
+            }
+        }
+        (
+            pafbuild::collect_sandbox_package(&work, &pkg, &out_dir)?,
+            pkg.app_id,
+        )
+    };
+    println!("Package: {}", pkg_dir.display());
+    let tools = pafbuild::find_tools(&settings.portableapps_dir);
+    if tools.launcher_generator.is_none() || tools.installer.is_none() {
+        eprintln!(
+            "The PortableApps.com Launcher and Installer weren't both found, so the package wasn't compiled.\n  {}\n  {}",
+            pafbuild::LAUNCHER_URL,
+            pafbuild::INSTALLER_URL
+        );
+        return Ok(0);
+    }
+    let c = pafbuild::compile(&pkg_dir, &app_id, &tools, &|p| eprintln!("{p}…"))?;
+    if let Some(p) = c.paf {
+        println!("Installer: {}", p.display());
+    }
+    Ok(0)
 }
 
 fn store() -> anyhow::Result<Store> {
@@ -849,6 +971,13 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
             }
             return Ok(if plan.items.is_empty() { 0 } else { 2 });
         }
+        "pa-capture" => {
+            let job = args
+                .get(1)
+                .ok_or_else(|| anyhow::anyhow!("usage: expunge pa-capture <job.json>"))?;
+            expunge_core::pafbuild::run_job_file(std::path::Path::new(job))?;
+        }
+        "portable-build" => return portable_build(&args, reg.as_ref()),
         "learn-noise" => {
             let secs: u64 = arg_value(&args, "--seconds")
                 .and_then(|s| s.parse().ok())
@@ -992,7 +1121,9 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
         }
         "export" => {
             let (Some(id), Some(fmt), Some(out)) = (args.get(1), args.get(2), args.get(3)) else {
-                anyhow::bail!("usage: expunge export <log-id> <html|json|reg|ps1> <output-file>")
+                anyhow::bail!(
+                    "usage: expunge export <log-id> <html|json|reg|ps1|portable> <output-file>"
+                )
             };
             let log = store()?.load_log(id)?;
             let content = match fmt.as_str() {
@@ -1000,6 +1131,14 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                 "reg" => report::to_reg_undo(&log),
                 "ps1" => report::to_ps1(&log),
                 "json" => serde_json::to_string_pretty(&log)?,
+                "portable" | "ini" => {
+                    expunge_core::portable::launcher_ini(
+                        &log.changes,
+                        &log.name,
+                        &expunge_core::portable::Folders::current(),
+                    )
+                    .text
+                }
                 f => anyhow::bail!("unknown format {f}"),
             };
             if fmt == "reg" {

@@ -359,6 +359,20 @@ pub fn resolve_shortcut(path: &str) -> String {
     path.to_string()
 }
 
+/// Show a message and wait until the user clicks OK.
+pub fn ask_ok(title: &str, text: &str) {
+    #[cfg(windows)]
+    {
+        windows::info_box(title, text);
+    }
+    #[cfg(not(windows))]
+    {
+        eprintln!("{title}: {text}");
+        let mut s = String::new();
+        let _ = std::io::stdin().read_line(&mut s);
+    }
+}
+
 pub fn computer_name() -> String {
     std::env::var("COMPUTERNAME")
         .or_else(|_| std::env::var("HOSTNAME"))

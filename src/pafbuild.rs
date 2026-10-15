@@ -1,0 +1,1170 @@
+//! Portable App Builder: capture a program's installation and turn it into a
+//! PortableApps.com Format package, then compile it with the PortableApps.com
+//! Launcher Generator and Installer.
+//!
+//! The capture can run inside Windows Sandbox (the host PC is never touched)
+//! or on this PC (the installation is recorded as an install log, so Expunge
+//! can remove it precisely afterwards). In both cases it:
+//!
+//! 1. takes a snapshot, waits, and takes another to learn background noise;
+//! 2. runs the installer (silently when asked);
+//! 3. lets the user start the program once and close it, so its first-run
+//!    settings are captured;
+//! 4. takes a final snapshot and compares;
+//! 5. copies the program's files into `App\AppName`, writes `appinfo.ini`,
+//!    the Launcher settings, icons and `help.html`.
+
+use crate::model::{ChangeSet, FileEntry, InstallLog, KeyData};
+use crate::platform;
+use crate::portable::{launcher_ini_for, Folders};
+use crate::settings::Settings;
+use crate::snapshot::{diff, filter_changes, take_snapshot, Progress};
+use anyhow::{anyhow, Context, Result};
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
+
+/// Categories allowed in appinfo.ini.
+pub const CATEGORIES: [&str; 10] = [
+    "Accessibility",
+    "Development",
+    "Education",
+    "Games",
+    "Graphics & Pictures",
+    "Internet",
+    "Music & Video",
+    "Office",
+    "Security",
+    "Utilities",
+];
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(default)]
+pub struct AppDetails {
+    /// The program's name, e.g. "Notepad++". The package is "Notepad++ Portable".
+    pub name: String,
+    /// The program's publisher.
+    pub publisher: String,
+    /// Who made the portable package (added to Publisher as "X & you").
+    pub packager: String,
+    pub version: String,
+    pub category: String,
+    pub description: String,
+    pub homepage: String,
+    pub language: String,
+    pub open_source: bool,
+    pub freeware: bool,
+    pub commercial_use: bool,
+    pub shareable: bool,
+}
+
+impl Default for AppDetails {
+    fn default() -> Self {
+        AppDetails {
+            name: String::new(),
+            publisher: String::new(),
+            packager: String::new(),
+            version: String::new(),
+            category: "Utilities".into(),
+            description: String::new(),
+            homepage: String::new(),
+            language: "Multilingual".into(),
+            open_source: false,
+            freeware: true,
+            commercial_use: true,
+            shareable: true,
+        }
+    }
+}
+
+impl AppDetails {
+    /// "Notepad++" → "NotepadPlusPlusPortable" (letters, digits, `.`, `-`, `_` only).
+    pub fn app_id(&self) -> String {
+        let mut id = String::new();
+        for c in self.name.chars() {
+            match c {
+                '+' => id.push_str("Plus"),
+                '&' => id.push_str("And"),
+                '#' => id.push_str("Sharp"),
+                c if c.is_ascii_alphanumeric() || "._-".contains(c) => id.push(c),
+                _ => {}
+            }
+        }
+        if id.is_empty() {
+            id.push_str("App");
+        }
+        if !id.ends_with("Portable") {
+            id.push_str("Portable");
+        }
+        id
+    }
+
+    /// The folder in `App\` that holds the program's own files.
+    pub fn app_dir(&self) -> String {
+        let id = self.app_id();
+        id.strip_suffix("Portable").unwrap_or(&id).to_string()
+    }
+
+    pub fn display_name(&self) -> String {
+        let n = self.name.trim();
+        if n.to_lowercase().ends_with("portable") {
+            n.to_string()
+        } else {
+            format!("{n} Portable")
+        }
+    }
+}
+
+/// "1.2" → "1.2.0.0"; "v8.6.5 beta" → "8.6.5.0". Always four numbers.
+pub fn package_version(v: &str) -> String {
+    let nums: Vec<u64> = v
+        .split(|c: char| !c.is_ascii_digit())
+        .filter(|s| !s.is_empty())
+        .take(4)
+        .map(|s| s.parse().unwrap_or(0))
+        .collect();
+    let mut parts: Vec<String> = nums.iter().map(|n| n.to_string()).collect();
+    while parts.len() < 4 {
+        parts.push("0".into());
+    }
+    parts.join(".")
+}
+
+pub fn appinfo_ini(d: &AppDetails) -> String {
+    let b = |v: bool| if v { "true" } else { "false" };
+    let publisher = match (d.publisher.trim(), d.packager.trim()) {
+        ("", "") => "Unknown".to_string(),
+        (p, "") => p.to_string(),
+        ("", k) => k.to_string(),
+        (p, k) => format!("{p} & {k}"),
+    };
+    let category = if CATEGORIES.contains(&d.category.as_str()) {
+        d.category.as_str()
+    } else {
+        "Utilities"
+    };
+    let description: String = d
+        .description
+        .replace(['\r', '\n'], " ")
+        .chars()
+        .take(512)
+        .collect();
+    let display_version = if d.version.trim().is_empty() {
+        "1.0"
+    } else {
+        d.version.trim()
+    };
+    format!(
+        "[Format]\r\nType=PortableApps.comFormat\r\nVersion=3.9\r\n\r\n\
+         [Details]\r\nName={name}\r\nAppID={id}\r\nPublisher={publisher}\r\nHomepage={home}\r\n\
+         Category={category}\r\nDescription={description}\r\nLanguage={lang}\r\n\r\n\
+         [License]\r\nShareable={sh}\r\nOpenSource={os}\r\nFreeware={fw}\r\nCommercialUse={cu}\r\n\r\n\
+         [Version]\r\nPackageVersion={pv}\r\nDisplayVersion={dv}\r\n\r\n\
+         [Control]\r\nIcons=1\r\nStart={id}.exe\r\n",
+        name = d.display_name(),
+        id = d.app_id(),
+        home = d.homepage.trim(),
+        lang = if d.language.trim().is_empty() { "Multilingual" } else { d.language.trim() },
+        sh = b(d.shareable),
+        os = b(d.open_source),
+        fw = b(d.freeware),
+        cu = b(d.commercial_use),
+        pv = package_version(display_version),
+        dv = display_version,
+    )
+}
+
+// ---- Installers ------------------------------------------------------------
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InstallerKind {
+    Msi,
+    Nsis,
+    Inno,
+    Other,
+}
+
+impl InstallerKind {
+    pub fn label(self) -> &'static str {
+        match self {
+            InstallerKind::Msi => "Windows Installer (MSI)",
+            InstallerKind::Nsis => "NSIS",
+            InstallerKind::Inno => "Inno Setup",
+            InstallerKind::Other => "Unknown installer",
+        }
+    }
+    pub fn can_be_silent(self) -> bool {
+        self != InstallerKind::Other
+    }
+}
+
+pub fn detect_installer(path: &Path) -> InstallerKind {
+    let lower = path.to_string_lossy().to_lowercase();
+    if lower.ends_with(".msi") {
+        return InstallerKind::Msi;
+    }
+    if crate::silent::is_nsis_file(&path.to_string_lossy()) {
+        return InstallerKind::Nsis;
+    }
+    // Inno Setup stamps its name into the setup loader.
+    if let Ok(mut f) = std::fs::File::open(path) {
+        use std::io::Read;
+        let mut buf = vec![0u8; 4 * 1024 * 1024];
+        let n = f.read(&mut buf).unwrap_or(0);
+        let hay = &buf[..n];
+        let has = |needle: &[u8]| hay.windows(needle.len()).any(|w| w == needle);
+        if has(b"Inno Setup") || has(b"InnoSetupLdrWindow") {
+            return InstallerKind::Inno;
+        }
+        if has(b"Nullsoft") || has(b"NullsoftInst") {
+            return InstallerKind::Nsis;
+        }
+    }
+    InstallerKind::Other
+}
+
+/// The command line that runs an installer, silently when possible and asked.
+pub fn installer_command(path: &Path, silent: bool) -> String {
+    let p = path.to_string_lossy();
+    let kind = detect_installer(path);
+    match (kind, silent) {
+        (InstallerKind::Msi, true) => format!("msiexec.exe /i \"{p}\" /qn /norestart"),
+        (InstallerKind::Msi, false) => format!("msiexec.exe /i \"{p}\""),
+        (InstallerKind::Nsis, true) => format!("\"{p}\" /S"),
+        (InstallerKind::Inno, true) => {
+            format!("\"{p}\" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-")
+        }
+        _ => format!("\"{p}\""),
+    }
+}
+
+// ---- Reading the comparison ------------------------------------------------
+
+fn parent(p: &str) -> Option<&str> {
+    p.rfind('\\').map(|i| &p[..i])
+}
+
+fn leaf(p: &str) -> &str {
+    p.rsplit('\\').next().unwrap_or(p)
+}
+
+fn inside(p: &str, dir: &str) -> bool {
+    p.len() > dir.len()
+        && p.as_bytes()[dir.len()] == b'\\'
+        && p[..dir.len()].eq_ignore_ascii_case(dir)
+}
+
+fn is_exe(p: &str) -> bool {
+    p.to_lowercase().ends_with(".exe")
+}
+
+/// The folder the program was installed to: the largest newly created folder
+/// tree that holds a program file, outside Windows, temp and user settings.
+pub fn find_program_dir(cs: &ChangeSet, folders: &Folders) -> Option<String> {
+    let new_dirs: Vec<&FileEntry> = cs.files_added.iter().filter(|f| f.is_dir).collect();
+    let is_new = |p: &str| new_dirs.iter().any(|d| d.path.eq_ignore_ascii_case(p));
+    let windir = std::env::var("windir").unwrap_or_else(|_| "C:\\Windows".into());
+    let mut best: Option<(u64, String)> = None;
+    for d in &new_dirs {
+        if parent(&d.path).is_some_and(is_new) {
+            continue;
+        }
+        if inside(&d.path, &windir) {
+            continue;
+        }
+        let var = folders.to_var(&d.path).unwrap_or_default().to_lowercase();
+        // Settings folders are handled by the Launcher; per-user programs
+        // (%LOCALAPPDATA%\Programs, or straight in %LOCALAPPDATA%) count.
+        if var.starts_with("%temp%")
+            || var.starts_with("%appdata%\\microsoft")
+            || var.starts_with("%localappdata%\\microsoft")
+            || var.starts_with("%allusersappdata%\\package cache")
+            || var.starts_with("%allusersappdata%\\microsoft")
+            || var.starts_with("%userprofile%\\desktop")
+        {
+            continue;
+        }
+        let files = cs
+            .files_added
+            .iter()
+            .filter(|f| !f.is_dir && inside(&f.path, &d.path));
+        let (mut bytes, mut has_exe) = (0u64, false);
+        for f in files {
+            bytes += f.size;
+            has_exe |= is_exe(&f.path);
+        }
+        if has_exe && best.as_ref().is_none_or(|(b, _)| bytes > *b) {
+            best = Some((bytes, d.path.clone()));
+        }
+    }
+    best.map(|(_, p)| p)
+}
+
+/// The program's main executable inside `program_dir`: the target of a new
+/// Start menu or desktop shortcut when there is one, otherwise the program
+/// file whose name best matches the app's name.
+pub fn find_main_exe(cs: &ChangeSet, program_dir: &str, app_name: &str) -> Option<String> {
+    let bad = [
+        "unins",
+        "uninst",
+        "update",
+        "crash",
+        "report",
+        "helper",
+        "setup",
+        "install",
+        "elevate",
+        "vc_redist",
+    ];
+    let looks_bad = |p: &str| {
+        let l = leaf(p).to_lowercase();
+        bad.iter().any(|b| l.contains(b))
+    };
+    for f in &cs.files_added {
+        if f.is_dir || !f.path.to_lowercase().ends_with(".lnk") {
+            continue;
+        }
+        let target = platform::resolve_shortcut(&f.path);
+        if inside(&target, program_dir) && is_exe(&target) && !looks_bad(&target) {
+            return Some(target);
+        }
+    }
+    let name: String = app_name
+        .to_lowercase()
+        .chars()
+        .filter(|c| c.is_alphanumeric())
+        .collect();
+    let depth = |p: &str| p.matches('\\').count();
+    cs.files_added
+        .iter()
+        .filter(|f| {
+            !f.is_dir && is_exe(&f.path) && inside(&f.path, program_dir) && !looks_bad(&f.path)
+        })
+        .max_by_key(|f| {
+            let stem: String = leaf(&f.path)
+                .to_lowercase()
+                .trim_end_matches(".exe")
+                .chars()
+                .filter(|c| c.is_alphanumeric())
+                .collect();
+            let matches = !name.is_empty()
+                && !stem.is_empty()
+                && (name.contains(&stem) || stem.contains(&name));
+            (matches, std::cmp::Reverse(depth(&f.path)), f.size)
+        })
+        .map(|f| f.path.clone())
+}
+
+// ---- Writing the package ---------------------------------------------------
+
+fn copy_tree(from: &Path, to: &Path) -> Result<(u64, u64)> {
+    let (mut files, mut bytes) = (0, 0);
+    for e in walkdir::WalkDir::new(from).follow_links(false) {
+        let e = e?;
+        let rel = e.path().strip_prefix(from)?;
+        let dest = to.join(rel);
+        if e.file_type().is_dir() {
+            std::fs::create_dir_all(&dest)?;
+        } else if e.file_type().is_file() {
+            if let Some(p) = dest.parent() {
+                std::fs::create_dir_all(p)?;
+            }
+            bytes += std::fs::copy(e.path(), &dest)
+                .with_context(|| format!("copy {}", e.path().display()))?;
+            files += 1;
+        }
+    }
+    Ok((files, bytes))
+}
+
+fn png(w: u32, h: u32, rgba: Vec<u8>) -> Option<Vec<u8>> {
+    let img = image::RgbaImage::from_raw(w, h, rgba)?;
+    let mut out = std::io::Cursor::new(Vec::new());
+    img.write_to(&mut out, image::ImageFormat::Png).ok()?;
+    Some(out.into_inner())
+}
+
+/// An .ico file holding PNG images (supported by every Windows since Vista).
+pub fn ico_from_pngs(images: &[(u32, Vec<u8>)]) -> Vec<u8> {
+    let mut out = Vec::new();
+    out.extend_from_slice(&[0, 0, 1, 0]);
+    out.extend_from_slice(&(images.len() as u16).to_le_bytes());
+    let mut offset = 6 + 16 * images.len() as u32;
+    for (size, data) in images {
+        let s = if *size >= 256 { 0 } else { *size as u8 };
+        out.extend_from_slice(&[s, s, 0, 0]);
+        out.extend_from_slice(&1u16.to_le_bytes());
+        out.extend_from_slice(&32u16.to_le_bytes());
+        out.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        out.extend_from_slice(&offset.to_le_bytes());
+        offset += data.len() as u32;
+    }
+    for (_, data) in images {
+        out.extend_from_slice(data);
+    }
+    out
+}
+
+/// Write appicon.ico and the PNG sizes the format asks for.
+fn write_icons(exe: &str, appinfo: &Path) -> bool {
+    let mut ico = Vec::new();
+    let mut any = false;
+    for size in [16u32, 32, 48, 75, 128, 256] {
+        let Some((w, h, rgba)) = platform::icon_rgba(exe, 0, size) else {
+            continue;
+        };
+        let Some(data) = png(w, h, rgba) else {
+            continue;
+        };
+        if size != 48 {
+            let _ = std::fs::write(appinfo.join(format!("appicon_{size}.png")), &data);
+        }
+        if matches!(size, 16 | 32 | 48 | 256) {
+            ico.push((size, data));
+        }
+        any = true;
+    }
+    if !ico.is_empty() {
+        let _ = std::fs::write(appinfo.join("appicon.ico"), ico_from_pngs(&ico));
+    }
+    any
+}
+
+/// A .reg file (UTF-16 with BOM, as the Launcher expects) for keys under `root`.
+fn reg_file(keys: &[KeyData], root: &str) -> Vec<u8> {
+    let mut s = String::from("Windows Registry Editor Version 5.00\r\n\r\n");
+    let full = |p: &str| {
+        p.replacen("HKCU\\", "HKEY_CURRENT_USER\\", 1)
+            .replacen("HKLM\\", "HKEY_LOCAL_MACHINE\\", 1)
+    };
+    for k in keys
+        .iter()
+        .filter(|k| k.path.eq_ignore_ascii_case(root) || inside(&k.path, root))
+    {
+        s.push_str(&format!("[{}]\r\n", full(&k.path)));
+        for v in k.values.values() {
+            s.push_str(&format!(
+                "{}={}\r\n",
+                crate::report::reg_name(&v.name),
+                crate::report::reg_data(v)
+            ));
+        }
+        s.push_str("\r\n");
+    }
+    let mut bytes = vec![0xFF, 0xFE];
+    for u in s.encode_utf16() {
+        bytes.extend_from_slice(&u.to_le_bytes());
+    }
+    bytes
+}
+
+fn help_html(d: &AppDetails) -> String {
+    let h = |s: &str| {
+        s.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+    };
+    format!(
+        "<!DOCTYPE html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><title>{name}</title>\
+         <style>body{{font-family:Segoe UI,Arial,sans-serif;max-width:720px;margin:2em auto;line-height:1.5;padding:0 1em}}</style></head>\n\
+         <body><h1>{name}</h1>\n<p>{desc}</p>\n\
+         <p>{name} is {base} packaged in the PortableApps.com Format, so it can run from a USB drive, \
+         cloud folder or any other location and keeps its settings with it.</p>\n\
+         <h2>Where things are</h2><ul><li><b>App</b> holds the program. Don't change it.</li>\
+         <li><b>Data</b> holds your settings. Back it up.</li><li><b>Other</b> holds this help and the source.</li></ul>\n\
+         {home}</body></html>\n",
+        name = h(&d.display_name()),
+        base = h(d.name.trim()),
+        desc = h(d.description.trim()),
+        home = if d.homepage.trim().is_empty() {
+            String::new()
+        } else {
+            format!("<p><a href=\"{0}\">{0}</a></p>\n", h(d.homepage.trim()))
+        },
+    )
+}
+
+/// What `build_package` made.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct Package {
+    pub dir: String,
+    pub app_id: String,
+    pub program_dir: String,
+    pub main_exe: String,
+    pub files: u64,
+    pub bytes: u64,
+    pub launcher_ini: String,
+    /// Things the user should check before publishing.
+    pub warnings: Vec<String>,
+}
+
+/// Build a PortableApps.com Format folder in `out_dir\<AppID>` from a
+/// captured installation. The program's files must still be on disk.
+pub fn build_package(
+    cs: &ChangeSet,
+    d: &AppDetails,
+    out_dir: &Path,
+    include_defaults: bool,
+    folders: &Folders,
+    progress: &dyn Fn(&str),
+) -> Result<Package> {
+    let id = d.app_id();
+    let pkg = out_dir.join(&id);
+    if pkg.exists() {
+        return Err(anyhow!(
+            "{} already exists; choose another folder or remove it first",
+            pkg.display()
+        ));
+    }
+    let program_dir = find_program_dir(cs, folders)
+        .ok_or_else(|| anyhow!("no program files were found in the captured changes"))?;
+    let exe = find_main_exe(cs, &program_dir, &d.name)
+        .ok_or_else(|| anyhow!("no program file (.exe) was found in {program_dir}"))?;
+    let mut warnings = Vec::new();
+
+    progress("Copying the program files");
+    let app = pkg.join("App");
+    let appinfo = app.join("AppInfo");
+    std::fs::create_dir_all(appinfo.join("Launcher"))?;
+    std::fs::create_dir_all(pkg.join("Other").join("Source"))?;
+    let app_dir = d.app_dir();
+    let (files, bytes) = copy_tree(Path::new(&program_dir), &app.join(&app_dir))?;
+
+    progress("Writing the PortableApps.com files");
+    std::fs::write(appinfo.join("appinfo.ini"), appinfo_ini(d))?;
+    if !write_icons(&exe, &appinfo) {
+        warnings.push("No icon could be read from the program; add appicon.ico and the PNG icons to App\\AppInfo.".into());
+    }
+    let rel_exe = format!(
+        "{app_dir}\\{}",
+        exe[program_dir.len()..].trim_start_matches('\\')
+    );
+    let settings = launcher_ini_for(
+        cs,
+        &d.display_name(),
+        folders,
+        std::slice::from_ref(&program_dir),
+    );
+    let launcher = format!(
+        "; Made by Expunge Portable App Builder. Review the sections below before publishing.\r\n\r\n\
+         [Launch]\r\nProgramExecutable={rel_exe}\r\nDirectoryMoveOK=yes\r\nSupportsUNC=yes\r\n\r\n{}{}",
+        settings.sections.replace("\r\n", "\n").replace('\n', "\r\n"),
+        settings.notes.replace("\r\n", "\n").replace('\n', "\r\n"),
+    );
+    std::fs::write(
+        appinfo.join("Launcher").join(format!("{id}.ini")),
+        &launcher,
+    )?;
+    std::fs::write(pkg.join("help.html"), help_html(d))?;
+    std::fs::write(
+        pkg.join("Other").join("Source").join("Readme.txt"),
+        format!(
+            "{} was captured and packaged by Expunge (https://github.com/SeanShaffer88/Expunge).\r\n\r\n\
+             The Launcher settings are in App\\AppInfo\\Launcher\\{id}.ini.\r\n",
+            d.display_name()
+        ),
+    )?;
+
+    if include_defaults {
+        progress("Copying the first-run settings");
+        let dd = app.join("DefaultData");
+        for (key, real) in &settings.dir_moves {
+            if let Err(e) = copy_tree(Path::new(real), &dd.join(key)) {
+                warnings.push(format!("Could not copy {real}: {e}"));
+            }
+        }
+        if !settings.file_moves.is_empty() || !settings.reg_moves.is_empty() {
+            std::fs::create_dir_all(dd.join("settings"))?;
+        }
+        for f in &settings.file_moves {
+            if let Err(e) = std::fs::copy(f, dd.join("settings").join(leaf(f))) {
+                warnings.push(format!("Could not copy {f}: {e}"));
+            }
+        }
+        for (name, key) in &settings.reg_moves {
+            std::fs::write(
+                dd.join("settings").join(format!("{name}.reg")),
+                reg_file(&cs.keys_added, key),
+            )?;
+        }
+        if !settings.dir_moves.is_empty() || !settings.reg_moves.is_empty() {
+            warnings.push("The default settings were captured on this PC; check them for user names or paths.".into());
+        }
+    }
+    if settings.text.contains("HKLM\\") {
+        warnings.push("The program writes machine-wide registry keys; see the review notes in the Launcher settings.".into());
+    }
+    let other_dirs: Vec<String> = cs
+        .files_added
+        .iter()
+        .filter(|f| {
+            f.is_dir && !f.path.eq_ignore_ascii_case(&program_dir) && !inside(&f.path, &program_dir)
+        })
+        .filter(|f| {
+            folders.to_var(&f.path).is_none()
+                && parent(&f.path).is_some_and(|p| {
+                    !cs.files_added
+                        .iter()
+                        .any(|x| x.is_dir && x.path.eq_ignore_ascii_case(p))
+                })
+        })
+        .map(|f| f.path.clone())
+        .collect();
+    if !other_dirs.is_empty() {
+        warnings.push(format!(
+            "The installer also created {}; check whether the program needs it.",
+            other_dirs.join(", ")
+        ));
+    }
+    Ok(Package {
+        dir: pkg.to_string_lossy().to_string(),
+        app_id: id,
+        program_dir,
+        main_exe: exe,
+        files,
+        bytes,
+        launcher_ini: launcher,
+        warnings,
+    })
+}
+
+// ---- Capture --------------------------------------------------------------
+
+/// Everything a capture needs, saved as job.json (so the same run works
+/// inside Windows Sandbox, where it is started by Windows, not by Expunge).
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(default)]
+pub struct Job {
+    pub details: AppDetails,
+    pub installer: String,
+    pub silent: bool,
+    pub out_dir: String,
+    pub include_defaults: bool,
+    /// Seconds to watch for background activity before installing.
+    pub learn_seconds: u64,
+    /// Running inside Windows Sandbox: ask with message boxes, shut down at the end.
+    pub sandbox: bool,
+    /// The host's capture settings (roots and exclusions).
+    pub settings: Settings,
+}
+
+/// Progress of a capture, written to status.json next to job.json.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(default)]
+pub struct Status {
+    pub phase: String,
+    pub done: bool,
+    pub error: Option<String>,
+    pub package: Option<Package>,
+}
+
+/// Snapshot, install, snapshot, build. `ask_done` blocks until the user has
+/// finished installing and has run and closed the program once.
+pub fn capture(
+    job: &Job,
+    reg: &dyn crate::platform::Registry,
+    report: &dyn Fn(&str),
+    ask_done: &dyn Fn(),
+    progress: &Progress,
+) -> Result<(InstallLog, Package)> {
+    let settings = &job.settings;
+    report("Taking the first snapshot");
+    let a = take_snapshot(reg, settings, progress)?;
+    let mut learned = crate::noise::Learned::default();
+    let before = if job.learn_seconds > 0 {
+        report("Learning what Windows changes on its own");
+        std::thread::sleep(std::time::Duration::from_secs(job.learn_seconds));
+        let b = take_snapshot(reg, settings, progress)?;
+        let roots: Vec<String> = settings.file_roots.iter().map(|r| r.path.clone()).collect();
+        learned = crate::noise::learn(
+            &diff(&a, &b),
+            &roots,
+            &settings.registry_roots,
+            &settings.effective_file_exclusions(),
+            &settings.effective_registry_exclusions(),
+        );
+        b
+    } else {
+        a
+    };
+    let installer = PathBuf::from(&job.installer);
+    let cmd = installer_command(&installer, job.silent);
+    report("Installing");
+    let child = platform::spawn_command_line(&cmd)?;
+    let code = child.wait();
+    if job.silent && code != 0 && code != 3010 && code != 1641 {
+        return Err(anyhow!("the installer stopped with error code {code}"));
+    }
+    report("Waiting for you to run the program once and close it");
+    ask_done();
+    report("Taking the second snapshot");
+    let after = take_snapshot(reg, settings, progress)?;
+    let mut cs = diff(&before, &after);
+    filter_changes(&mut cs, &learned.registry, &learned.files);
+    let mut log = InstallLog {
+        id: crate::util::new_id(),
+        name: job.details.name.clone(),
+        publisher: job.details.publisher.clone(),
+        version: job.details.version.clone(),
+        created: crate::util::now_string(),
+        installer: job.installer.clone(),
+        tags: vec!["portable-build".into()],
+        ..Default::default()
+    };
+    if let Some(d) = crate::snapshot::detect_program(&cs) {
+        log.uninstall_key = d.key;
+        if log.version.is_empty() {
+            log.version = d.version;
+        }
+        if log.publisher.is_empty() {
+            log.publisher = d.publisher;
+        }
+    }
+    log.changes = cs;
+    let mut details = job.details.clone();
+    if details.version.is_empty() {
+        details.version = log.version.clone();
+    }
+    if details.publisher.is_empty() {
+        details.publisher = log.publisher.clone();
+    }
+    let pkg = build_package(
+        &log.changes,
+        &details,
+        Path::new(&job.out_dir),
+        job.include_defaults,
+        &Folders::current(),
+        report,
+    )?;
+    Ok((log, pkg))
+}
+
+/// `expunge pa-capture <job.json>`: the capture as run inside the sandbox
+/// (or on this PC from the command line). Writes status.json and
+/// install-log.json next to job.json.
+pub fn run_job_file(job_path: &Path) -> Result<()> {
+    let job: Job = serde_json::from_slice(&std::fs::read(job_path)?)?;
+    let dir = job_path.parent().unwrap_or(Path::new(".")).to_path_buf();
+    let status_path = dir.join("status.json");
+    let write = |s: &Status| {
+        let _ = std::fs::write(
+            &status_path,
+            serde_json::to_vec_pretty(s).unwrap_or_default(),
+        );
+    };
+    let report = |phase: &str| {
+        eprintln!("{phase}…");
+        write(&Status {
+            phase: phase.to_string(),
+            ..Default::default()
+        });
+    };
+    let ask = || {
+        let msg = "When the installation has finished, start the program once, set it up the way you want it to start, and close it.\n\nThen click OK.";
+        platform::ask_ok("Expunge Portable App Builder", msg);
+    };
+    let reg = platform::system_registry();
+    let progress = Progress::default();
+    let result = capture(&job, reg.as_ref(), &report, &ask, &progress);
+    match result {
+        Ok((log, pkg)) => {
+            let _ = std::fs::write(dir.join("install-log.json"), serde_json::to_vec(&log)?);
+            write(&Status {
+                phase: "Done".into(),
+                done: true,
+                error: None,
+                package: Some(pkg),
+            });
+        }
+        Err(e) => {
+            write(&Status {
+                phase: "Failed".into(),
+                done: true,
+                error: Some(e.to_string()),
+                package: None,
+            });
+            if job.sandbox {
+                platform::ask_ok(
+                    "Expunge Portable App Builder",
+                    &format!("The capture failed: {e}"),
+                );
+            }
+        }
+    }
+    if job.sandbox {
+        // Closing the sandbox throws away everything the installer did.
+        let _ = platform::spawn_command_line("shutdown.exe /s /t 3");
+    }
+    Ok(())
+}
+
+// ---- Windows Sandbox ------------------------------------------------------
+
+/// Windows Sandbox is installed (Windows 11 Pro, Enterprise or Education,
+/// with the "Windows Sandbox" optional feature turned on).
+pub fn sandbox_available() -> bool {
+    let windir = std::env::var("windir").unwrap_or_else(|_| "C:\\Windows".into());
+    Path::new(&windir)
+        .join("System32")
+        .join("WindowsSandbox.exe")
+        .exists()
+}
+
+/// Where things appear inside the sandbox.
+pub const SANDBOX_EXPUNGE: &str = "C:\\Expunge";
+pub const SANDBOX_INSTALLER: &str = "C:\\Installer";
+pub const SANDBOX_WORK: &str = "C:\\ExpungeWork";
+
+fn xml(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+pub fn wsb_config(
+    expunge_dir: &Path,
+    installer_dir: &Path,
+    work_dir: &Path,
+    exe_name: &str,
+) -> String {
+    let map = |host: &Path, sandbox: &str, ro: bool| {
+        format!(
+            "    <MappedFolder>\n      <HostFolder>{}</HostFolder>\n      <SandboxFolder>{sandbox}</SandboxFolder>\n      <ReadOnly>{ro}</ReadOnly>\n    </MappedFolder>\n",
+            xml(&host.to_string_lossy())
+        )
+    };
+    format!(
+        "<Configuration>\n  <Networking>Default</Networking>\n  <ClipboardRedirection>Enable</ClipboardRedirection>\n  <MemoryInMB>4096</MemoryInMB>\n  <MappedFolders>\n{}{}{}  </MappedFolders>\n  <LogonCommand>\n    <Command>{SANDBOX_EXPUNGE}\\{} pa-capture {SANDBOX_WORK}\\job.json</Command>\n  </LogonCommand>\n</Configuration>\n",
+        map(expunge_dir, SANDBOX_EXPUNGE, true),
+        map(installer_dir, SANDBOX_INSTALLER, true),
+        map(work_dir, SANDBOX_WORK, false),
+        xml(exe_name),
+    )
+}
+
+/// Prepare a work folder for a sandbox capture and start the sandbox.
+/// Progress then appears in `work_dir\status.json`.
+pub fn start_sandbox(job: &Job, work_dir: &Path) -> Result<()> {
+    if !sandbox_available() {
+        return Err(anyhow!("Windows Sandbox isn't turned on"));
+    }
+    std::fs::create_dir_all(work_dir.join("out"))?;
+    let exe = std::env::current_exe()?;
+    let exe_dir = exe.parent().ok_or_else(|| anyhow!("no program folder"))?;
+    let exe_name = exe
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Expunge.exe".into());
+    let installer = PathBuf::from(&job.installer);
+    let installer_dir = installer
+        .parent()
+        .ok_or_else(|| anyhow!("no installer folder"))?;
+    let installer_name = installer
+        .file_name()
+        .ok_or_else(|| anyhow!("no installer file"))?;
+    let mut inside_job = job.clone();
+    inside_job.installer = format!("{SANDBOX_INSTALLER}\\{}", installer_name.to_string_lossy());
+    inside_job.out_dir = format!("{SANDBOX_WORK}\\out");
+    inside_job.sandbox = true;
+    // Don't capture Expunge's own folders inside the sandbox.
+    for d in [SANDBOX_EXPUNGE, SANDBOX_INSTALLER, SANDBOX_WORK] {
+        inside_job.settings.file_exclusions.push(d.to_string());
+    }
+    std::fs::write(
+        work_dir.join("job.json"),
+        serde_json::to_vec_pretty(&inside_job)?,
+    )?;
+    let _ = std::fs::remove_file(work_dir.join("status.json"));
+    let wsb = work_dir.join("Expunge.wsb");
+    std::fs::write(
+        &wsb,
+        wsb_config(exe_dir, installer_dir, work_dir, &exe_name),
+    )?;
+    platform::shell_open(&wsb.to_string_lossy());
+    Ok(())
+}
+
+pub fn read_status(work_dir: &Path) -> Option<Status> {
+    serde_json::from_slice(&std::fs::read(work_dir.join("status.json")).ok()?).ok()
+}
+
+/// After a sandbox capture: move the package from the work folder to the
+/// chosen output folder. Returns its new location.
+pub fn collect_sandbox_package(work_dir: &Path, pkg: &Package, out_dir: &Path) -> Result<PathBuf> {
+    let from = work_dir.join("out").join(&pkg.app_id);
+    let mut to = out_dir.join(&pkg.app_id);
+    let mut n = 2;
+    while to.exists() {
+        to = out_dir.join(format!("{} ({n})", pkg.app_id));
+        n += 1;
+    }
+    std::fs::create_dir_all(out_dir)?;
+    if std::fs::rename(&from, &to).is_err() {
+        copy_tree(&from, &to)?;
+        let _ = std::fs::remove_dir_all(&from);
+    }
+    Ok(to)
+}
+
+// ---- Compiling with the PortableApps.com tools ------------------------------
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct PaTools {
+    pub launcher_generator: Option<PathBuf>,
+    pub installer: Option<PathBuf>,
+}
+
+pub const LAUNCHER_URL: &str =
+    "https://portableapps.com/apps/development/portableapps.com_launcher";
+pub const INSTALLER_URL: &str =
+    "https://portableapps.com/apps/development/portableapps.com_installer";
+
+/// Look for the PortableApps.com Launcher and Installer in `portableapps_dir`
+/// (a PortableApps folder), then in X:\PortableApps on every drive and in the
+/// user's profile.
+pub fn find_tools(portableapps_dir: &str) -> PaTools {
+    let mut bases: Vec<PathBuf> = Vec::new();
+    if !portableapps_dir.trim().is_empty() {
+        bases.push(PathBuf::from(portableapps_dir.trim()));
+    }
+    for l in b'A'..=b'Z' {
+        bases.push(PathBuf::from(format!("{}:\\PortableApps", l as char)));
+    }
+    if let Ok(p) = std::env::var("USERPROFILE") {
+        bases.push(Path::new(&p).join("PortableApps"));
+    }
+    let mut t = PaTools::default();
+    for b in bases {
+        let g = b
+            .join("PortableApps.comLauncher")
+            .join("PortableApps.comLauncherGenerator.exe");
+        if t.launcher_generator.is_none() && g.is_file() {
+            t.launcher_generator = Some(g);
+        }
+        let i = b
+            .join("PortableApps.comInstaller")
+            .join("PortableApps.comInstaller.exe");
+        if t.installer.is_none() && i.is_file() {
+            t.installer = Some(i);
+        }
+        if t.launcher_generator.is_some() && t.installer.is_some() {
+            break;
+        }
+    }
+    t
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Compiled {
+    pub launcher: Option<PathBuf>,
+    pub paf: Option<PathBuf>,
+}
+
+fn newest_paf(dir: &Path, since: std::time::SystemTime) -> Option<PathBuf> {
+    std::fs::read_dir(dir)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.file_name()
+                .to_string_lossy()
+                .to_lowercase()
+                .ends_with(".paf.exe")
+        })
+        .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
+        .filter(|(m, _)| *m >= since)
+        .max_by_key(|(m, _)| *m)
+        .map(|(_, p)| p)
+}
+
+/// Run the Launcher Generator (makes `AppID.exe`) and then the Installer
+/// (makes `AppID_version.paf.exe` next to the package folder). Both tools
+/// build without questions when given the package folder.
+pub fn compile(
+    pkg_dir: &Path,
+    app_id: &str,
+    tools: &PaTools,
+    report: &dyn Fn(&str),
+) -> Result<Compiled> {
+    let mut out = Compiled::default();
+    let quote = |p: &Path| format!("\"{}\"", p.display());
+    if let Some(g) = &tools.launcher_generator {
+        report("Making the launcher");
+        let _ = std::fs::remove_file(pkg_dir.join(format!("{app_id}.exe")));
+        platform::spawn_command_line(&format!("{} {}", quote(g), quote(pkg_dir)))?.wait();
+        let exe = pkg_dir.join(format!("{app_id}.exe"));
+        if !exe.is_file() {
+            let log = g.parent().map(|d| {
+                d.join("Data")
+                    .join("PortableApps.comLauncherGeneratorLog.txt")
+            });
+            let detail = log
+                .and_then(|l| std::fs::read_to_string(l).ok())
+                .map(|s| s.lines().rev().take(5).collect::<Vec<_>>().join(" / "))
+                .unwrap_or_default();
+            return Err(anyhow!(
+                "the Launcher Generator didn't make {app_id}.exe {detail}"
+            ));
+        }
+        out.launcher = Some(exe);
+    }
+    if let Some(i) = &tools.installer {
+        report("Making the installer");
+        let start = std::time::SystemTime::now() - std::time::Duration::from_secs(2);
+        platform::spawn_command_line(&format!("{} {}", quote(i), quote(pkg_dir)))?.wait();
+        let parent = pkg_dir.parent().unwrap_or(pkg_dir);
+        out.paf = newest_paf(parent, start).or_else(|| newest_paf(pkg_dir, start));
+        if out.paf.is_none() {
+            return Err(anyhow!("the PortableApps.com Installer didn't make a .paf.exe; open it and build the package to see why"));
+        }
+    }
+    Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dir(p: &str) -> FileEntry {
+        FileEntry {
+            path: p.into(),
+            is_dir: true,
+            size: 0,
+            mtime: 0,
+        }
+    }
+    fn file(p: &str, size: u64) -> FileEntry {
+        FileEntry {
+            path: p.into(),
+            is_dir: false,
+            size,
+            mtime: 0,
+        }
+    }
+    fn folders() -> Folders {
+        Folders::new(
+            "C:\\Users\\Sean",
+            "C:\\Users\\Sean\\AppData\\Roaming",
+            "C:\\Users\\Sean\\AppData\\Local",
+            "C:\\ProgramData",
+            "C:\\Users\\Sean\\AppData\\Local\\Temp",
+        )
+    }
+
+    #[test]
+    fn ids_and_versions() {
+        let d = AppDetails {
+            name: "Notepad++".into(),
+            ..Default::default()
+        };
+        assert_eq!(d.app_id(), "NotepadPlusPlusPortable");
+        assert_eq!(d.app_dir(), "NotepadPlusPlus");
+        assert_eq!(d.display_name(), "Notepad++ Portable");
+        let d = AppDetails {
+            name: "GIMP Portable".into(),
+            ..Default::default()
+        };
+        assert_eq!(d.app_id(), "GIMPPortable");
+        assert_eq!(d.display_name(), "GIMP Portable");
+        assert_eq!(package_version("8.6.5"), "8.6.5.0");
+        assert_eq!(package_version("v24.08 beta 2"), "24.8.2.0");
+        assert_eq!(package_version("1.2.3.4.5"), "1.2.3.4");
+        assert_eq!(package_version(""), "0.0.0.0");
+    }
+
+    #[test]
+    fn appinfo_has_required_fields() {
+        let d = AppDetails {
+            name: "Foo".into(),
+            publisher: "Foo Inc.".into(),
+            packager: "Sean".into(),
+            version: "2.1".into(),
+            category: "Nonsense".into(),
+            ..Default::default()
+        };
+        let ini = appinfo_ini(&d);
+        for want in [
+            "Type=PortableApps.comFormat",
+            "Name=Foo Portable",
+            "AppID=FooPortable",
+            "Publisher=Foo Inc. & Sean",
+            "Category=Utilities",
+            "PackageVersion=2.1.0.0",
+            "DisplayVersion=2.1",
+            "Start=FooPortable.exe",
+        ] {
+            assert!(ini.contains(want), "{want} missing:\n{ini}");
+        }
+    }
+
+    #[test]
+    fn finds_program_folder_and_main_exe() {
+        let cs = ChangeSet {
+            files_added: vec![
+                dir("C:\\Program Files\\Foo"),
+                file("C:\\Program Files\\Foo\\foo.exe", 5_000_000),
+                file("C:\\Program Files\\Foo\\uninstall.exe", 9_000_000),
+                dir("C:\\Program Files\\Foo\\plugins"),
+                file("C:\\Program Files\\Foo\\plugins\\big.exe", 50_000_000),
+                dir("C:\\Users\\Sean\\AppData\\Roaming\\Foo"),
+                file(
+                    "C:\\Users\\Sean\\AppData\\Roaming\\Foo\\settings.exe",
+                    99_000_000,
+                ),
+                dir("C:\\Users\\Sean\\AppData\\Local\\Temp\\x"),
+                file(
+                    "C:\\Users\\Sean\\AppData\\Local\\Temp\\x\\setup.exe",
+                    999_000_000,
+                ),
+            ],
+            ..Default::default()
+        };
+        // Some programs install into the user's folders (e.g. %APPDATA%\Foo);
+        // the largest new tree with a program file wins.
+        let pd = find_program_dir(&cs, &folders()).unwrap();
+        assert_eq!(pd, "C:\\Users\\Sean\\AppData\\Roaming\\Foo");
+        let mut cs2 = cs.clone();
+        cs2.files_added.retain(|f| !f.path.contains("Roaming"));
+        let pd = find_program_dir(&cs2, &folders()).unwrap();
+        assert_eq!(pd, "C:\\Program Files\\Foo");
+        assert_eq!(
+            find_main_exe(&cs2, &pd, "Foo").unwrap(),
+            "C:\\Program Files\\Foo\\foo.exe"
+        );
+    }
+
+    #[test]
+    fn ico_header() {
+        let ico = ico_from_pngs(&[(16, vec![1, 2, 3]), (256, vec![4, 5])]);
+        assert_eq!(&ico[..6], &[0, 0, 1, 0, 2, 0]);
+        assert_eq!(ico[6], 16);
+        assert_eq!(ico[22], 0); // 256 is written as 0
+        assert_eq!(u32::from_le_bytes(ico[18..22].try_into().unwrap()), 38);
+        assert_eq!(&ico[38..], &[1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn sandbox_config() {
+        let c = wsb_config(
+            Path::new("D:\\Tools\\Expunge"),
+            Path::new("D:\\Downloads"),
+            Path::new("C:\\Work & Co"),
+            "Expunge.exe",
+        );
+        assert!(c.contains("<HostFolder>D:\\Tools\\Expunge</HostFolder>\n      <SandboxFolder>C:\\Expunge</SandboxFolder>\n      <ReadOnly>true</ReadOnly>"));
+        assert!(c.contains("<HostFolder>C:\\Work &amp; Co</HostFolder>\n      <SandboxFolder>C:\\ExpungeWork</SandboxFolder>\n      <ReadOnly>false</ReadOnly>"));
+        assert!(c.contains(
+            "<Command>C:\\Expunge\\Expunge.exe pa-capture C:\\ExpungeWork\\job.json</Command>"
+        ));
+    }
+
+    #[test]
+    fn installer_commands() {
+        assert_eq!(
+            installer_command(Path::new("C:\\dl\\foo.msi"), true),
+            "msiexec.exe /i \"C:\\dl\\foo.msi\" /qn /norestart"
+        );
+        assert_eq!(
+            installer_command(Path::new("C:\\dl\\missing.exe"), true),
+            "\"C:\\dl\\missing.exe\""
+        );
+    }
+}

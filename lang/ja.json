@@ -93,7 +93,7 @@
   "Export install log": "インストールログをエクスポート",
   "Export program list": "プログラム一覧をエクスポート",
   "Export program list (CSV)…": "プログラム一覧をエクスポート（CSV）…",
-  "Expunge is not running as Administrator. It needs admin rights to work effectively: to monitor and undo installations system-wide, remove programs installed for all users, manage services and Windows updates, and clean protected folders.": "Expunge は管理者として実行されていません。正しく動作するには管理者権限が必要です。システム全体のインストールの監視と取り消し、全ユーザー向けにインストールされたプログラムの削除、サービスと Windows Update の管理、保護されたフォルダーのクリーンアップに使います。",
+  "Expunge is not running as Administrator. It needs admin rights to work effectively: to monitor and undo installations system-wide, remove programs installed for all users, manage services, and clean protected folders.": "Expunge は管理者として実行されていません。正しく動作するには管理者権限が必要です。システム全体のインストールの監視と取り消し、全ユーザー向けにインストールされたプログラムの削除、サービスの管理、保護されたフォルダーのクリーンアップに使います。",
   "Expunge is not running as Administrator. Some removals will fail. Use \"Run as Administrator\" in the left column.": "Expunge は管理者として実行されていません。一部の削除は失敗します。左の列の「管理者として実行」を使ってください。",
   "Expunge recorded this installation, so it can remove exactly what was added.": "Expunge はこのインストールを記録しているので、追加されたものだけを正確に削除できます。",
   "Expunge records every file, folder, registry key, service and scheduled task an installation adds or changes.": "Expunge は、インストールによって追加・変更されたすべてのファイル、フォルダー、レジストリキー、サービス、タスクを記録します。",

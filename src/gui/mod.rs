@@ -3,14 +3,15 @@
 mod a11y;
 mod app;
 mod backups;
+mod builder;
 mod cleaner;
 mod dashboard;
 mod lab;
 mod logs;
 mod monitor;
 mod plan;
-mod restore_ui;
 mod programs;
+mod restore_ui;
 mod settings_tab;
 mod startup_tab;
 mod theme;

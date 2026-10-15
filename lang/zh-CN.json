@@ -93,7 +93,7 @@
   "Export install log": "导出安装日志",
   "Export program list": "导出程序列表",
   "Export program list (CSV)…": "导出程序列表（CSV）…",
-  "Expunge is not running as Administrator. It needs admin rights to work effectively: to monitor and undo installations system-wide, remove programs installed for all users, manage services and Windows updates, and clean protected folders.": "Expunge 未以管理员身份运行。它需要管理员权限才能正常工作：在整个系统范围内监视和撤销安装、删除为所有用户安装的程序、管理服务和 Windows 更新，以及清理受保护的文件夹。",
+  "Expunge is not running as Administrator. It needs admin rights to work effectively: to monitor and undo installations system-wide, remove programs installed for all users, manage services, and clean protected folders.": "Expunge 未以管理员身份运行。它需要管理员权限才能正常工作：在整个系统范围内监视和撤销安装、删除为所有用户安装的程序、管理服务，以及清理受保护的文件夹。",
   "Expunge is not running as Administrator. Some removals will fail. Use \"Run as Administrator\" in the left column.": "Expunge 未以管理员身份运行，部分删除操作会失败。请使用左栏中的“以管理员身份运行”。",
   "Expunge recorded this installation, so it can remove exactly what was added.": "Expunge 记录了这次安装，因此可以精确删除所添加的内容。",
   "Expunge records every file, folder, registry key, service and scheduled task an installation adds or changes.": "Expunge 会记录安装过程添加或更改的每个文件、文件夹、注册表项、服务和计划任务。",

@@ -453,6 +453,22 @@ pub fn message_box(title: &str, text: &str) -> i32 {
     }
 }
 
+/// An information message box that stays on top until OK is clicked.
+pub fn info_box(title: &str, text: &str) -> i32 {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        MessageBoxW, MB_ICONINFORMATION, MB_OK, MB_SETFOREGROUND, MB_TOPMOST,
+    };
+    let (t, m) = (wide(title), wide(text));
+    unsafe {
+        MessageBoxW(
+            std::ptr::null_mut(),
+            m.as_ptr(),
+            t.as_ptr(),
+            MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND | MB_TOPMOST,
+        )
+    }
+}
+
 /// Move a file or folder to the Recycle Bin, silently.
 pub fn recycle(path: &Path) -> Result<()> {
     use windows_sys::Win32::UI::Shell::{
@@ -812,7 +828,9 @@ pub fn remove_restore_point(sequence: u32) -> Result<()> {
         let remove: unsafe extern "system" fn(u32) -> u32 = std::mem::transmute(f);
         match remove(sequence) {
             0 => Ok(()),
-            code => Err(anyhow!("Windows could not delete the restore point (error {code})")),
+            code => Err(anyhow!(
+                "Windows could not delete the restore point (error {code})"
+            )),
         }
     }
 }

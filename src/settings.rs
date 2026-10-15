@@ -56,6 +56,13 @@ pub struct Settings {
     pub high_contrast: bool,
     /// The welcome screen has been completed.
     pub first_run_done: bool,
+    /// Portable App Builder: the PortableApps folder holding the
+    /// PortableApps.com Launcher and Installer ("" = search every drive).
+    pub portableapps_dir: String,
+    /// Portable App Builder: your name, added to the package's publisher.
+    pub packager_name: String,
+    /// Portable App Builder: where packages are saved.
+    pub portable_out_dir: String,
 }
 
 /// In Simple mode the safety switches are locked to their safe values,
@@ -113,6 +120,9 @@ impl Default for Settings {
             advanced_mode: false,
             high_contrast: false,
             first_run_done: false,
+            portableapps_dir: String::new(),
+            packager_name: String::new(),
+            portable_out_dir: String::new(),
         }
     }
 }

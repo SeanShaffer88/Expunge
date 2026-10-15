@@ -27,11 +27,18 @@ impl App {
     fn refresh_restore(&mut self, ctx: &egui::Context) {
         self.restore.loaded = true;
         self.restore.load_job = Some(Job::spawn(ctx, |_| {
-            (restore::list().map_err(|e| e.to_string()), restore::protection())
+            (
+                restore::list().map_err(|e| e.to_string()),
+                restore::protection(),
+            )
         }));
     }
 
-    fn restore_action(&mut self, ctx: &egui::Context, f: impl FnOnce() -> Result<String, String> + Send + 'static) {
+    fn restore_action(
+        &mut self,
+        ctx: &egui::Context,
+        f: impl FnOnce() -> Result<String, String> + Send + 'static,
+    ) {
         self.restore.message = None;
         self.restore.action_job = Some(Job::spawn(ctx, move |_| f()));
     }
@@ -58,7 +65,13 @@ impl App {
         let ctx = self.ctx.clone();
         self.restore_action(&ctx, move || {
             restore::set_protection(on)
-                .map(|_| if on { t("System Protection is on.") } else { t("System Protection is off.") })
+                .map(|_| {
+                    if on {
+                        t("System Protection is on.")
+                    } else {
+                        t("System Protection is off.")
+                    }
+                })
                 .map_err(|e| e.to_string())
         });
     }

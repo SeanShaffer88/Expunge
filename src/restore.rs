@@ -46,7 +46,14 @@ impl Kind {
 fn powershell(script: &str) -> Result<String> {
     let (code, out) = crate::platform::run_hidden(
         "powershell.exe",
-        &["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script],
+        &[
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            script,
+        ],
     )?;
     if code != 0 {
         return Err(anyhow!("{}", out.trim()));
@@ -69,7 +76,14 @@ struct RawPoint {
 /// `20261015083012.000000-000` → `2026-10-15 08:30`.
 fn wmi_time(s: &str) -> String {
     if s.len() >= 12 && s[..12].chars().all(|c| c.is_ascii_digit()) {
-        format!("{}-{}-{} {}:{}", &s[0..4], &s[4..6], &s[6..8], &s[8..10], &s[10..12])
+        format!(
+            "{}-{}-{} {}:{}",
+            &s[0..4],
+            &s[4..6],
+            &s[6..8],
+            &s[8..10],
+            &s[10..12]
+        )
     } else {
         s.to_string()
     }
@@ -84,7 +98,9 @@ pub fn parse_points(json: &str) -> Vec<RestorePoint> {
     let raw: Vec<RawPoint> = if json.starts_with('[') {
         serde_json::from_str(json).unwrap_or_default()
     } else {
-        serde_json::from_str::<RawPoint>(json).map(|p| vec![p]).unwrap_or_default()
+        serde_json::from_str::<RawPoint>(json)
+            .map(|p| vec![p])
+            .unwrap_or_default()
     };
     let mut v: Vec<RestorePoint> = raw
         .into_iter()
@@ -124,7 +140,9 @@ pub fn create_restore_point(description: &str) -> Result<()> {
          finally {{ if ($null -eq $old) {{ Remove-ItemProperty -Path \"Registry::$k\" -Name SystemRestorePointCreationFrequency -ErrorAction SilentlyContinue }} else {{ Set-ItemProperty -Path \"Registry::$k\" -Name SystemRestorePointCreationFrequency -Value $old }} }}",
         key = SR_KEY.replace("HKLM", "HKEY_LOCAL_MACHINE"),
     );
-    powershell(&script).map(|_| ()).map_err(|e| anyhow!("restore point failed: {e}"))
+    powershell(&script)
+        .map(|_| ())
+        .map_err(|e| anyhow!("restore point failed: {e}"))
 }
 
 /// Delete one restore point.
@@ -142,7 +160,10 @@ pub fn delete(sequence: u32) -> Result<()> {
 
 /// Roll Windows back to a restore point. Windows restarts immediately.
 pub fn restore_to(sequence: u32) -> Result<()> {
-    powershell(&format!("Restore-Computer -RestorePoint {sequence} -Confirm:$false")).map(|_| ())
+    powershell(&format!(
+        "Restore-Computer -RestorePoint {sequence} -Confirm:$false"
+    ))
+    .map(|_| ())
 }
 
 /// Open Windows' own System Restore wizard.
@@ -181,9 +202,10 @@ fn vss_size(s: &str) -> Option<u64> {
 pub fn parse_shadowstorage(text: &str, drive: &str) -> (Option<u64>, Option<u64>) {
     let drive = drive.to_ascii_uppercase();
     for block in text.split("Shadow Copy Storage association") {
-        let for_drive = block
-            .lines()
-            .any(|l| l.trim_start().starts_with("For volume:") && l.to_ascii_uppercase().contains(&format!("({drive})")));
+        let for_drive = block.lines().any(|l| {
+            l.trim_start().starts_with("For volume:")
+                && l.to_ascii_uppercase().contains(&format!("({drive})"))
+        });
         if !for_drive {
             continue;
         }
@@ -194,7 +216,10 @@ pub fn parse_shadowstorage(text: &str, drive: &str) -> (Option<u64>, Option<u64>
                 .and_then(|l| l.split_once(':'))
                 .and_then(|(_, v)| vss_size(v))
         };
-        return (field("Used Shadow Copy Storage space"), field("Maximum Shadow Copy Storage space"));
+        return (
+            field("Used Shadow Copy Storage space"),
+            field("Maximum Shadow Copy Storage space"),
+        );
     }
     (None, None)
 }
@@ -223,7 +248,11 @@ pub fn protection() -> Protection {
 
 pub fn set_protection(on: bool) -> Result<()> {
     let drive = std::env::var("SystemDrive").unwrap_or_else(|_| "C:".into());
-    let cmd = if on { "Enable-ComputerRestore" } else { "Disable-ComputerRestore" };
+    let cmd = if on {
+        "Enable-ComputerRestore"
+    } else {
+        "Disable-ComputerRestore"
+    };
     powershell(&format!("{cmd} -Drive '{drive}\\'")).map(|_| ())
 }
 
@@ -233,7 +262,13 @@ pub fn set_max_space(percent: u32) -> Result<()> {
     let pct = percent.clamp(1, 100);
     let (code, out) = crate::platform::run_hidden(
         "vssadmin",
-        &["resize", "shadowstorage", &format!("/For={drive}"), &format!("/On={drive}"), &format!("/MaxSize={pct}%")],
+        &[
+            "resize",
+            "shadowstorage",
+            &format!("/For={drive}"),
+            &format!("/On={drive}"),
+            &format!("/MaxSize={pct}%"),
+        ],
     )?;
     if code != 0 {
         return Err(anyhow!("{}", out.trim()));

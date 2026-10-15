@@ -25,6 +25,9 @@ pub struct LabState {
     cmp_job: Option<Job<Result<InstallLog, String>>>,
     cmp_result: Option<InstallLog>,
     message: String,
+    /// Quick compare: the "before" snapshot, kept in memory.
+    quick_before: Option<std::sync::Arc<expunge_core::model::Snapshot>>,
+    quick_job: Option<Job<Result<std::sync::Arc<expunge_core::model::Snapshot>, String>>>,
 }
 
 impl App {
@@ -36,6 +39,13 @@ impl App {
                 Ok(name) => tf("Saved snapshot {name}", &[("name", name)]),
                 Err(e) => e,
             };
+        }
+        if let Some(r) = self.lab.quick_job.as_ref().and_then(|j| j.poll()) {
+            self.lab.quick_job = None;
+            match r {
+                Ok(s) => self.lab.quick_before = Some(s),
+                Err(e) => self.lab.message = e,
+            }
         }
         if let Some(r) = self.lab.cmp_job.as_ref().and_then(|j| j.poll()) {
             self.lab.cmp_job = None;
@@ -56,6 +66,86 @@ impl App {
             });
     }
 
+    /// Before/after in two clicks, without naming or saving snapshots.
+    fn ui_quick_compare(&mut self, ui: &mut egui::Ui) {
+        theme::card(ui, |ui| {
+            ui.label(RichText::new(t("Quick before and after")).strong());
+            small_muted(ui, t("Snapshot now, then run, use or install something (and close it), then snapshot again to see exactly what it left behind."));
+            ui.add_space(6.0);
+            let busy = self.lab.quick_job.is_some() || self.lab.cmp_job.is_some();
+            ui.horizontal(|ui| {
+                ui.add_enabled_ui(!busy, |ui| {
+                    let label = if self.lab.quick_before.is_some() {
+                        format!("📷 {}", t("1. Snapshot again (start over)"))
+                    } else {
+                        format!("📷 {}", t("1. Snapshot before"))
+                    };
+                    if ui.button(label).clicked() {
+                        let reg = self.reg.clone();
+                        let settings = self.settings.clone();
+                        self.lab.quick_before = None;
+                        self.lab.cmp_result = None;
+                        self.lab.quick_job = Some(Job::spawn(&self.ctx, move |pr| {
+                            take_snapshot(reg.as_ref(), &settings, pr)
+                                .map(std::sync::Arc::new)
+                                .map_err(|e| e.to_string())
+                        }));
+                    }
+                });
+                ui.add_enabled_ui(!busy && self.lab.quick_before.is_some(), |ui| {
+                    if theme::primary_button(
+                        ui,
+                        format!("🔍 {}", t("2. Snapshot after and compare")),
+                    )
+                    .clicked()
+                    {
+                        let before = self.lab.quick_before.clone().unwrap();
+                        let reg = self.reg.clone();
+                        let settings = self.settings.clone();
+                        self.lab.cmp_result = None;
+                        self.lab.cmp_job = Some(Job::spawn(&self.ctx, move |pr| {
+                            let after = take_snapshot(reg.as_ref(), &settings, pr)
+                                .map_err(|e| e.to_string())?;
+                            let mut changes = diff(&before, &after);
+                            filter_changes(
+                                &mut changes,
+                                &settings.effective_registry_exclusions(),
+                                &settings.effective_file_exclusions(),
+                            );
+                            let mut log = InstallLog {
+                                id: expunge_core::util::new_id(),
+                                name: format!("{} {}", t("Changes since"), before.created),
+                                created: expunge_core::util::now_string(),
+                                ..Default::default()
+                            };
+                            if let Some(d) = detect_program(&changes) {
+                                log.name = d.name.clone();
+                                log.publisher = d.publisher;
+                                log.version = d.version;
+                                log.uninstall_key = d.key;
+                            }
+                            log.changes = changes;
+                            Ok(log)
+                        }));
+                    }
+                });
+            });
+            if let Some(j) = &self.lab.quick_job {
+                job_progress(ui, &j.progress.phase(), j.progress.count());
+            } else if let Some(j) = &self.lab.cmp_job {
+                job_progress(ui, &j.progress.phase(), j.progress.count());
+            } else if let Some(b) = &self.lab.quick_before {
+                small_muted(
+                    ui,
+                    tf(
+                        "Before: {time}. Now make the changes you want to see, then click 2.",
+                        &[("time", b.created.clone())],
+                    ),
+                );
+            }
+        });
+    }
+
     /// Re-read the snapshot folder next time the list is shown.
     pub fn on_lab_opened(&mut self) {
         self.lab.snaps = None;
@@ -66,6 +156,8 @@ impl App {
             self.lab.snaps = Some(self.store.list_snapshots());
         }
         let snaps = self.lab.snaps.clone().unwrap_or_default();
+        self.ui_quick_compare(ui);
+        ui.add_space(8.0);
         theme::card(ui, |ui| {
             ui.label(RichText::new(t("Take a named snapshot")).strong());
             small_muted(ui, t("Capture the system now, do anything, capture again, and compare any two snapshots."));
@@ -191,6 +283,7 @@ impl App {
         if self.lab.cmp_result.is_some() {
             ui.add_space(8.0);
             let mut save = false;
+            let mut export_ini = false;
             theme::card(ui, |ui| {
                 let log = self.lab.cmp_result.as_mut().unwrap();
                 ui.horizontal(|ui| {
@@ -199,10 +292,40 @@ impl App {
                         if ui.button(t("Save as install log")).clicked() {
                             save = true;
                         }
+                        if ui
+                            .button(t("PortableApps.com Launcher settings…"))
+                            .on_hover_text(t("Save what changed as [RegistryKeys], [DirectoriesMove] and [FilesMove] sections for a PortableApps.com Launcher .ini. Remove unrelated changes with ✖ first."))
+                            .clicked()
+                        {
+                            export_ini = true;
+                        }
                     });
                 });
                 changes_ui(ui, &mut log.changes, true);
             });
+            if export_ini {
+                let log = self.lab.cmp_result.as_ref().unwrap();
+                let r = expunge_core::portable::launcher_ini(
+                    &log.changes,
+                    &log.name,
+                    &expunge_core::portable::Folders::current(),
+                );
+                let name = format!("{}.ini", expunge_core::util::safe_file_name(&log.name));
+                if let Some(p) = save_file(&t("Save Launcher settings"), &name, "INI", "ini") {
+                    self.lab.message = match std::fs::write(&p, r.text) {
+                        Ok(()) => tf(
+                            "Saved {path}: {dirs} folders, {files} files and {keys} registry keys to move.",
+                            &[
+                                ("path", p.display().to_string()),
+                                ("dirs", r.directories.to_string()),
+                                ("files", r.files.to_string()),
+                                ("keys", r.keys.to_string()),
+                            ],
+                        ),
+                        Err(e) => e.to_string(),
+                    };
+                }
+            }
             if save {
                 let log = self.lab.cmp_result.take().unwrap();
                 match self.store.save_log(&log) {
