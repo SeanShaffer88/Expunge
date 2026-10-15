@@ -41,7 +41,7 @@ USAGE:
                                             Run the program's own uninstaller and
                                             report what it left behind (exit 2
                                             if anything remains)
-  expunge revert <log-id> [--dry-run] [--remove-unlogged] [--no-backup] [--recycle]
+  expunge revert <log-id> [--dry-run] [--remove-unlogged] [--no-backup] [--recycle] [--keep-log]
                                             Undo an installation precisely
   expunge export <log-id> <html|json|reg|ps1> <output-file>
   expunge learn-noise [--seconds N] [--apply] [--json]
@@ -82,6 +82,8 @@ USAGE:
                                             (only the hash is sent)
   expunge watch                             Background auto-monitoring (started
                                             at sign-in when turned on in Settings)
+  expunge check-clean <log-id>              Check that nothing recorded in a log
+                                            is still on the PC (exit 2 if so)
   expunge backups                           List backups
   expunge restore <backup-id>               Undo a removal from its backup
   expunge --version | --help
@@ -287,11 +289,6 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
             if has(&args, "--json") {
                 println!("{}", log_summary_json(&log));
             }
-        }
-        "logs" if has(&args, "--json") => {
-            let v: Vec<serde_json::Value> =
-                store()?.list_logs().iter().map(log_summary_json).collect();
-            println!("{}", serde_json::to_string_pretty(&v)?);
         }
         "logs" => {
             let group = arg_value(&args, "--group");
@@ -977,6 +974,17 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                 stale = false;
             }
         }
+        "check-clean" => {
+            let id = args.get(1).ok_or_else(|| anyhow::anyhow!("usage: expunge check-clean <log-id>"))?;
+            let log = store()?.load_log(id)?;
+            let left = residue(&log.changes, reg.as_ref());
+            if left.items.is_empty() {
+                println!("Nothing from {} is left on this PC.", log.name);
+                return Ok(0);
+            }
+            println!("{}", residue_markdown(&log.name, &left));
+            return Ok(2);
+        }
         "orphans" => {
             let plan = expunge_core::orphans::scan_system(reg.as_ref());
             if has(&args, "--json") {
@@ -1214,7 +1222,7 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                 println!("Backup: {} (restore with: expunge restore {})", b.id, b.id);
             }
             let failed = results.iter().filter(|r| !r.ok).count();
-            if !opts.dry_run && failed == 0 {
+            if !opts.dry_run && failed == 0 && !has(&args, "--keep-log") {
                 st.delete_log(id)?;
             }
             return Ok(if failed > 0 { 2 } else { 0 });

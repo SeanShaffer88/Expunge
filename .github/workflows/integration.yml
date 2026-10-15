@@ -1,0 +1,90 @@
+name: Integration
+
+# Real installers on a clean Windows runner: install under monitoring, remove
+# with Expunge, and verify nothing the installation added is left. Runs
+# weekly, on release tags, and on demand (Actions tab > Integration > Run).
+on:
+  schedule:
+    - cron: '41 6 * * 0'
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  installer:
+    name: ${{ matrix.name }}
+    runs-on: windows-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows Installer (7-Zip MSI)
+            url: https://www.7-zip.org/a/7z2409-x64.msi
+            file: 7z.msi
+            run: msiexec /i "{file}" /qn /norestart
+          - name: NSIS (7-Zip)
+            url: https://www.7-zip.org/a/7z2409-x64.exe
+            file: 7z.exe
+            run: '"{file}" /S'
+          - name: Inno Setup
+            url: https://jrsoftware.org/download.php/is.exe?site=1
+            file: is.exe
+            run: '"{file}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release --locked
+      - name: Portable Expunge with a focused monitoring scope
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory it, it/ExpungeData | Out-Null
+          Copy-Item target/release/expunge.exe it/Expunge.exe
+          New-Item it/portable -ItemType File | Out-Null
+          @{
+            first_run_done = $true
+            registry_roots = @('HKLM\SOFTWARE', 'HKLM\SYSTEM\CurrentControlSet\Services', 'HKCU\Software', 'HKCU\Environment',
+                               'HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment')
+            file_roots = @(
+              @{ path = '%ProgramFiles%'; recursive = $true },
+              @{ path = '%ProgramFiles(x86)%'; recursive = $true },
+              @{ path = '%ProgramData%\Microsoft\Windows\Start Menu'; recursive = $true },
+              @{ path = '%APPDATA%\Microsoft\Windows\Start Menu'; recursive = $true },
+              @{ path = '%PUBLIC%\Desktop'; recursive = $false },
+              @{ path = '%USERPROFILE%\Desktop'; recursive = $false }
+            )
+          } | ConvertTo-Json -Depth 5 | Set-Content it/ExpungeData/settings.json
+      - name: Download installer
+        shell: pwsh
+        run: Invoke-WebRequest -Uri "${{ matrix.url }}" -OutFile "$env:RUNNER_TEMP\${{ matrix.file }}"
+      - name: Install under monitoring
+        id: monitor
+        shell: pwsh
+        run: |
+          $file = "$env:RUNNER_TEMP\${{ matrix.file }}"
+          $cmd = '${{ matrix.run }}'.Replace('{file}', $file)
+          $parts = [System.Management.Automation.PSParser]::Tokenize($cmd, [ref]$null) | ForEach-Object { $_.Content }
+          $json = & ./it/Expunge.exe monitor --no-prompt --json -- @parts
+          if ($LASTEXITCODE -ne 0) { throw "monitor failed" }
+          $log = $json | ConvertFrom-Json
+          "Recorded $($log.name) $($log.version): $($log.stats | ConvertTo-Json -Compress)"
+          if (-not $log.uninstall_key) { throw "the installation registered no uninstall entry" }
+          "id=$($log.id)" >> $env:GITHUB_OUTPUT
+          "name=$($log.name)" >> $env:GITHUB_OUTPUT
+      - name: Lint the installation
+        shell: pwsh
+        run: ./it/Expunge.exe lint ${{ steps.monitor.outputs.id }}; exit 0
+      - name: Remove with Expunge
+        shell: pwsh
+        run: |
+          ./it/Expunge.exe revert ${{ steps.monitor.outputs.id }} --keep-log
+          if ($LASTEXITCODE -ne 0) { throw "revert reported failures" }
+      - name: Verify nothing is left
+        shell: pwsh
+        run: |
+          ./it/Expunge.exe check-clean ${{ steps.monitor.outputs.id }}
+          if ($LASTEXITCODE -ne 0) { throw "leftovers remain" }
+          $still = ./it/Expunge.exe programs | Select-String -SimpleMatch "${{ steps.monitor.outputs.name }}"
+          if ($still) { throw "the program is still listed: $still" }

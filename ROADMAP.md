@@ -23,7 +23,7 @@ Everything planned as *Next* has been built; the items below are the next candid
 **Disk**
 
 **Everything else**
-- **Integration tests on clean Windows 11 virtual machines** — real NSIS, Inno Setup, MSI and WiX installers installed, monitored, uninstalled and verified clean on every release.
+- **More integration tests** — add WiX bundles and Squirrel installers, and run on Windows 11 client images when GitHub offers them.
 - More languages — see [docs/TRANSLATING.md](docs/TRANSLATING.md).
 
 ## Considered and not planned
