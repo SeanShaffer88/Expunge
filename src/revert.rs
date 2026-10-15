@@ -865,6 +865,137 @@ pub fn risk(item: &PlanItem) -> Risk {
     }
 }
 
+/// How sure Expunge is that removing an item is harmless, 0–100, with the
+/// reasons. Green (80+) is safe, yellow (45–79) is shared or uncertain, red
+/// (below 45) touches Windows or other programs.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Confidence {
+    pub score: u8,
+    pub reasons: Vec<&'static str>,
+}
+
+impl Confidence {
+    pub fn band(&self) -> Risk {
+        match self.score {
+            80.. => Risk::Safe,
+            45.. => Risk::Review,
+            _ => Risk::Careful,
+        }
+    }
+}
+
+/// Software that ships with Windows or with hardware: entries mentioning it
+/// are rarely a removed program's own.
+const SYSTEM_VENDORS: &[&str] = &[
+    "\\microsoft\\",
+    "\\windows\\",
+    "\\nvidia",
+    "\\intel",
+    "\\amd\\",
+    "\\realtek",
+    "\\dolby",
+    "\\synaptics",
+    "\\elan",
+    "\\qualcomm",
+    "\\broadcom",
+    "\\vmware",
+    "\\oracle\\virtualbox guest",
+];
+
+/// Score a plan item with local heuristics (no data leaves the PC).
+pub fn confidence(item: &PlanItem) -> Confidence {
+    let mut score: i32 = 70;
+    let mut reasons: Vec<&'static str> = Vec::new();
+    let mut add = |d: i32, why: &'static str| {
+        score += d;
+        reasons.push(why);
+    };
+    let sysroot = fold(&expand_env("%SystemRoot%"));
+    let target = match &item.action {
+        Action::DeleteFile { path } | Action::DeleteDir { path } | Action::DeleteTree { path } => {
+            fold(path)
+        }
+        Action::DeleteKey { path } => fold(path),
+        Action::DeleteValue { key, .. }
+        | Action::SetValue { key, .. }
+        | Action::EditList { key, .. } => fold(key),
+        Action::RestoreKey { key } => fold(&key.path),
+        Action::StopDeleteService { name } | Action::DeleteTask { name } => fold(name),
+    };
+    let padded = format!("{target}\\");
+    match &item.action {
+        Action::DeleteFile { .. } | Action::DeleteDir { .. } | Action::DeleteTree { .. } => {
+            if !sysroot.contains('%') && target.starts_with(&sysroot) {
+                add(-55, "Inside the Windows folder");
+            } else if target.contains("\\common files\\") {
+                add(-25, "In Common Files, which programs share");
+            } else if target.contains("\\program files")
+                || target.contains("\\appdata\\local\\programs\\")
+            {
+                add(20, "In a program's own folder");
+            } else if target.contains("\\appdata\\") || target.contains("\\programdata\\") {
+                add(12, "Program data in AppData or ProgramData");
+            }
+            if target.ends_with(".sys") {
+                add(-30, "A driver");
+            } else if target.ends_with(".lnk")
+                || target.ends_with(".log")
+                || target.ends_with(".tmp")
+            {
+                add(15, "A shortcut, log or temporary file");
+            } else if target.ends_with(".dll") && !target.contains("\\program files") {
+                add(-10, "A library other programs might use");
+            }
+        }
+        Action::DeleteKey { .. } | Action::DeleteValue { .. } => {
+            if target.contains("\\currentversion\\uninstall\\") {
+                add(25, "The program's own uninstall entry");
+            } else if target.contains("\\currentcontrolset\\") {
+                add(-40, "Windows system configuration");
+            } else if target.contains("\\policies\\") {
+                add(-30, "A policy setting");
+            } else if target.contains("\\classes\\clsid\\")
+                || target.contains("\\typelib\\")
+                || target.contains("\\interface\\")
+            {
+                add(-22, "A COM registration other programs could use");
+            } else if target.contains("\\classes\\") {
+                add(-12, "A file type or shell setting");
+            } else if target.contains("\\currentversion\\run") {
+                add(15, "A startup entry");
+            } else if target.starts_with("hkcu\\software\\")
+                || target.starts_with("hklm\\software\\")
+            {
+                add(12, "The program's own settings key");
+            }
+            if matches!(item.action, Action::DeleteValue { .. }) {
+                add(-5, "A single value in a key that stays");
+            }
+        }
+        Action::StopDeleteService { .. } => add(-35, "A Windows service"),
+        Action::DeleteTask { .. } => add(-20, "A scheduled task"),
+        Action::SetValue { .. } | Action::RestoreKey { .. } | Action::EditList { .. } => {
+            add(5, "Puts back how it was before the installation")
+        }
+    }
+    if SYSTEM_VENDORS.iter().any(|v| padded.contains(v)) {
+        add(-30, "Mentions Windows or a hardware maker");
+    }
+    if !item.note.is_empty() {
+        add(-15, "Flagged for a closer look");
+    }
+    // The broad Safe/Review/Careful rules set the ceiling.
+    let cap = match risk(item) {
+        Risk::Safe => 100,
+        Risk::Review => 79,
+        Risk::Careful => 44,
+    };
+    Confidence {
+        score: score.clamp(1, cap) as u8,
+        reasons,
+    }
+}
+
 /// What an uninstaller left behind: the parts of an installation that are
 /// still present (or still changed) on the system now.
 pub fn residue(cs: &ChangeSet, reg: &dyn Registry) -> Plan {
@@ -921,6 +1052,49 @@ pub fn residue_markdown(name: &str, plan: &Plan) -> String {
     }
     s.push_str("\n_Generated by Expunge_\n");
     s
+}
+
+#[cfg(test)]
+mod confidence_tests {
+    use super::*;
+
+    fn item(action: Action) -> PlanItem {
+        PlanItem {
+            action,
+            selected: true,
+            exists: true,
+            note: String::new(),
+        }
+    }
+
+    #[test]
+    fn scores_by_location() {
+        let own = confidence(&item(Action::DeleteDir {
+            path: "C:\\Program Files\\Acme".into(),
+        }));
+        assert_eq!(own.band(), Risk::Safe, "{own:?}");
+        let uninst = confidence(&item(Action::DeleteKey {
+            path: "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Acme".into(),
+        }));
+        assert!(uninst.score >= 60, "{uninst:?}");
+        let com = confidence(&item(Action::DeleteKey {
+            path: "HKLM\\SOFTWARE\\Classes\\CLSID\\{1}".into(),
+        }));
+        assert_eq!(com.band(), Risk::Careful, "{com:?}");
+        let svc = confidence(&item(Action::StopDeleteService {
+            name: "AcmeUpdate".into(),
+        }));
+        assert_eq!(svc.band(), Risk::Careful);
+        let nv = confidence(&item(Action::DeleteDir {
+            path: "C:\\ProgramData\\NVIDIA Corporation\\x".into(),
+        }));
+        assert!(nv.band() != Risk::Safe, "{nv:?}");
+        let mut flagged = item(Action::DeleteDir {
+            path: "C:\\Program Files\\Acme".into(),
+        });
+        flagged.note = "Matched by name".into();
+        assert!(confidence(&flagged).score < own.score);
+    }
 }
 
 #[cfg(test)]

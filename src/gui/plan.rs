@@ -28,6 +28,8 @@ pub struct RemovalFlow {
     pub job: Option<Job<(Vec<ActionResult>, Option<String>)>>,
     pub results: Option<(Vec<ActionResult>, Option<String>)>,
     pub open: bool,
+    /// Confidence per plan item, computed once.
+    pub scores: Vec<expunge_core::revert::Confidence>,
 }
 
 impl RemovalFlow {
@@ -46,6 +48,7 @@ impl RemovalFlow {
             job: None,
             results: None,
             open: true,
+            scores: Vec::new(),
         }
     }
 }
@@ -56,6 +59,46 @@ fn category_label(c: &str) -> String {
 
 /// Checkbox list of plan items grouped by category.
 pub fn plan_ui(ui: &mut egui::Ui, flow: &mut RemovalFlow) {
+    if flow.scores.len() != flow.plan.items.len() {
+        flow.scores = flow
+            .plan
+            .items
+            .iter()
+            .map(expunge_core::revert::confidence)
+            .collect();
+    }
+    let (mut green, mut yellow, mut red) = (0, 0, 0);
+    for (i, c) in flow.plan.items.iter().zip(&flow.scores) {
+        if !i.exists {
+            continue;
+        }
+        match c.band() {
+            Risk::Safe => green += 1,
+            Risk::Review => yellow += 1,
+            Risk::Careful => red += 1,
+        }
+    }
+    ui.horizontal_wrapped(|ui| {
+        theme::badge(ui, tf("{n} safe", &[("n", green.to_string())]), theme::OK);
+        theme::badge(
+            ui,
+            tf("{n} to review", &[("n", yellow.to_string())]),
+            theme::WARN,
+        );
+        theme::badge(ui, tf("{n} careful", &[("n", red.to_string())]), theme::BAD);
+        if ui
+            .small_button(t("Select only green"))
+            .on_hover_text(t(
+                "Tick only the items Expunge is confident are safe to remove.",
+            ))
+            .clicked()
+        {
+            for (i, c) in flow.plan.items.iter_mut().zip(&flow.scores) {
+                i.selected = i.exists && c.band() == Risk::Safe;
+            }
+        }
+    });
+    ui.add_space(4.0);
     let missing = flow.plan.items.iter().filter(|i| !i.exists).count();
     ui.horizontal(|ui| {
         search_box(ui, &mut flow.filter, "Filter items", 240.0);
@@ -139,16 +182,35 @@ pub fn plan_ui(ui: &mut egui::Ui, flow: &mut RemovalFlow) {
                             } else {
                                 RichText::new(text).color(theme::MUTED).strikethrough()
                             };
-                            let risk = expunge_core::revert::risk(item);
+                            let conf = &flow.scores[n];
+                            let risk = conf.band();
                             let rc = match risk {
                                 Risk::Safe => theme::OK,
                                 Risk::Review => theme::WARN,
                                 Risk::Careful => theme::BAD,
                             };
-                            ui.add(egui::Label::new(
-                                RichText::new(t(risk.label())).small().strong().color(rc),
-                            ))
-                            .on_hover_text(t(risk.explanation()));
+                            let tip = std::iter::once(t(risk.explanation()))
+                                .chain(conf.reasons.iter().map(|r| format!("• {}", t(r))))
+                                .collect::<Vec<_>>()
+                                .join("\n");
+                            egui::Frame::new()
+                                .fill(rc.gamma_multiply(0.18))
+                                .corner_radius(8.0)
+                                .inner_margin(egui::Margin::symmetric(6, 0))
+                                .show(ui, |ui| {
+                                    ui.label(
+                                        RichText::new(format!(
+                                            "{} {}%",
+                                            t(risk.label()),
+                                            conf.score
+                                        ))
+                                        .small()
+                                        .strong()
+                                        .color(rc),
+                                    );
+                                })
+                                .response
+                                .on_hover_text(tip);
                             ui.add(egui::Label::new(rt).truncate())
                                 .on_hover_text(item.action.describe());
                             if !item.note.is_empty() {
