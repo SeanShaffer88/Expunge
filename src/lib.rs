@@ -14,6 +14,7 @@ pub mod cache;
 pub mod cleaner;
 pub mod diskmap;
 pub mod duplicates;
+pub mod autowatch;
 pub mod boot;
 pub mod health;
 pub mod reputation;

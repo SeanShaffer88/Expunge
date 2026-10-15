@@ -12,7 +12,6 @@ Everything planned as *Next* has been built; the items below are the next candid
 
 **Monitoring**
 - **Live activity inspector** — watch an installer's file and registry changes stream in as they happen, using Windows' built-in event tracing (ETW), which needs no driver.
-- **Background auto-monitoring** — notices installations and records them automatically, even ones you forgot to monitor.
 
 **Moving programs**
 - **MSIX output** for repackaged installations (needs Microsoft's free MSIX Packaging Tool to sign the result).

@@ -76,6 +76,8 @@ pub struct App {
     pub privacy: super::privacy::PrivacyState,
     pub disk: super::disk::DiskState,
     pub dups: super::dups::DupState,
+    /// Whether background monitoring is on (read from Task Scheduler once).
+    pub auto_watch: Option<bool>,
     pub health: Option<(expunge_core::health::Health, expunge_core::health::History)>,
     pub health_job: Option<super::Job<(expunge_core::health::Health, expunge_core::health::History)>>,
     /// Transfer export or restore window.
@@ -155,6 +157,7 @@ impl App {
             privacy: Default::default(),
             disk: Default::default(),
             dups: Default::default(),
+            auto_watch: None,
             health: None,
             health_job: None,
             transfer: None,

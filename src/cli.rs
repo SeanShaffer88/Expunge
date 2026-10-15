@@ -79,6 +79,8 @@ USAGE:
   expunge reputation <file>... [--vt-key KEY]
                                             Look files up online by their hash
                                             (only the hash is sent)
+  expunge watch                             Background auto-monitoring (started
+                                            at sign-in when turned on in Settings)
   expunge backups                           List backups
   expunge restore <backup-id>               Undo a removal from its backup
   expunge --version | --help
@@ -896,6 +898,76 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                 }
             }
             return Ok(if bad { 2 } else { 0 });
+        }
+        "watch" => {
+            #[cfg(windows)]
+            platform::windows::background_priority();
+            let st = store()?;
+            let base_path = st.snapshots_dir().join("auto-baseline.snap");
+            let poll = std::time::Duration::from_secs(30);
+            let take_baseline = |st: &Store| -> anyhow::Result<()> {
+                let s = snapshot_now(reg.as_ref(), st)?;
+                save_snapshot(&base_path, &s)?;
+                Ok(())
+            };
+            while platform::installer_busy() {
+                std::thread::sleep(poll);
+            }
+            take_baseline(&st)?;
+            let mut keys = expunge_core::autowatch::uninstall_keys(reg.as_ref());
+            let mut base_time = std::time::Instant::now();
+            let mut stale = false;
+            loop {
+                std::thread::sleep(poll);
+                // Manual monitoring records this installation itself.
+                if st.pending().is_some() {
+                    stale = true;
+                    keys = expunge_core::autowatch::uninstall_keys(reg.as_ref());
+                    continue;
+                }
+                let now = expunge_core::autowatch::uninstall_keys(reg.as_ref());
+                let new = expunge_core::autowatch::added(&keys, &now);
+                if new.is_empty() {
+                    if now != keys {
+                        // Something was uninstalled: start from a fresh baseline.
+                        keys = now;
+                        stale = true;
+                    }
+                    if (stale || base_time.elapsed() > std::time::Duration::from_secs(24 * 3600))
+                        && !platform::installer_busy()
+                    {
+                        take_baseline(&st)?;
+                        keys = expunge_core::autowatch::uninstall_keys(reg.as_ref());
+                        base_time = std::time::Instant::now();
+                        stale = false;
+                    }
+                    continue;
+                }
+                // Wait for the installation to settle: no installer running
+                // and the program list unchanged for two checks (max. 30 min).
+                let started = std::time::Instant::now();
+                let mut last = now;
+                loop {
+                    std::thread::sleep(std::time::Duration::from_secs(20));
+                    let again = expunge_core::autowatch::uninstall_keys(reg.as_ref());
+                    let settled = again == last && !platform::installer_busy();
+                    last = again;
+                    if settled || started.elapsed() > std::time::Duration::from_secs(1800) {
+                        break;
+                    }
+                }
+                let before = load_snapshot(&base_path)?;
+                let after = snapshot_now(reg.as_ref(), &st)?;
+                let mut log = save_new_log(&st, "", "", diff(&before, &after))?;
+                log.tags = vec![expunge_core::autowatch::TAG.to_string()];
+                log.notes = "Recorded automatically by background monitoring.".into();
+                st.save_log(&log)?;
+                eprintln!("Recorded {}", log.name);
+                save_snapshot(&base_path, &after)?;
+                keys = last;
+                base_time = std::time::Instant::now();
+                stale = false;
+            }
         }
         "orphans" => {
             let plan = expunge_core::orphans::scan_system(reg.as_ref());

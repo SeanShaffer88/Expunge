@@ -751,3 +751,13 @@ pub fn foreground_program() -> Option<(String, String)> {
         Some((String::from_utf16_lossy(&buf[..len as usize]), title))
     }
 }
+
+/// Run this process at background priority (low CPU and disk priority).
+pub fn background_priority() {
+    use windows_sys::Win32::System::Threading::{
+        GetCurrentProcess, SetPriorityClass, PROCESS_MODE_BACKGROUND_BEGIN,
+    };
+    unsafe {
+        SetPriorityClass(GetCurrentProcess(), PROCESS_MODE_BACKGROUND_BEGIN);
+    }
+}

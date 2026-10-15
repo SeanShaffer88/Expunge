@@ -366,6 +366,27 @@ impl App {
                         self.programs.needs_refresh = true;
                     }
                 });
+                if self.settings.advanced_mode {
+                    ui.add_space(10.0);
+                    theme::card(ui, |ui| {
+                        ui.label(RichText::new(t("Background monitoring")).heading());
+                        ui.add_space(4.0);
+                        let state = *self.auto_watch.get_or_insert_with(expunge_core::autowatch::is_enabled);
+                        let mut on = state;
+                        let r = ui.add_enabled(
+                            self.elevated,
+                            egui::Checkbox::new(&mut on, t("Record installations automatically, even ones I forget to monitor")),
+                        );
+                        if r.changed() {
+                            let res = if on { expunge_core::autowatch::enable() } else { expunge_core::autowatch::disable() };
+                            match res {
+                                Ok(()) => self.auto_watch = Some(on),
+                                Err(e) => self.set_status(e.to_string()),
+                            }
+                        }
+                        small_muted(ui, t("Starts with Windows at low priority, keeps a snapshot, and saves an install log (tagged \"auto\") whenever a new program appears. Taking snapshots uses some disk and memory after sign-in. Needs Administrator rights to turn on or off."));
+                    });
+                }
                 ui.add_space(10.0);
                 theme::card(ui, |ui| {
                     ui.label(RichText::new(t("Online reputation check")).heading());

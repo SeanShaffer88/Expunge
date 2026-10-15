@@ -7,6 +7,7 @@ All notable changes to Expunge are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Background auto-monitoring** (Advanced mode; Settings > *Background monitoring*): a low-priority `expunge watch` process started at sign-in keeps a snapshot and, when a new program registers itself, waits for the installation to settle and saves an install log tagged "auto", so even installations you forgot to monitor can be removed precisely. It steps aside while manual monitoring is running and refreshes its snapshot daily and after uninstalls.
 - **Reputation check** (opt-in, off by default; Settings > *Online reputation check*): a *Check* button on startup programs looks the program up by its SHA-256 fingerprint. Only the hash is sent, never the file. Known published software is recognized through CIRCL's public hash lookup, and with an optional free VirusTotal API key the result also shows how many antivirus engines flag the file. CLI: `expunge reputation <file>... [--vt-key KEY]` (works for installers too).
 - **System health** on the dashboard: free space on every drive with its trend over the last 30 days (recorded once a day) and a link to the disk space map when a drive is nearly full, memory use, and services that stopped unexpectedly in the last week.
 - **Arm64 builds**: releases include a portable build for Windows 11 on Arm (Snapdragon and other Arm PCs), and CI builds it on every push.
