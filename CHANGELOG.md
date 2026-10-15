@@ -7,6 +7,7 @@ All notable changes to Expunge are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **System health** on the dashboard: free space on every drive with its trend over the last 30 days (recorded once a day) and a link to the disk space map when a drive is nearly full, memory use, and services that stopped unexpectedly in the last week.
 - **Arm64 builds**: releases include a portable build for Windows 11 on Arm (Snapdragon and other Arm PCs), and CI builds it on every push.
 - **Find a program by its window** (Programs > *Find by window*): click the button, then click any window, and Expunge selects the installed program it belongs to. Dropping a shortcut or program file onto the Programs page does the same.
 - **Pre- and post-uninstall scripts** (Advanced mode; program details > *Uninstall scripts*): commands that run before a program's uninstaller starts (for example to export settings or stop a service) and after it finishes. Scripts receive the program's name and folder in `%EXPUNGE_PROGRAM%` and `%EXPUNGE_INSTALL_DIR%`, and their outcome appears in the uninstall report.

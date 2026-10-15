@@ -116,6 +116,8 @@ impl App {
                 }
 
                 ui.add_space(16.0);
+                self.ui_health(ui, ctx);
+                ui.add_space(16.0);
                 ui.label(RichText::new(t("Quick actions")).heading().strong());
                 ui.add_space(6.0);
                 if action_row(ui, "📡", "Install a program with monitoring", "Record everything it changes so it can be removed precisely later") {
@@ -175,4 +177,114 @@ impl App {
             });
         });
     }
+
+    fn ui_health(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        if self.health.is_none() && self.health_job.is_none() {
+            let root = self.store.root.clone();
+            self.health_job = Some(super::Job::spawn(ctx, move |_| expunge_core::health::check(&root)));
+        }
+        if let Some(h) = self.health_job.as_ref().and_then(|j| j.poll()) {
+            self.health_job = None;
+            self.health = Some(h);
+        }
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(t("System health")).heading().strong());
+            if self.health_job.is_some() {
+                ui.spinner();
+            } else if ui.small_button("⟳").on_hover_text(t("Check again")).clicked() {
+                self.health = None;
+            }
+        });
+        ui.add_space(6.0);
+        let Some((h, hist)) = &self.health else { return };
+        let mut open_disk = false;
+        let mut open_startup = false;
+        theme::card(ui, |ui| {
+            for d in &h.drives {
+                let used = d.total.saturating_sub(d.free);
+                let frac = if d.total > 0 { used as f32 / d.total as f32 } else { 0.0 };
+                let color = if frac > 0.9 { theme::BAD } else if frac > 0.8 { theme::WARN } else { theme::OK };
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(format!("💽 {}", d.root)).strong());
+                    ui.add(egui::ProgressBar::new(frac).desired_width(220.0).fill(color.gamma_multiply(0.7)));
+                    ui.label(tf("{free} free of {total}", &[("free", human_size(d.free)), ("total", human_size(d.total))]));
+                    if let Some(ch) = hist.change(&d.root, 30) {
+                        let text = if ch < 0 {
+                            tf("{size} less free space than {days} days ago", &[("size", human_size(ch.unsigned_abs())), ("days", hist.series(&d.root).len().min(30).to_string())])
+                        } else {
+                            tf("{size} more free space than {days} days ago", &[("size", human_size(ch as u64)), ("days", hist.series(&d.root).len().min(30).to_string())])
+                        };
+                        small_muted(ui, text);
+                    }
+                    sparkline(ui, &hist.series(&d.root));
+                    if frac > 0.8 && ui.small_button(t("See what uses space")).clicked() {
+                        open_disk = true;
+                    }
+                });
+            }
+            if let Some(m) = h.memory {
+                let pct = m.used_percent();
+                let color = if pct > 90 { theme::BAD } else if pct > 75 { theme::WARN } else { theme::OK };
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(t("Memory")).strong());
+                    ui.add(egui::ProgressBar::new(pct as f32 / 100.0).desired_width(220.0).fill(color.gamma_multiply(0.7)));
+                    ui.label(tf("{pct}% in use ({used} of {total})", &[
+                        ("pct", pct.to_string()),
+                        ("used", human_size(m.total - m.available.min(m.total))),
+                        ("total", human_size(m.total)),
+                    ]));
+                });
+            }
+            ui.add_space(2.0);
+            if h.crashes.is_empty() {
+                small_muted(ui, t("No services stopped unexpectedly in the last 7 days."));
+            } else {
+                ui.label(RichText::new(tf("{n} services stopped unexpectedly in the last 7 days:", &[("n", h.crashes.len().to_string())])).color(theme::WARN));
+                for c in h.crashes.iter().take(6) {
+                    let when = c.last.get(..16).unwrap_or(&c.last).replace('T', " ");
+                    small_muted(ui, tf("{name}: {n} times, last at {time} (UTC)", &[("name", c.service.clone()), ("n", c.count.to_string()), ("time", when)]));
+                }
+                if self.settings.advanced_mode && ui.small_button(t("Open services")).clicked() {
+                    open_startup = true;
+                }
+            }
+        });
+        if open_disk {
+            self.tab = Tab::Disk;
+        }
+        if open_startup {
+            self.tab = Tab::Startup;
+            self.on_tab_opened(ctx, Tab::Startup);
+        }
+    }
+}
+
+/// A tiny line chart of free space over time.
+fn sparkline(ui: &mut egui::Ui, series: &[(String, u64)]) {
+    if series.len() < 2 {
+        return;
+    }
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(90.0, 18.0), egui::Sense::hover());
+    let min = series.iter().map(|s| s.1).min().unwrap_or(0) as f64;
+    let max = series.iter().map(|s| s.1).max().unwrap_or(0) as f64;
+    let span = (max - min).max(1.0);
+    let n = series.len() as f32 - 1.0;
+    let pts: Vec<egui::Pos2> = series
+        .iter()
+        .enumerate()
+        .map(|(i, (_, v))| {
+            egui::pos2(
+                rect.left() + rect.width() * i as f32 / n,
+                rect.bottom() - rect.height() * ((*v as f64 - min) / span) as f32,
+            )
+        })
+        .collect();
+    ui.painter().add(egui::Shape::line(pts, egui::Stroke::new(1.5, theme::ACCENT_TEXT)));
+    resp.on_hover_text(format!(
+        "{}: {}\n{}: {}",
+        series[0].0,
+        human_size(series[0].1),
+        series[series.len() - 1].0,
+        human_size(series[series.len() - 1].1)
+    ));
 }

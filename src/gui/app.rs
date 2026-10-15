@@ -76,6 +76,8 @@ pub struct App {
     pub privacy: super::privacy::PrivacyState,
     pub disk: super::disk::DiskState,
     pub dups: super::dups::DupState,
+    pub health: Option<(expunge_core::health::Health, expunge_core::health::History)>,
+    pub health_job: Option<super::Job<(expunge_core::health::Health, expunge_core::health::History)>>,
     /// Transfer export or restore window.
     pub transfer: Option<super::transfer_ui::TransferUi>,
     pub monitor: monitor::MonitorState,
@@ -153,6 +155,8 @@ impl App {
             privacy: Default::default(),
             disk: Default::default(),
             dups: Default::default(),
+            health: None,
+            health_job: None,
             transfer: None,
             monitor: Default::default(),
             logs: Default::default(),
