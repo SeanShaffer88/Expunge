@@ -440,6 +440,9 @@ fn windows_owned_key(path: &str) -> bool {
         "defenderagent",
         "\\appx\\packagestate\\",
         "\\appmodel\\",
+        // Task Scheduler's own bookkeeping (run times, triggers); a program's
+        // tasks are removed together with the task itself.
+        "\\schedule\\taskcache\\",
     ]
     .iter()
     .any(|m| f.contains(m))
@@ -451,16 +454,33 @@ fn windows_owned_key(path: &str) -> bool {
 fn mark_windows_components(plan: &mut Plan, cs: &ChangeSet, sysroot: &str) {
     let sysroot = sysroot.to_string();
     let check_paths = !sysroot.contains('%') && !sysroot.is_empty();
+    // Folders of Windows' own security components, which update themselves.
+    let mut windows_folders: Vec<String> = vec![
+        "%programdata%\\microsoft\\windows defender".into(),
+        "%programfiles%\\windows defender".into(),
+    ];
+    for v in [
+        "%ProgramData%\\Microsoft\\Windows Defender",
+        "%ProgramData%\\Microsoft\\Windows Security Health",
+        "%ProgramFiles%\\Windows Defender",
+        "%ProgramFiles(x86)%\\Windows Defender",
+        "%ProgramFiles%\\Windows Security",
+    ] {
+        let e = fold(&expand_env(v));
+        if !e.contains('%') {
+            windows_folders.push(e);
+        }
+    }
     let points_into_windows = |v: &RegValue| {
-        check_paths
-            && v.as_string().is_some_and(|s| {
-                let f = fold(&s);
-                let f = f.trim_start_matches('@').trim_start_matches('"');
-                let f = f.strip_prefix("\\\\?\\").unwrap_or(f);
-                f.starts_with(&sysroot)
-                    || f.starts_with("%systemroot%")
-                    || f.starts_with("%windir%")
-            })
+        v.as_string().is_some_and(|s| {
+            let f = fold(&s);
+            let f = f.trim_start_matches('@').trim_start_matches('"');
+            let f = f.strip_prefix("\\\\?\\").unwrap_or(f);
+            (check_paths && f.starts_with(&sysroot))
+                || f.starts_with("%systemroot%")
+                || f.starts_with("%windir%")
+                || windows_folders.iter().any(|w| f.starts_with(w.as_str()))
+        })
     };
     let mut owned: BTreeSet<String> = BTreeSet::new();
     for k in &cs.keys_added {
