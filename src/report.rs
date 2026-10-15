@@ -445,3 +445,138 @@ mod tests {
         assert!(search_logs(&logs, "nothing").is_empty());
     }
 }
+
+fn x(s: &str) -> String {
+    s.chars()
+        .filter(|c| !c.is_control() || matches!(c, '\t' | '\n' | '\r'))
+        .collect::<String>()
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+fn xml_value(v: &crate::model::RegValue) -> String {
+    format!(
+        "name=\"{}\" type=\"{}\" data=\"{}\"",
+        x(&v.name),
+        v.kind,
+        x(&v.display_data())
+    )
+}
+
+/// The log as XML, for other tools and spreadsheets.
+pub fn to_xml(log: &InstallLog) -> String {
+    let cs = &log.changes;
+    let mut o = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+    o.push_str(&format!(
+        "<ExpungeLog version=\"1\" generator=\"Expunge {}\">\n  <Program name=\"{}\" publisher=\"{}\" version=\"{}\" created=\"{}\" installer=\"{}\" uninstallKey=\"{}\" group=\"{}\" tags=\"{}\"/>\n  <Changes>\n",
+        crate::APP_VERSION,
+        x(&log.name),
+        x(&log.publisher),
+        x(&log.version),
+        x(&log.created),
+        x(&log.installer),
+        x(&log.uninstall_key),
+        x(&log.group),
+        x(&log.tags.join(",")),
+    ));
+    let file = |o: &mut String, action: &str, f: &crate::model::FileEntry| {
+        o.push_str(&format!(
+            "    <File action=\"{action}\" type=\"{}\" size=\"{}\" path=\"{}\"/>\n",
+            if f.is_dir { "folder" } else { "file" },
+            f.size,
+            x(&f.path)
+        ));
+    };
+    for f in &cs.files_added {
+        file(&mut o, "added", f);
+    }
+    for f in &cs.files_modified {
+        file(&mut o, "changed", &f.after);
+    }
+    for f in &cs.files_removed {
+        file(&mut o, "removed", f);
+    }
+    for (action, keys) in [("added", &cs.keys_added), ("removed", &cs.keys_removed)] {
+        for k in keys {
+            if k.values.is_empty() {
+                o.push_str(&format!(
+                    "    <Key action=\"{action}\" path=\"{}\"/>\n",
+                    x(&k.path)
+                ));
+            } else {
+                o.push_str(&format!(
+                    "    <Key action=\"{action}\" path=\"{}\">\n",
+                    x(&k.path)
+                ));
+                for v in k.values.values() {
+                    o.push_str(&format!("      <Value {}/>\n", xml_value(v)));
+                }
+                o.push_str("    </Key>\n");
+            }
+        }
+    }
+    for (action, vals) in [("added", &cs.values_added), ("removed", &cs.values_removed)] {
+        for v in vals {
+            o.push_str(&format!(
+                "    <Value action=\"{action}\" key=\"{}\" {}/>\n",
+                x(&v.key),
+                xml_value(&v.value)
+            ));
+        }
+    }
+    for v in &cs.values_modified {
+        o.push_str(&format!(
+            "    <Value action=\"changed\" key=\"{}\" {} before=\"{}\"/>\n",
+            x(&v.key),
+            xml_value(&v.after),
+            x(&v.before.display_data())
+        ));
+    }
+    o.push_str("  </Changes>\n</ExpungeLog>\n");
+    o
+}
+
+/// The HTML report in print colours, opening the print dialog by itself.
+pub fn to_print_html(log: &InstallLog) -> String {
+    to_html(log).replace(
+        "</style>",
+        "body{background:#fff;color:#000;border-top:0}:root{--bg:#fff;--fg:#000;--mut:#555;--card:#fff;--line:#ccc;--add:#0a6b35;--mod:#8a4b00;--del:#a01d0b;color-scheme:light}\n</style><script>addEventListener('load',function(){setTimeout(function(){print()},300)})</script>",
+    )
+}
+
+#[cfg(test)]
+mod xml_tests {
+    use super::*;
+    use crate::model::{ChangeSet, FileEntry, KeyData, RegValue};
+
+    #[test]
+    fn xml_is_escaped_and_complete() {
+        let log = InstallLog {
+            name: "A & B <test>".into(),
+            changes: ChangeSet {
+                files_added: vec![FileEntry {
+                    path: "C:\\A&B\\x.exe".into(),
+                    is_dir: false,
+                    size: 5,
+                    mtime: 0,
+                }],
+                keys_added: vec![
+                    KeyData::new("HKCU\\Software\\AB").with(RegValue::string("Path", "\"q\""))
+                ],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let xml = to_xml(&log);
+        assert!(xml.contains("name=\"A &amp; B &lt;test&gt;\""));
+        assert!(xml.contains(
+            "<File action=\"added\" type=\"file\" size=\"5\" path=\"C:\\A&amp;B\\x.exe\"/>"
+        ));
+        assert!(xml.contains("<Key action=\"added\" path=\"HKCU\\Software\\AB\">"));
+        assert!(xml.contains("&quot;q&quot;"));
+        assert!(xml.trim_end().ends_with("</ExpungeLog>"));
+        assert!(to_print_html(&log).contains("print()"));
+    }
+}

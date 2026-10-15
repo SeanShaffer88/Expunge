@@ -26,6 +26,9 @@ pub enum Source {
     Machine32,
     User,
     Store,
+    /// Added by the user for analysis (a portable program or a folder that
+    /// isn't registered with Windows).
+    Manual,
 }
 
 impl Source {
@@ -35,6 +38,7 @@ impl Source {
             Source::Machine32 => "32-bit",
             Source::User => "Current user",
             Source::Store => "Store app",
+            Source::Manual => "Added by you",
         }
     }
 }
@@ -146,6 +150,9 @@ impl InstalledProgram {
     pub fn is_broken(&self) -> bool {
         if self.source == Source::Store {
             return false;
+        }
+        if self.source == Source::Manual {
+            return !std::path::Path::new(&self.install_location).exists();
         }
         if !self.install_location.is_empty()
             && !std::path::Path::new(&self.install_location).exists()
@@ -458,9 +465,116 @@ pub fn to_csv(programs: &[InstalledProgram]) -> String {
     out
 }
 
+// ---- Programs added by hand ---------------------------------------------
+
+fn manual_file(root: &std::path::Path) -> std::path::PathBuf {
+    root.join("manual-programs.json")
+}
+
+/// Programs the user added for analysis, whose folder still exists.
+pub fn load_manual(root: &std::path::Path) -> Vec<InstalledProgram> {
+    let list: Vec<InstalledProgram> = std::fs::read(manual_file(root))
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default();
+    list.into_iter()
+        .filter(|p| std::path::Path::new(&p.install_location).exists())
+        .collect()
+}
+
+fn save_manual(root: &std::path::Path, list: &[InstalledProgram]) -> anyhow::Result<()> {
+    std::fs::write(manual_file(root), serde_json::to_vec_pretty(list)?)?;
+    Ok(())
+}
+
+/// Add a folder (or the folder of a program file) as a program to analyze.
+/// Its size and main program file are filled in from the folder.
+pub fn add_manual(
+    root: &std::path::Path,
+    path: &str,
+    name: &str,
+) -> anyhow::Result<InstalledProgram> {
+    let p = std::path::Path::new(path);
+    let dir = if p.is_file() {
+        p.parent().unwrap_or(p)
+    } else {
+        p
+    };
+    if !dir.is_dir() {
+        anyhow::bail!("{} is not a folder", dir.display());
+    }
+    let dir_s = dir.to_string_lossy().trim_end_matches('\\').to_string();
+    let name = if name.trim().is_empty() {
+        dir.file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| dir_s.clone())
+    } else {
+        name.trim().to_string()
+    };
+    let mut bytes = 0u64;
+    let mut icon = if p.is_file() {
+        p.to_string_lossy().to_string()
+    } else {
+        String::new()
+    };
+    for e in walkdir::WalkDir::new(dir)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        if e.file_type().is_file() {
+            bytes += e.metadata().map(|m| m.len()).unwrap_or(0);
+            if icon.is_empty()
+                && e.path()
+                    .extension()
+                    .is_some_and(|x| x.eq_ignore_ascii_case("exe"))
+            {
+                icon = e.path().to_string_lossy().to_string();
+            }
+        }
+    }
+    let prog = InstalledProgram {
+        key: format!("manual:{}", dir_s.to_lowercase()),
+        name,
+        install_location: dir_s,
+        display_icon: icon,
+        size_kb: bytes / 1024,
+        install_date: chrono::Local::now().format("%Y-%m-%d").to_string(),
+        source: Source::Manual,
+        ..Default::default()
+    };
+    let mut list = load_manual(root);
+    list.retain(|x| x.key != prog.key);
+    list.push(prog.clone());
+    save_manual(root, &list)?;
+    Ok(prog)
+}
+
+pub fn remove_manual(root: &std::path::Path, key: &str) -> anyhow::Result<()> {
+    let mut list = load_manual(root);
+    list.retain(|x| x.key != key);
+    save_manual(root, &list)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn manual_programs() {
+        let root = std::env::temp_dir().join(format!("expunge-manual-{}", crate::util::new_id()));
+        let app = root.join("Tools").join("My App");
+        std::fs::create_dir_all(&app).unwrap();
+        std::fs::write(app.join("app.exe"), vec![0u8; 4096]).unwrap();
+        let p = add_manual(&root, &app.join("app.exe").to_string_lossy(), "").unwrap();
+        assert_eq!(p.name, "My App");
+        assert_eq!(p.source, Source::Manual);
+        assert_eq!(p.size_kb, 4);
+        assert!(!p.is_broken());
+        assert_eq!(load_manual(&root).len(), 1);
+        remove_manual(&root, &p.key).unwrap();
+        assert!(load_manual(&root).is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+    }
     use crate::model::RegValue;
     use crate::platform::MemRegistry;
 

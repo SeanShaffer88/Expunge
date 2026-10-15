@@ -246,12 +246,47 @@ impl App {
         self.open_removal(flow);
     }
 
+    fn print_log(&mut self, log: &InstallLog) {
+        let path = std::env::temp_dir().join(format!(
+            "Expunge-{}-print.html",
+            expunge_core::util::safe_file_name(&log.name)
+        ));
+        match std::fs::write(&path, report::to_print_html(log)) {
+            Ok(()) => expunge_core::platform::shell_open(&path.to_string_lossy()),
+            Err(e) => self.set_status(e.to_string()),
+        }
+    }
+
+    fn merge_with(&mut self, a: &str, b: &str) {
+        let la = self.logs.logs.iter().find(|l| l.id == a).cloned();
+        let lb = self.logs.logs.iter().find(|l| l.id == b).cloned();
+        let (Some(la), Some(lb)) = (la, lb) else {
+            return;
+        };
+        // The list holds summaries; merge the full logs from disk.
+        let full = |l: &InstallLog| self.store.load_log(&l.id).unwrap_or_else(|_| l.clone());
+        let (fa, fb) = (full(&la), full(&lb));
+        let merged = expunge_core::merge::merge_logs(&[&fa, &fb], "");
+        match self.store.save_log(&merged) {
+            Ok(()) => {
+                self.set_status(tf(
+                    "Merged into a new log: {name}",
+                    &[("name", merged.name.clone())],
+                ));
+                self.logs.selected = Some(merged.id.clone());
+                self.reload_logs();
+            }
+            Err(e) => self.set_status(e.to_string()),
+        }
+    }
+
     fn export_log(&mut self, log: &InstallLog, ext: &str) {
         let base = expunge_core::util::safe_file_name(&log.name);
         let (content, filter) = match ext {
             "html" => (report::to_html(log), "HTML"),
             "reg" => (report::to_reg_undo(log), "Registry script"),
             "ps1" => (report::to_ps1(log), "PowerShell"),
+            "xml" => (report::to_xml(log), "XML"),
             "ini" => (
                 expunge_core::portable::launcher_ini(
                     &log.changes,
@@ -538,6 +573,7 @@ impl App {
                             ("reg", "Registry undo script (.reg)"),
                             ("ps1", "PowerShell removal script"),
                             ("json", "Install log (.json)"),
+                            ("xml", "XML (.xml)"),
                             ("ini", "PortableApps.com Launcher settings (.ini)"),
                         ] {
                             if ui.button(t(label)).clicked() {
@@ -547,6 +583,30 @@ impl App {
                             }
                         }
                     });
+                    if ui.button(format!("🖨 {}", t("Print"))).on_hover_text(t("Open the report in your browser and print it.")).clicked() {
+                        let full = self.logs.logs[idx].clone();
+                        self.print_log(&full);
+                    }
+                    let others: Vec<(String, String)> = self
+                        .logs
+                        .logs
+                        .iter()
+                        .filter(|l| l.id != log.id)
+                        .map(|l| (l.id.clone(), format!("{}  ({})", l.name, l.created)))
+                        .collect();
+                    if !others.is_empty() {
+                        ui.menu_button(t("Merge with"), |ui| {
+                            small_muted(ui, t("Combine two logs into one, e.g. a program and its update. The originals are kept."));
+                            egui::ScrollArea::vertical().max_height(300.0).show(ui, |ui| {
+                                for (id, label) in &others {
+                                    if ui.button(label).clicked() {
+                                        ui.close();
+                                        self.merge_with(&log.id.clone(), id);
+                                    }
+                                }
+                            });
+                        });
+                    }
                     if ui.button(t("Edit details")).clicked() {
                         self.logs.editing = !self.logs.editing;
                         self.logs.tags_text = log.tags.join(", ");

@@ -253,8 +253,10 @@ impl App {
     pub fn refresh_programs(&mut self, ctx: &egui::Context) {
         let reg = self.reg.clone();
         let hidden = self.settings.system_components_shown();
+        let root = self.store.root.clone();
         self.programs.job = Some(Job::spawn(ctx, move |_| {
-            let list = programs::list_programs(reg.as_ref(), hidden);
+            let mut list = programs::list_programs(reg.as_ref(), hidden);
+            list.extend(programs::load_manual(&root));
             let broken = list
                 .iter()
                 .filter(|p| p.is_broken())
@@ -597,6 +599,22 @@ impl App {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui.button(format!("⟳ {}", t("Refresh"))).clicked() {
                             self.refresh_programs(ctx);
+                        }
+                        if ui
+                            .button(format!("➕ {}", t("Add program…")))
+                            .on_hover_text(t("Add a program Windows doesn't list (for example a portable program) by choosing its folder, so Expunge can analyze and remove it with everything it left behind."))
+                            .clicked()
+                        {
+                            if let Some(dir) = pick_folder(&t("Choose the program's folder")) {
+                                match programs::add_manual(&self.store.root, &dir.to_string_lossy(), "") {
+                                    Ok(p) => {
+                                        self.programs.selected = Some(p.key.clone());
+                                        self.set_status(tf("Added {name}", &[("name", p.name)]));
+                                        self.refresh_programs(ctx);
+                                    }
+                                    Err(e) => self.set_status(e.to_string()),
+                                }
+                            }
                         }
                         let n = self.programs.checked.len();
                         if n > 0 {
@@ -1021,6 +1039,11 @@ impl App {
             }
             if !p.url.is_empty() && ui.button(t("Website")).clicked() {
                 platform::shell_open(&p.url);
+            }
+            if p.source == Source::Manual && ui.button(t("Remove from list")).on_hover_text(t("Only removes it from this list; nothing is deleted.")).clicked() {
+                let _ = programs::remove_manual(&self.store.root, &p.key);
+                self.programs.selected = None;
+                self.programs.needs_refresh = true;
             }
         });
         if let Some(log) = log_for(&self.logs.logs, p) {

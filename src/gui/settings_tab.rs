@@ -58,6 +58,8 @@ pub struct SettingsState {
     /// Whether the right-click entry exists (all users, current user);
     /// read from the registry when Settings opens, not every frame.
     pub shell_registered: Option<(bool, bool)>,
+    /// Name typed for "Save as profile".
+    pub profile_name: String,
 }
 
 impl SettingsState {
@@ -261,6 +263,77 @@ impl App {
         }
     }
 
+    /// Choose the monitoring profile (and, in Settings, save or delete one).
+    pub(super) fn profile_picker(&mut self, ui: &mut egui::Ui, manage: bool) {
+        if !manage && self.settings.profiles.is_empty() {
+            return;
+        }
+        ui.horizontal_wrapped(|ui| {
+            ui.label(t("Profile"));
+            let current = if self.settings.active_profile.is_empty() {
+                t("Custom scope")
+            } else {
+                self.settings.active_profile.clone()
+            };
+            let mut chosen: Option<String> = None;
+            egui::ComboBox::from_id_salt(("scan_profile", manage))
+                .selected_text(current)
+                .show_ui(ui, |ui| {
+                    for p in &self.settings.profiles {
+                        if ui
+                            .selectable_label(
+                                self.settings.active_profile.eq_ignore_ascii_case(&p.name),
+                                &p.name,
+                            )
+                            .clicked()
+                        {
+                            chosen = Some(p.name.clone());
+                        }
+                    }
+                    if self.settings.profiles.is_empty() {
+                        ui.label(t("No saved profiles yet"));
+                    }
+                });
+            if let Some(name) = chosen {
+                self.settings.use_profile(&name);
+                self.settings_ui.load(&self.settings);
+                self.save_settings();
+                self.set_status(tf("Using profile {name}", &[("name", name)]));
+            }
+            if manage {
+                ui.add_space(8.0);
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.settings_ui.profile_name)
+                        .hint_text(t("Profile name"))
+                        .desired_width(160.0),
+                );
+                let name = self.settings_ui.profile_name.trim().to_string();
+                if ui
+                    .add_enabled(!name.is_empty(), egui::Button::new(t("Save as profile")))
+                    .on_hover_text(t(
+                        "Save the scope below (including unsaved edits) under this name.",
+                    ))
+                    .clicked()
+                {
+                    self.settings_ui.apply(&mut self.settings);
+                    self.settings_ui.dirty = false;
+                    self.settings.save_profile(&name);
+                    self.settings_ui.profile_name.clear();
+                    self.save_settings();
+                    self.set_status(tf("Saved profile {name}", &[("name", name)]));
+                }
+                let active = self.settings.active_profile.clone();
+                if !active.is_empty() && ui.button(t("Delete profile")).clicked() {
+                    self.settings.delete_profile(&active);
+                    self.save_settings();
+                }
+            }
+        });
+        if manage {
+            small_muted(ui, t("Profiles are saved scopes, e.g. a quick one for Program Files only and a deep one for the whole system. Choose one here or on the Monitor and Snapshots pages."));
+        }
+    }
+
     pub fn ui_settings(&mut self, ctx: &egui::Context) {
         if self.settings_ui.reg_roots.is_empty() && !self.settings_ui.dirty {
             self.settings_ui.load(&self.settings);
@@ -442,6 +515,8 @@ impl App {
                     ui.label(RichText::new(t("Monitoring scope")).heading());
                     small_muted(ui, t("What snapshots capture. One entry per line; %VARIABLES% and * wildcards work."));
                     ui.add_space(6.0);
+                    self.profile_picker(ui, true);
+                    ui.add_space(6.0);
                     self.ui_noise(ui, ctx);
                     ui.add_space(6.0);
                     let st = &mut self.settings_ui;
@@ -456,6 +531,11 @@ impl App {
                         if ui.add_enabled(self.settings_ui.dirty, egui::Button::new(t("Save scope"))).clicked() {
                             self.settings_ui.apply(&mut self.settings);
                             self.settings_ui.dirty = false;
+                            // Keep the chosen profile in step with its edits.
+                            let active = self.settings.active_profile.clone();
+                            if !active.is_empty() {
+                                self.settings.save_profile(&active);
+                            }
                             self.save_settings();
                             self.set_status(t("Settings saved."));
                         }

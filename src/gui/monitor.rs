@@ -221,7 +221,10 @@ impl App {
                 ui.add_space(6.0);
             }
             match self.monitor.phase {
-                Phase::Idle => self.monitor_idle(ui, ctx),
+                Phase::Idle => {
+                    self.profile_picker(ui, false);
+                    self.monitor_idle(ui, ctx)
+                }
                 Phase::Before | Phase::After => {
                     let job_p = self
                         .monitor

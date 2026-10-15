@@ -156,6 +156,7 @@ impl App {
             self.lab.snaps = Some(self.store.list_snapshots());
         }
         let snaps = self.lab.snaps.clone().unwrap_or_default();
+        self.profile_picker(ui, false);
         self.ui_quick_compare(ui);
         ui.add_space(8.0);
         theme::card(ui, |ui| {

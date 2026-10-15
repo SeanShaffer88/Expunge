@@ -63,11 +63,75 @@ pub struct Settings {
     pub packager_name: String,
     /// Portable App Builder: where packages are saved.
     pub portable_out_dir: String,
+    /// Saved monitoring scopes, e.g. "Quick (Program Files only)" or "Deep".
+    pub profiles: Vec<ScanProfile>,
+    /// The profile the current scope came from ("" = none).
+    pub active_profile: String,
+}
+
+/// A named monitoring scope: what snapshots capture and ignore.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(default)]
+pub struct ScanProfile {
+    pub name: String,
+    pub registry_roots: Vec<String>,
+    pub file_roots: Vec<FileRoot>,
+    pub registry_exclusions: Vec<String>,
+    pub file_exclusions: Vec<String>,
 }
 
 /// In Simple mode the safety switches are locked to their safe values,
 /// whatever was chosen in Advanced mode.
 impl Settings {
+    /// Save the current scope as a profile (replacing one with that name).
+    pub fn save_profile(&mut self, name: &str) {
+        let name = name.trim();
+        if name.is_empty() {
+            return;
+        }
+        let p = ScanProfile {
+            name: name.to_string(),
+            registry_roots: self.registry_roots.clone(),
+            file_roots: self.file_roots.clone(),
+            registry_exclusions: self.registry_exclusions.clone(),
+            file_exclusions: self.file_exclusions.clone(),
+        };
+        match self
+            .profiles
+            .iter_mut()
+            .find(|x| x.name.eq_ignore_ascii_case(name))
+        {
+            Some(x) => *x = p,
+            None => self.profiles.push(p),
+        }
+        self.active_profile = name.to_string();
+    }
+
+    /// Make a saved profile the current scope. False if there is none by that name.
+    pub fn use_profile(&mut self, name: &str) -> bool {
+        let Some(p) = self
+            .profiles
+            .iter()
+            .find(|x| x.name.eq_ignore_ascii_case(name.trim()))
+            .cloned()
+        else {
+            return false;
+        };
+        self.registry_roots = p.registry_roots;
+        self.file_roots = p.file_roots;
+        self.registry_exclusions = p.registry_exclusions;
+        self.file_exclusions = p.file_exclusions;
+        self.active_profile = p.name;
+        true
+    }
+
+    pub fn delete_profile(&mut self, name: &str) {
+        self.profiles.retain(|x| !x.name.eq_ignore_ascii_case(name));
+        if self.active_profile.eq_ignore_ascii_case(name) {
+            self.active_profile.clear();
+        }
+    }
+
     /// Registry exclusions in effect: the user's list plus the built-in one.
     pub fn effective_registry_exclusions(&self) -> Vec<String> {
         let mut v = self.registry_exclusions.clone();
@@ -123,6 +187,8 @@ impl Default for Settings {
             portableapps_dir: String::new(),
             packager_name: String::new(),
             portable_out_dir: String::new(),
+            profiles: Vec::new(),
+            active_profile: String::new(),
         }
     }
 }
@@ -259,4 +325,27 @@ pub fn default_file_exclusions() -> Vec<String> {
     .iter()
     .map(|s| s.to_string())
     .collect()
+}
+
+#[cfg(test)]
+mod profile_tests {
+    use super::*;
+
+    #[test]
+    fn profiles_round_trip() {
+        let mut s = Settings::default();
+        s.save_profile("Deep");
+        s.registry_roots = vec!["HKCU\\Software".into()];
+        s.save_profile("Quick");
+        assert_eq!(s.profiles.len(), 2);
+        assert!(s.use_profile("deep"));
+        assert_eq!(s.registry_roots, default_registry_roots());
+        assert_eq!(s.active_profile, "Deep");
+        assert!(s.use_profile("Quick"));
+        assert_eq!(s.registry_roots, vec!["HKCU\\Software".to_string()]);
+        assert!(!s.use_profile("missing"));
+        s.delete_profile("QUICK");
+        assert_eq!(s.profiles.len(), 1);
+        assert!(s.active_profile.is_empty());
+    }
 }

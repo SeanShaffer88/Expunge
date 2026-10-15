@@ -35,7 +35,10 @@ USAGE:
                                             (exit 2 if unsigned or invalid)
   expunge revert <log-id> [--dry-run] [--remove-unlogged] [--no-backup] [--recycle] [--keep-log]
                                             Undo an installation precisely
-  expunge export <log-id> <html|json|reg|ps1> <output-file>
+  expunge export <log-id> <html|json|reg|ps1|xml> <output-file>
+  expunge merge <log-id> <log-id>... [--name NAME]
+                                            Combine logs into a new one (e.g. a
+                                            program and its update)
   expunge learn-noise [--seconds N] [--apply] [--json]
                                             Take two snapshots N seconds apart
                                             (default 60) and list what changed
@@ -58,6 +61,10 @@ USAGE:
                                             and build a PortableApps.com package,
                                             compiled when the PortableApps.com
                                             Launcher and Installer are found
+  expunge add-program <folder|program.exe> [--name NAME]
+                                            List a program Windows doesn't know
+                                            (e.g. portable) so it can be analyzed
+                                            and uninstalled
   expunge orphans [--json]                  List registrations left by removed
                                             programs (pointing to missing files)
   expunge uninstall <name>... [--silent] [--leftovers safe|none] [--dry-run]
@@ -77,6 +84,8 @@ USAGE:
   expunge restore <backup-id>               Undo a removal from its backup
   expunge --version | --help
 
+  Any command that takes snapshots accepts --profile NAME to use a saved
+  monitoring profile (Settings > Monitoring scope).
   monitor and diff also accept --json to print the saved log's summary.
 
 Exit codes: 0 success, 1 error, 2 finished with failures / findings.
@@ -143,7 +152,7 @@ fn portable_build(args: &[String], reg: &dyn Registry) -> anyhow::Result<i32> {
         .trim_start_matches("\\\\?\\")
         .to_string();
     let st = store()?;
-    let settings = st.load_settings();
+    let settings = load_settings(&st);
     let name = arg_value(args, "--name").ok_or_else(|| anyhow::anyhow!("--name is required"))?;
     let details = AppDetails {
         name,
@@ -244,6 +253,19 @@ fn portable_build(args: &[String], reg: &dyn Registry) -> anyhow::Result<i32> {
     Ok(0)
 }
 
+/// `--profile NAME` (any command): use a saved monitoring profile.
+static PROFILE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+fn load_settings(st: &Store) -> expunge_core::settings::Settings {
+    let mut s = st.load_settings();
+    if let Some(p) = PROFILE.get() {
+        if !s.use_profile(p) {
+            eprintln!("warning: no profile named {p}; using the current scope");
+        }
+    }
+    s
+}
+
 fn store() -> anyhow::Result<Store> {
     Store::open()
 }
@@ -254,7 +276,7 @@ fn save_new_log(
     installer: &str,
     mut changes: expunge_core::model::ChangeSet,
 ) -> anyhow::Result<InstallLog> {
-    let settings = store.load_settings();
+    let settings = load_settings(store);
     filter_changes(
         &mut changes,
         &settings.effective_registry_exclusions(),
@@ -299,7 +321,7 @@ fn snapshot_now(
     reg: &dyn Registry,
     store: &Store,
 ) -> anyhow::Result<expunge_core::model::Snapshot> {
-    let settings = store.load_settings();
+    let settings = load_settings(store);
     let p = Progress::default();
     eprintln!("Taking snapshot…");
     let s = take_snapshot(reg, &settings, &p)?;
@@ -337,6 +359,9 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
     let cmd = args.first().map(String::as_str).unwrap_or("--help");
     if !matches!(cmd, "--help" | "-h" | "help" | "--version" | "-V") && !platform::is_elevated() {
         eprintln!("warning: not running as Administrator; system-wide changes may fail.");
+    }
+    if let Some(p) = arg_value(&args, "--profile") {
+        let _ = PROFILE.set(p);
     }
     let reg = platform::system_registry();
     match cmd {
@@ -611,7 +636,10 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
             let mut failures = 0;
             let mut reboot = false;
             for name in &names {
-                let progs = programs::list_programs(reg.as_ref(), false);
+                let mut progs = programs::list_programs(reg.as_ref(), false);
+                if let Ok(st) = store() {
+                    progs.extend(programs::load_manual(&st.root));
+                }
                 let p = match pick_program(&progs, name) {
                     Ok(p) => p.clone(),
                     Err(e) => {
@@ -976,6 +1004,34 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
             }
             return Ok(if plan.items.is_empty() { 0 } else { 2 });
         }
+        "merge" => {
+            let ids: Vec<&String> = args
+                .iter()
+                .skip(1)
+                .take_while(|a| !a.starts_with("--"))
+                .collect();
+            if ids.len() < 2 {
+                anyhow::bail!("usage: expunge merge <log-id> <log-id>... [--name NAME]");
+            }
+            let st = store()?;
+            let logs = ids
+                .iter()
+                .map(|id| st.load_log(id))
+                .collect::<anyhow::Result<Vec<_>>>()?;
+            let refs: Vec<&InstallLog> = logs.iter().collect();
+            let merged = expunge_core::merge::merge_logs(
+                &refs,
+                &arg_value(&args, "--name").unwrap_or_default(),
+            );
+            st.save_log(&merged)?;
+            println!("{}", merged.id);
+            eprintln!(
+                "Merged {} logs into {} ({})",
+                logs.len(),
+                merged.id,
+                merged.name
+            );
+        }
         "pa-capture" => {
             let job = args
                 .get(1)
@@ -992,7 +1048,7 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
             eprintln!("Waiting {secs} s; don't install or change anything…");
             std::thread::sleep(std::time::Duration::from_secs(secs));
             let after = snapshot_now(reg.as_ref(), &st)?;
-            let mut settings = st.load_settings();
+            let mut settings = load_settings(&st);
             let roots: Vec<String> = settings.file_roots.iter().map(|r| r.path.clone()).collect();
             let l = expunge_core::noise::learn(
                 &diff(&before, &after),
@@ -1062,9 +1118,27 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                 println!("{}", serde_json::to_string_pretty(&list)?);
             }
         }
+        "add-program" => {
+            let path = args.get(1).ok_or_else(|| {
+                anyhow::anyhow!("usage: expunge add-program <folder|program.exe> [--name NAME]")
+            })?;
+            let p = programs::add_manual(
+                &store()?.root,
+                path,
+                &arg_value(&args, "--name").unwrap_or_default(),
+            )?;
+            println!(
+                "Added {} ({}); uninstall it with: expunge uninstall \"{}\"",
+                p.name, p.install_location, p.name
+            );
+        }
         "programs" => {
             let with_trust = has(&args, "--trust");
-            for p in programs::list_programs(reg.as_ref(), has(&args, "--all")) {
+            let mut all = programs::list_programs(reg.as_ref(), has(&args, "--all"));
+            if let Ok(st) = store() {
+                all.extend(programs::load_manual(&st.root));
+            }
+            for p in all {
                 if with_trust {
                     let tr = expunge_core::trust::check_program(&p, reg.as_ref());
                     let sig = match &tr {
@@ -1127,7 +1201,7 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
         "export" => {
             let (Some(id), Some(fmt), Some(out)) = (args.get(1), args.get(2), args.get(3)) else {
                 anyhow::bail!(
-                    "usage: expunge export <log-id> <html|json|reg|ps1|portable> <output-file>"
+                    "usage: expunge export <log-id> <html|json|reg|ps1|xml|portable> <output-file>"
                 )
             };
             let log = store()?.load_log(id)?;
@@ -1136,6 +1210,7 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                 "reg" => report::to_reg_undo(&log),
                 "ps1" => report::to_ps1(&log),
                 "json" => serde_json::to_string_pretty(&log)?,
+                "xml" => report::to_xml(&log),
                 "portable" | "ini" => {
                     expunge_core::portable::launcher_ini(
                         &log.changes,
