@@ -819,6 +819,7 @@ impl App {
         self.poll_removal();
         self.poll_lab();
         self.poll_builder(ctx);
+        self.poll_silent_package();
         if let Some(job) = &self.programs.restore_job {
             if let Some(r) = job.poll() {
                 self.programs.restore_job = None;

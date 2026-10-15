@@ -29,6 +29,7 @@ pub mod platform;
 pub mod portability;
 pub mod portable;
 pub mod programs;
+pub mod repackage;
 pub mod report;
 pub mod restore;
 pub mod revert;

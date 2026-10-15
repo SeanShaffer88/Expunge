@@ -36,6 +36,11 @@ USAGE:
   expunge revert <log-id> [--dry-run] [--remove-unlogged] [--no-backup] [--recycle] [--keep-log]
                                             Undo an installation precisely
   expunge export <log-id> <html|json|reg|ps1|xml> <output-file>
+  expunge repackage <log-id> <folder> [--no-setup]
+                                            A silent installer for the recorded
+                                            installation: one Setup.exe plus a
+                                            folder with install.ps1, install.reg
+                                            and uninstall.ps1
   expunge merge <log-id> <log-id>... [--name NAME]
                                             Combine logs into a new one (e.g. a
                                             program and its update)
@@ -1013,6 +1018,38 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                 );
             }
             return Ok(if plan.items.is_empty() { 0 } else { 2 });
+        }
+        "repackage" | "silent-package" => {
+            let (Some(id), Some(dir)) = (args.get(1), args.get(2)) else {
+                anyhow::bail!("usage: expunge repackage <log-id> <folder> [--no-setup]")
+            };
+            let st = store()?;
+            let log = st.load_log(id)?;
+            let s = expunge_core::repackage::repackage(
+                &log,
+                reg.as_ref(),
+                &PathBuf::from(dir),
+                &|_| {},
+            )?;
+            println!(
+                "Saved {}: {} files ({}), {} keys, {} values",
+                s.folder.display(),
+                s.files,
+                human_size(s.bytes),
+                s.keys,
+                s.values
+            );
+            if !has(&args, "--no-setup") {
+                let tc = expunge_core::patools::ensure(&st.root, &|p| eprintln!("{p}…"))?;
+                let setup = expunge_core::patools::build_silent_setup(
+                    &tc,
+                    &s.folder,
+                    &log.name,
+                    &log.version,
+                    &st.root.join("tools").join("work"),
+                )?;
+                println!("Silent setup: {}", setup.display());
+            }
         }
         "merge" => {
             let ids: Vec<&String> = args

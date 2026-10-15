@@ -5,6 +5,7 @@ use super::app::{App, Confirm};
 use super::plan::RemovalFlow;
 use super::theme;
 use super::widgets::*;
+use super::Job;
 use egui::RichText;
 use expunge_core::i18n::{t, tf};
 use expunge_core::model::{human_size, ChangeSet, InstallLog};
@@ -33,6 +34,9 @@ pub struct LogsState {
     pub tree: super::difftree_ui::TreeView,
     /// Show the plain list instead of the map.
     pub show_list: bool,
+    /// Making a silent installer: (folder, Setup.exe or why it wasn't made).
+    pub package_job:
+        Option<Job<Result<(std::path::PathBuf, Result<std::path::PathBuf, String>), String>>>,
 }
 
 /// Collapsible lists of every change. With `editable`, each entry gets a ✖
@@ -248,6 +252,63 @@ impl App {
         flow.logs_to_delete = vec![log.id.clone()];
         flow.names = vec![log.name.clone()];
         self.open_removal(flow);
+    }
+
+    /// Repackage a log as a silent deploy folder and one silent Setup.exe.
+    fn start_silent_package(&mut self, log: InstallLog) {
+        if self.logs.package_job.is_some() {
+            return;
+        }
+        let Some(dir) = pick_folder(&t("Choose where to save the silent installer")) else {
+            return;
+        };
+        let reg = self.reg.clone();
+        let root = self.store.root.clone();
+        self.set_status(tf(
+            "Making a silent installer for {name}…",
+            &[("name", log.name.clone())],
+        ));
+        self.logs.package_job = Some(Job::spawn(&self.ctx, move |pr| {
+            let s =
+                expunge_core::repackage::repackage(&log, reg.as_ref(), &dir, &|p| pr.set_phase(p))
+                    .map_err(|e| e.to_string())?;
+            let setup = expunge_core::patools::ensure(&root, &|p| pr.set_phase(p.to_string()))
+                .and_then(|tc| {
+                    expunge_core::patools::build_silent_setup(
+                        &tc,
+                        &s.folder,
+                        &log.name,
+                        &log.version,
+                        &root.join("tools").join("work"),
+                    )
+                })
+                .map_err(|e| e.to_string());
+            Ok((s.folder, setup))
+        }));
+    }
+
+    pub fn poll_silent_package(&mut self) {
+        let Some(r) = self.logs.package_job.as_ref().and_then(|j| j.poll()) else {
+            return;
+        };
+        self.logs.package_job = None;
+        match r {
+            Ok((_, Ok(setup))) => {
+                self.set_status(tf(
+                    "Silent installer ready: {file}",
+                    &[("file", setup.display().to_string())],
+                ));
+                expunge_core::platform::reveal(&setup.to_string_lossy());
+            }
+            Ok((folder, Err(e))) => {
+                self.set_status(tf(
+                    "The deploy folder is ready, but Setup.exe couldn't be made: {error}",
+                    &[("error", e)],
+                ));
+                expunge_core::platform::shell_open(&folder.to_string_lossy());
+            }
+            Err(e) => self.set_status(e),
+        }
     }
 
     fn print_log(&mut self, log: &InstallLog) {
@@ -585,6 +646,16 @@ impl App {
                                 let full = self.logs.logs[idx].clone();
                                 self.export_log(&full, ext);
                             }
+                        }
+                        ui.separator();
+                        if ui
+                            .add_enabled(self.logs.package_job.is_none(), egui::Button::new(t("Silent installer (Setup.exe)…")))
+                            .on_hover_text(t("Redeploy this exact version later without the setup wizard: one silent Setup.exe, plus a folder with the files, install.reg, install.ps1 and uninstall.ps1."))
+                            .clicked()
+                        {
+                            ui.close();
+                            let full = self.store.load_log(&self.logs.logs[idx].id).unwrap_or_else(|_| self.logs.logs[idx].clone());
+                            self.start_silent_package(full);
                         }
                     });
                     if ui.button(format!("🖨 {}", t("Print"))).on_hover_text(t("Open the report in your browser and print it.")).clicked() {

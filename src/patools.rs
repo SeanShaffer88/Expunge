@@ -359,6 +359,53 @@ pub fn build_installer(tc: &Toolchain, pkg: &Path, work: &Path) -> Result<PathBu
     Ok(out)
 }
 
+/// Expunge's silent setup script (GPLv3): one file that redeploys a
+/// repackaged installation without questions.
+pub const SILENT_SETUP_NSI: &str = include_str!("silent_setup.nsi");
+
+/// Compile a repackaged folder (with install.ps1) into one silent
+/// `<name> Setup.exe` next to it.
+pub fn build_silent_setup(
+    tc: &Toolchain,
+    package: &Path,
+    name: &str,
+    version: &str,
+    work: &Path,
+) -> Result<PathBuf> {
+    if !package.join("install.ps1").is_file() {
+        return Err(anyhow!("{} has no install.ps1", package.display()));
+    }
+    let safe = crate::util::safe_file_name(name);
+    let out = package.parent().unwrap_or(package).join(format!(
+        "{} Setup.exe",
+        crate::util::safe_file_name(format!("{name} {version}").trim())
+    ));
+    std::fs::create_dir_all(work)?;
+    let script = work.join("silent_setup.nsi");
+    let mut bytes = vec![0xEF, 0xBB, 0xBF];
+    bytes.extend_from_slice(SILENT_SETUP_NSI.as_bytes());
+    std::fs::write(&script, bytes)?;
+    let numeric = crate::pafbuild::package_version(if version.trim().is_empty() {
+        "1.0"
+    } else {
+        version
+    });
+    let args = vec![
+        "/V2".to_string(),
+        format!("/DPACKAGE={}", package.display()),
+        format!("/DNAME={name}"),
+        format!("/DSAFENAME={safe}"),
+        format!("/DVERSION={numeric}"),
+        format!("/DOUTFILE={}", out.display()),
+        script.to_string_lossy().to_string(),
+    ];
+    run_makensis(tc, &args)?;
+    if !out.is_file() {
+        return Err(anyhow!("the setup file wasn't created"));
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

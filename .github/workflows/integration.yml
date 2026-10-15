@@ -98,6 +98,15 @@ jobs:
           if (-not $log.uninstall_key) { throw "the installation registered no uninstall entry" }
           "id=$($log.id)" >> $env:GITHUB_OUTPUT
           "name=$($log.name)" >> $env:GITHUB_OUTPUT
+      - name: Make a silent installer from the log
+        shell: pwsh
+        run: |
+          $p = Start-Process ./it/Expunge.exe -ArgumentList 'repackage', '${{ steps.monitor.outputs.id }}', "$PWD\silent" -Wait -PassThru -NoNewWindow -RedirectStandardOutput out.txt -RedirectStandardError err.txt
+          (Get-Content out.txt) + (Get-Content err.txt) | ForEach-Object { Write-Host $_ }
+          if ($p.ExitCode -ne 0) { Write-Output ("::error::" + (((Get-Content err.txt) | Select-Object -Last 6) -join ' | ')); throw "repackage failed" }
+          $setup = Get-ChildItem silent -Filter '*Setup.exe' | Select-Object -First 1
+          if (-not $setup) { throw "no Setup.exe" }
+          Write-Host "Silent setup: $($setup.Name) ($([math]::Round($setup.Length / 1MB, 1)) MB)"
       - name: Remove with Expunge
         shell: pwsh
         run: |
