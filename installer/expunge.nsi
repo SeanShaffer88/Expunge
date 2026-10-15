@@ -102,8 +102,8 @@ Section "Expunge" SecMain
   !ifdef TOOLS
     ; The PortableApps.com Launcher (official source and its NSIS compiler)
     ; used by the Portable App Builder.
-    RMDir /r "$INSTDIR\tools\PortableApps.com Launcher"
-    SetOutPath "$INSTDIR\tools\PortableApps.com Launcher"
+    RMDir /r "$INSTDIR\tools\PortableApps.comLauncher"
+    SetOutPath "$INSTDIR\tools\PortableApps.comLauncher"
     File /r "${TOOLS}\*.*"
     SetOutPath "$INSTDIR"
   !endif
@@ -143,7 +143,7 @@ Section "Uninstall"
   Delete "$INSTDIR\Expunge.exe"
   Delete "$INSTDIR\LICENSE.txt"
   Delete "$INSTDIR\Uninstall.exe"
-  RMDir /r "$INSTDIR\tools\PortableApps.com Launcher"
+  RMDir /r "$INSTDIR\tools\PortableApps.comLauncher"
   RMDir "$INSTDIR\tools"
   RMDir "$INSTDIR"
   Delete "$SMPROGRAMS\${APP}.lnk"

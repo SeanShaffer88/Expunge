@@ -18,7 +18,8 @@ pub const LAUNCHER_COMMIT: &str = "5470210a6841c38950c348e1190ad92787b8b727";
 pub const MAKENSIS_SHA256: &str =
     "9bffbceea9af5cdd15299ec957e5ee479a048bfb824dd45ea51414c1c2c750e0";
 /// Folder name used next to Expunge.exe and in the data folder.
-pub const TOOLS_DIR: &str = "PortableApps.com Launcher";
+/// (No spaces: parts of the Launcher source don't quote their paths.)
+pub const TOOLS_DIR: &str = "PortableApps.comLauncher";
 
 pub fn download_url() -> String {
     format!("https://codeload.github.com/PortableApps/Launcher/zip/{LAUNCHER_COMMIT}")
@@ -112,16 +113,19 @@ pub fn candidates(data_root: &Path) -> Vec<PathBuf> {
     v.push(
         data_root
             .join("tools")
-            .join(format!("{TOOLS_DIR} {}", &LAUNCHER_COMMIT[..7])),
+            .join(format!("{TOOLS_DIR}-{}", &LAUNCHER_COMMIT[..7])),
     );
     v
 }
 
 pub fn find(data_root: &Path) -> Option<Toolchain> {
-    candidates(data_root)
+    let t = candidates(data_root)
         .into_iter()
         .map(|root| Toolchain { root })
-        .find(|t| t.is_valid())
+        .find(|t| t.is_valid())?;
+    // Best effort: a read-only copy (Program Files) was patched when it was made.
+    let _ = patch_source(&t.root);
+    Some(t)
 }
 
 /// Parts of the source archive that aren't needed to compile.
@@ -156,6 +160,22 @@ pub fn extract(zip_path: &Path, dest: &Path) -> Result<()> {
             }
             let mut w = std::fs::File::create(&out)?;
             std::io::copy(&mut e, &mut w)?;
+        }
+    }
+    Ok(())
+}
+
+/// The Launcher source includes NSIS's Registry.nsh without quotes, which
+/// breaks when the folder path has a space (such as a user name with one).
+pub fn patch_source(root: &Path) -> Result<()> {
+    let p = root.join("Other").join("Source").join("Registry.nsh");
+    if let Ok(text) = std::fs::read_to_string(&p) {
+        let fixed = text.replace(
+            "!include ${NSISDIR}\\Include\\Registry.nsh",
+            "!include \"${NSISDIR}\\Include\\Registry.nsh\"",
+        );
+        if fixed != text {
+            std::fs::write(&p, fixed)?;
         }
     }
     Ok(())
@@ -198,6 +218,7 @@ pub fn download(data_root: &Path, report: &dyn Fn(&str)) -> Result<Toolchain> {
     let r = extract(&zip, &staging);
     let _ = std::fs::remove_file(&zip);
     r?;
+    patch_source(&staging)?;
     let t = Toolchain {
         root: staging.clone(),
     };
@@ -406,6 +427,25 @@ mod tests {
         assert!(!out.join("Other/Source/Manual").exists());
         // The compiler's fingerprint doesn't match, so it isn't trusted.
         assert!(!Toolchain { root: out }.is_valid());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn quotes_the_registry_include() {
+        let dir = std::env::temp_dir().join(format!("expunge-patch-{}", crate::util::new_id()));
+        let src = dir.join("Other").join("Source");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(
+            src.join("Registry.nsh"),
+            "!include ${NSISDIR}\\Include\\Registry.nsh\r\n",
+        )
+        .unwrap();
+        patch_source(&dir).unwrap();
+        let t = std::fs::read_to_string(src.join("Registry.nsh")).unwrap();
+        assert!(
+            t.starts_with("!include \"${NSISDIR}\\Include\\Registry.nsh\""),
+            "{t}"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

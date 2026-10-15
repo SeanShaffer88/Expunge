@@ -55,10 +55,13 @@ jobs:
           Expand-Archive launcher.zip -DestinationPath launcher-src
           $src = Get-ChildItem launcher-src -Directory | Select-Object -First 1
           New-Item -ItemType Directory "pa-tools" | Out-Null
-          Copy-Item $src.FullName "pa-tools/PortableApps.com Launcher" -Recurse
-          $t = "pa-tools/PortableApps.com Launcher"
+          Copy-Item $src.FullName "pa-tools/PortableApps.comLauncher" -Recurse
+          $t = "pa-tools/PortableApps.comLauncher"
           Remove-Item -Recurse -Force "$t/App/NSIS/Docs", "$t/App/NSIS/Examples", "$t/Other/Source/Manual", "$t/.github" -ErrorAction SilentlyContinue
           Get-ChildItem $t -Recurse -Filter *.chm | Remove-Item -Force
+          # Quote the one unquoted ${NSISDIR} include, so paths with spaces work.
+          $reg = "$t/Other/Source/Registry.nsh"
+          (Get-Content $reg -Raw).Replace('!include ${NSISDIR}\Include\Registry.nsh', '!include "${NSISDIR}\Include\Registry.nsh"') | Set-Content $reg -NoNewline
           $got = (Get-FileHash "$t/App/NSIS/makensis.exe" -Algorithm SHA256).Hash.ToLower()
           if ($got -ne $sha) { throw "makensis.exe doesn't match the pinned SHA-256 ($got)" }
 
@@ -81,7 +84,7 @@ jobs:
           New-Item dist/portable-arm64/portable -ItemType File | Out-Null
           Copy-Item pa-tools dist/portable-arm64/tools -Recurse
           Compress-Archive -Path dist/portable-arm64/* -DestinationPath "dist/Expunge-$v-arm64-portable.zip"
-          makensis "-DVERSION=$v" "-DEXE=..\target\release\expunge.exe" "-DOUTDIR=..\dist" "-DTOOLS=..\pa-tools\PortableApps.com Launcher" installer\expunge.nsi
+          makensis "-DVERSION=$v" "-DEXE=..\target\release\expunge.exe" "-DOUTDIR=..\dist" "-DTOOLS=..\pa-tools\PortableApps.comLauncher" installer\expunge.nsi
           Get-ChildItem dist -File | ForEach-Object {
             "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
           } | Set-Content dist/SHA256SUMS.txt
