@@ -21,6 +21,9 @@ pub struct CleanerState {
     pub scan_job: Option<Job<Vec<ScanResult>>>,
     pub clean_job: Option<Job<Vec<ScanResult>>>,
     pub freed: Option<u64>,
+    /// Scheduled cleaning, read from Task Scheduler on first view.
+    pub schedule: Option<Option<(expunge_core::schedule::Frequency, Vec<String>)>>,
+    pub schedule_error: Option<String>,
 }
 
 impl Default for CleanerState {
@@ -40,6 +43,8 @@ impl Default for CleanerState {
             scan_job: None,
             clean_job: None,
             freed: None,
+            schedule: None,
+            schedule_error: None,
         }
     }
 }
@@ -344,6 +349,8 @@ impl App {
                     }
                     ui.add_space(6.0);
                 }
+                ui.add_space(4.0);
+                self.ui_schedule(ui);
                 if advanced {
                     ui.add_space(8.0);
                     self.ui_deep(ui);
@@ -372,6 +379,58 @@ impl App {
                     );
                 }
             });
+        });
+    }
+
+    fn ui_schedule(&mut self, ui: &mut egui::Ui) {
+        use expunge_core::schedule::{self, Frequency};
+        if self.cleaner.schedule.is_none() {
+            self.cleaner.schedule = Some(schedule::current());
+        }
+        let current = self.cleaner.schedule.clone().flatten();
+        theme::card(ui, |ui| {
+            let mut choice: Option<Option<Frequency>> = None;
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(t("Clean automatically")).strong());
+                let label = current.as_ref().map(|c| t(c.0.label())).unwrap_or_else(|| t("Off"));
+                egui::ComboBox::from_id_salt("clean_schedule")
+                    .selected_text(label)
+                    .show_ui(ui, |ui| {
+                        if ui.selectable_label(current.is_none(), t("Off")).clicked() {
+                            choice = Some(None);
+                        }
+                        for f in Frequency::ALL {
+                            let on = current.as_ref().is_some_and(|c| c.0 == f);
+                            if ui.selectable_label(on, t(f.label())).clicked() {
+                                choice = Some(Some(f));
+                            }
+                        }
+                    });
+            });
+            small_muted(ui, t("Cleans the kinds of junk ticked above through Windows Task Scheduler, even when Expunge is closed."));
+            if let Some((_, cats)) = &current {
+                let names: Vec<String> = cats.iter().map(|id| t(cat_text(id).0)).collect();
+                small_muted(ui, tf("Currently cleans: {list}", &[("list", names.join(", "))]));
+            }
+            if let Some(e) = &self.cleaner.schedule_error {
+                ui.label(RichText::new(e).small().color(theme::BAD));
+            }
+            if let Some(c) = choice {
+                let advanced = self.settings.advanced_mode;
+                let ids: Vec<&str> = self
+                    .cleaner
+                    .cats
+                    .iter()
+                    .filter(|(cat, on, _)| *on && (advanced || !cleaner::is_advanced(cat.id)))
+                    .map(|(cat, _, _)| cat.id)
+                    .collect();
+                let r = match c {
+                    None => schedule::remove(),
+                    Some(f) => schedule::set(&ids, f, self.elevated),
+                };
+                self.cleaner.schedule_error = r.err().map(|e| e.to_string());
+                self.cleaner.schedule = None;
+            }
         });
     }
 }

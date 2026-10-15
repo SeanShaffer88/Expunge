@@ -28,11 +28,9 @@ Everything planned as *Next* has been built; the items below are the next candid
 
 **Disk**
 - **Browser privacy cleaning** (opt-in per item) — cookies, history, site data and sessions for every Chromium and Firefox-based browser and profile, plus font caches.
-- **Scheduled junk cleaning.**
 
 **Everything else**
 - **System health dashboard** — disk space trend, memory use, and services that stopped unexpectedly.
-- **Complete command line** — every feature scriptable for unattended maintenance: classic uninstall by name, batch queue, junk cleaning, startup management.
 - **Integration tests on clean Windows 11 virtual machines** — real NSIS, Inno Setup, MSI and WiX installers installed, monitored, uninstalled and verified clean on every release.
 - **Arm64 builds.**
 - More languages — see [docs/TRANSLATING.md](docs/TRANSLATING.md).

@@ -67,6 +67,15 @@ USAGE:
   expunge duplicates <folder>... [--min-size MB] [--json]
                                             List identical files (compared by
                                             content); nothing is deleted
+  expunge uninstall <name>... [--silent] [--leftovers safe|none] [--dry-run]
+                                            Uninstall programs one after another,
+                                            then remove safe leftovers (backed up)
+  expunge clean [--categories a,b] [--list] [--dry-run]
+                                            Clean junk (default: the safe kinds)
+  expunge schedule-clean daily|weekly|monthly|off [--categories a,b]
+                                            Clean junk automatically
+  expunge startup [--json]                  List startup programs
+  expunge startup enable|disable <name>     Turn a startup program on or off
   expunge backups                           List backups
   expunge restore <backup-id>               Undo a removal from its backup
   expunge --version | --help
@@ -84,6 +93,32 @@ fn arg_value(args: &[String], flag: &str) -> Option<String> {
     args.iter()
         .position(|a| a == flag)
         .and_then(|i| args.get(i + 1).cloned())
+}
+
+/// Find one program by name: exact (ignoring case) first, then a unique
+/// partial match.
+fn pick_program<'a>(
+    progs: &'a [expunge_core::programs::InstalledProgram],
+    name: &str,
+) -> anyhow::Result<&'a expunge_core::programs::InstalledProgram> {
+    if let Some(p) = progs.iter().find(|p| p.name.eq_ignore_ascii_case(name)) {
+        return Ok(p);
+    }
+    let low = name.to_lowercase();
+    let hits: Vec<_> = progs.iter().filter(|p| p.name.to_lowercase().contains(&low)).collect();
+    match hits.len() {
+        0 => anyhow::bail!("no installed program matches"),
+        1 => Ok(hits[0]),
+        _ => anyhow::bail!(
+            "several programs match: {}",
+            hits.iter().map(|p| p.name.as_str()).collect::<Vec<_>>().join(", ")
+        ),
+    }
+}
+
+/// Where scheduled cleaning records what it freed.
+fn st_log_path() -> anyhow::Result<PathBuf> {
+    Ok(store()?.root.join("cleaning.log"))
 }
 
 fn has(args: &[String], flag: &str) -> bool {
@@ -598,6 +633,228 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                     r.groups.len(),
                     expunge_core::model::human_size(r.wasted())
                 );
+            }
+        }
+        "uninstall" => {
+            let names: Vec<&String> = args[1..].iter().filter(|a| !a.starts_with("--")).collect::<Vec<_>>();
+            let names: Vec<String> = {
+                // Drop values that belong to flags.
+                let mut out = Vec::new();
+                let mut skip = false;
+                for a in &args[1..] {
+                    if skip { skip = false; continue; }
+                    if a == "--leftovers" { skip = true; continue; }
+                    if !a.starts_with("--") { out.push(a.clone()); }
+                }
+                let _ = names;
+                out
+            };
+            if names.is_empty() {
+                anyhow::bail!("name at least one program (see `expunge programs`)");
+            }
+            let silent_mode = has(&args, "--silent");
+            let dry = has(&args, "--dry-run");
+            let leftovers = arg_value(&args, "--leftovers").unwrap_or_else(|| "safe".into());
+            let st = store()?;
+            let mut failures = 0;
+            let mut reboot = false;
+            for name in &names {
+                let progs = programs::list_programs(reg.as_ref(), false);
+                let p = match pick_program(&progs, name) {
+                    Ok(p) => p.clone(),
+                    Err(e) => {
+                        eprintln!("{name}: {e}");
+                        failures += 1;
+                        continue;
+                    }
+                };
+                let engine = expunge_core::silent::detect(&p);
+                let cmd = if silent_mode {
+                    expunge_core::silent::silent_command(&p, engine)
+                } else {
+                    p.uninstall_command(false)
+                };
+                let Some(cmd) = cmd else {
+                    eprintln!("{}: no {}uninstaller available", p.name, if silent_mode { "silent " } else { "" });
+                    failures += 1;
+                    continue;
+                };
+                println!("Uninstalling {} ({})…", p.name, engine.label());
+                if dry {
+                    println!("  would run: {cmd}");
+                    continue;
+                }
+                while platform::installer_busy() {
+                    std::thread::sleep(std::time::Duration::from_secs(5));
+                }
+                let code = platform::spawn_command_line(&cmd)?.wait();
+                match expunge_core::silent::exit_meaning(engine, code) {
+                    expunge_core::silent::ExitMeaning::RebootRequired => reboot = true,
+                    expunge_core::silent::ExitMeaning::Success => {}
+                    m => {
+                        eprintln!("  the uninstaller reported {m:?} (exit code {code})");
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_secs(2));
+                if reg.exists(&p.key) {
+                    eprintln!("  {} is still installed; skipping the leftover scan", p.name);
+                    failures += 1;
+                    continue;
+                }
+                if leftovers == "none" {
+                    continue;
+                }
+                let mut plan = expunge_core::leftovers::find_leftovers(
+                    &p,
+                    reg.as_ref(),
+                    &expunge_core::leftovers::LeftoverScope::default(),
+                );
+                // Unattended: only items labelled Safe.
+                for i in &mut plan.items {
+                    if expunge_core::revert::risk(i) != expunge_core::revert::Risk::Safe {
+                        i.selected = false;
+                    }
+                }
+                if plan.selected() == 0 {
+                    println!("  no leftovers found");
+                    continue;
+                }
+                let mut w = BackupWriter::new(&st.backups_dir(), &format!("Leftovers of {}", p.name))?;
+                let results = execute_plan(&plan, reg.as_ref(), Some(&mut w), &ExecOptions::default());
+                let b = w.finish()?;
+                let ok = results.iter().filter(|r| r.ok).count();
+                println!("  removed {ok} leftovers (backup {}; restore with: expunge restore {})", b.id, b.id);
+                if ok < results.len() {
+                    failures += 1;
+                }
+            }
+            if reboot {
+                println!("Restart Windows to finish removing everything.");
+            }
+            return Ok(if failures > 0 { 2 } else { 0 });
+        }
+        "clean" => {
+            let cats = expunge_core::cleaner::categories();
+            if has(&args, "--list") {
+                for c in &cats {
+                    let r = expunge_core::cleaner::scan(c);
+                    println!(
+                        "{:<20} {:>10}  {}{}",
+                        c.id,
+                        human_size(r.bytes),
+                        if c.default_on && !expunge_core::cleaner::is_advanced(c.id) { "default" } else { "" },
+                        if c.needs_admin { " (administrator)" } else { "" }
+                    );
+                }
+                return Ok(0);
+            }
+            let wanted: Vec<String> = match arg_value(&args, "--categories") {
+                Some(v) => v.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
+                None => cats
+                    .iter()
+                    .filter(|c| c.default_on && !expunge_core::cleaner::is_advanced(c.id))
+                    .map(|c| c.id.to_string())
+                    .collect(),
+            };
+            let elevated = platform::is_elevated();
+            let mut total = 0u64;
+            for id in &wanted {
+                let Some(c) = cats.iter().find(|c| c.id == id) else {
+                    eprintln!("unknown category: {id} (see `expunge clean --list`)");
+                    continue;
+                };
+                if c.needs_admin && !elevated {
+                    eprintln!("{id}: skipped (needs administrator rights)");
+                    continue;
+                }
+                let r = if has(&args, "--dry-run") {
+                    expunge_core::cleaner::scan(c)
+                } else {
+                    expunge_core::cleaner::clean(c)
+                };
+                total += r.bytes;
+                if !has(&args, "--scheduled") {
+                    println!("{:<20} {:>10}  {} files", id, human_size(r.bytes), r.files);
+                }
+            }
+            if has(&args, "--scheduled") {
+                // Leave a trace for the user in the data folder.
+                let line = format!("{}  cleaned {}\n", expunge_core::util::now_string(), human_size(total));
+                let path = st_log_path()?;
+                let mut old = std::fs::read_to_string(&path).unwrap_or_default();
+                old.push_str(&line);
+                let keep: Vec<&str> = old.lines().rev().take(100).collect();
+                let text: String = keep.into_iter().rev().map(|l| format!("{l}\n")).collect();
+                let _ = std::fs::write(&path, text);
+            } else {
+                println!("Total: {}", human_size(total));
+            }
+        }
+        "schedule-clean" => {
+            let what = args.get(1).map(|s| s.as_str()).unwrap_or("");
+            if what == "off" {
+                expunge_core::schedule::remove()?;
+                println!("Automatic cleaning turned off.");
+                return Ok(0);
+            }
+            let freq = match what {
+                "daily" => expunge_core::schedule::Frequency::Daily,
+                "weekly" => expunge_core::schedule::Frequency::Weekly,
+                "monthly" => expunge_core::schedule::Frequency::Monthly,
+                _ => anyhow::bail!("usage: expunge schedule-clean daily|weekly|monthly|off [--categories a,b]"),
+            };
+            let cats: Vec<String> = match arg_value(&args, "--categories") {
+                Some(v) => v.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
+                None => expunge_core::cleaner::categories()
+                    .iter()
+                    .filter(|c| c.default_on && !expunge_core::cleaner::is_advanced(c.id))
+                    .map(|c| c.id.to_string())
+                    .collect(),
+            };
+            let refs: Vec<&str> = cats.iter().map(|s| s.as_str()).collect();
+            expunge_core::schedule::set(&refs, freq, platform::is_elevated())?;
+            println!("Junk will be cleaned {} ({}).", what, cats.join(", "));
+        }
+        "startup" => {
+            let entries = expunge_core::startup::list_startup(reg.as_ref());
+            match args.get(1).map(|s| s.as_str()) {
+                Some(op @ ("enable" | "disable")) => {
+                    let name = args.get(2).ok_or_else(|| anyhow::anyhow!("name the startup program"))?;
+                    let e = entries
+                        .iter()
+                        .find(|e| e.name.eq_ignore_ascii_case(name))
+                        .ok_or_else(|| anyhow::anyhow!("no startup program called {name}"))?;
+                    if op == "disable" && expunge_core::startup::is_essential(e) {
+                        anyhow::bail!("{} is needed by Windows, security software or hardware and can't be disabled", e.name);
+                    }
+                    let st = store()?;
+                    let mut w = BackupWriter::new(&st.backups_dir(), &format!("Startup: {} {}", op, e.name))?;
+                    expunge_core::startup::set_enabled(reg.as_ref(), e, op == "enable", Some(&mut w))?;
+                    w.finish()?;
+                    println!("{} {}d.", e.name, op);
+                }
+                _ => {
+                    if has(&args, "--json") {
+                        let items: Vec<_> = entries
+                            .iter()
+                            .map(|e| serde_json::json!({
+                                "name": e.name, "command": e.command, "location": e.location,
+                                "enabled": e.enabled, "all_users": e.all_users, "missing": e.missing,
+                            }))
+                            .collect();
+                        println!("{}", serde_json::to_string_pretty(&items)?);
+                    } else {
+                        for e in &entries {
+                            println!(
+                                "[{}] {}{}  {}",
+                                if e.enabled { "on " } else { "off" },
+                                e.name,
+                                if e.missing { " (missing)" } else { "" },
+                                e.command
+                            );
+                        }
+                    }
+                }
             }
         }
         "orphans" => {

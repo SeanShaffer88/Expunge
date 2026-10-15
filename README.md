@@ -97,7 +97,7 @@ For programs that were installed without monitoring:
 - **Startup manager:** Run keys and Startup folders (with Task Manager–compatible enabling and disabling), services and drivers, and scheduled tasks. Advanced mode adds every other autostart location: Winlogon, Active Setup, Image File Execution Options, AppInit DLLs, Explorer extensions, icon overlays, browser helper objects, boot-time programs, and WMI subscriptions.
 - **Disk space map:** a treemap of any drive or folder in which each block's size matches the space it uses, colored by file type (videos, music, pictures, archives and disk images, programs, documents). Click any block to look inside it, or use the size-sorted list beside it with the keyboard. Read-only, so it is safe in Simple mode.
 - **Duplicate file finder:** finds files with identical contents (compared by SHA-256, not by name) in your personal folders or any folder you choose. Keep the oldest, newest or shortest-path copy automatically, or choose yourself; at least one copy is always kept, and removed copies go to the Recycle Bin. Windows, program and app-data folders are never searched, and cloud-only files are never downloaded.
-- **Junk cleaner:** temporary files, crash and memory dumps, Windows logs, Delivery Optimization and Windows Update downloads, shader and browser caches, Prefetch data, and the Recycle Bin.
+- **Junk cleaner:** temporary files, crash and memory dumps, Windows logs, Delivery Optimization and Windows Update downloads, shader and browser caches, Prefetch data, and the Recycle Bin, on demand or automatically every day, week, or month.
 - **Deep cleanup** (Advanced mode): the previous Windows installation (Windows.old), superseded Windows components, files of disabled features, and old restore points. Each item is analyzed first and confirmed separately.
 - **Windows Updates manager** (Advanced mode): list installed updates and uninstall individual ones. Permanent servicing-stack updates are clearly labeled.
 - **Windows features and app aliases** (Advanced mode): turn optional Windows features on or off, and see which app execution aliases are active.
@@ -165,6 +165,10 @@ expunge learn-noise [--seconds N] [--apply]
 expunge orphans
 expunge disk C:\Users --top 20
 expunge duplicates %USERPROFILE%\Pictures --min-size 1
+expunge uninstall "Photo Editor" "Old Toolbar" --silent
+expunge clean --dry-run
+expunge schedule-clean weekly
+expunge startup disable Spotify
 expunge updates
 expunge update --all
 expunge transfer export moved.expunge "Photo Editor"
