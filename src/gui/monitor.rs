@@ -38,6 +38,8 @@ pub struct MonitorState {
     /// Saving the reviewed log (large logs take a moment to write).
     pub save_job: Option<Job<Result<InstallLog, (InstallLog, String)>>>,
     pub error: String,
+    /// "Try it, then undo": everything recorded is removed after review.
+    pub trial: bool,
 }
 
 impl MonitorState {
@@ -52,6 +54,7 @@ impl MonitorState {
             self.name = p.name;
             self.installer = p.installer;
             self.started = p.started;
+            self.trial = p.trial;
         }
     }
 
@@ -82,7 +85,15 @@ impl App {
         self.precheck_installer(ctx, path.to_string_lossy().to_string());
     }
 
-    pub fn begin_monitoring(&mut self, ctx: &egui::Context, name: String, installer: String) {
+    /// Record an installation. A `trial` is removed again right after review
+    /// ("Try it, then undo", for PCs without Windows Sandbox).
+    pub fn begin_monitoring(
+        &mut self,
+        ctx: &egui::Context,
+        name: String,
+        installer: String,
+        trial: bool,
+    ) {
         let reg = self.reg.clone();
         let settings = self.settings.clone();
         let root = self.store.root.clone();
@@ -90,15 +101,24 @@ impl App {
             name: name.clone(),
             started: expunge_core::util::now_string(),
             installer: installer.clone(),
+            trial,
         };
+        let point = tf("Before trying {name}", &[("name", name.clone())]);
         self.monitor = MonitorState {
             phase: Phase::Before,
             name,
             installer,
             started: session.started.clone(),
+            trial,
             ..Default::default()
         };
         self.monitor.before_job = Some(Job::spawn(ctx, move |pr| {
+            if trial {
+                // A second safety net besides the log and the backup. Best
+                // effort: System Protection may be off, or one was made today.
+                pr.set_phase(t("Creating a restore point…"));
+                let _ = expunge_core::restore::create_restore_point(&point);
+            }
             let snap = take_snapshot(reg.as_ref(), &settings, pr).map_err(|e| e.to_string())?;
             let store = Store::at(&root).map_err(|e| e.to_string())?;
             store
@@ -149,15 +169,20 @@ impl App {
             self.monitor.save_job = None;
             match r {
                 Ok(log) => {
+                    let trial = self.monitor.trial;
                     self.store.clear_pending();
-                    self.set_status(tf(
-                        "Saved install log for {name}",
-                        &[("name", log.name.clone())],
-                    ));
                     self.monitor = Default::default();
                     self.reload_logs();
-                    self.logs.selected = Some(log.id);
                     self.programs.needs_refresh = true;
+                    if trial {
+                        self.undo_trial(&log);
+                    } else {
+                        self.set_status(tf(
+                            "Saved install log for {name}",
+                            &[("name", log.name.clone())],
+                        ));
+                        self.logs.selected = Some(log.id);
+                    }
                 }
                 Err((log, e)) => {
                     self.monitor.review = Some(log);
@@ -385,7 +410,7 @@ impl App {
                 ui.add_space(4.0);
                 if ui.button(t("Start monitoring")).clicked() {
                     let name = if self.monitor.name.trim().is_empty() { t("Unnamed program") } else { self.monitor.name.trim().to_string() };
-                    self.begin_monitoring(ctx, name, String::new());
+                    self.begin_monitoring(ctx, name, String::new(), false);
                 }
             });
         });
@@ -405,6 +430,7 @@ impl App {
             job_progress(ui, &t("Saving…"), 0);
             return;
         }
+        let trial = self.monitor.trial;
         let Some(log) = &mut self.monitor.review else {
             return;
         };
@@ -412,6 +438,12 @@ impl App {
         ui.horizontal(|ui| {
             ui.heading(t("Review the installation"));
         });
+        if trial {
+            theme::warning_banner(
+                ui,
+                t("Trial install: after you review it, everything it added is removed."),
+            );
+        }
         egui::Grid::new("review_meta")
             .num_columns(2)
             .spacing([10.0, 6.0])
@@ -478,14 +510,31 @@ impl App {
         ui.separator();
         let mut save = false;
         let mut discard = false;
+        let mut keep = false;
         ui.horizontal(|ui| {
-            if theme::primary_button(ui, format!("💾 {}", t("Save install log"))).clicked() {
-                save = true;
-            }
-            if ui.button(t("Discard")).clicked() {
-                discard = true;
+            if trial {
+                if theme::primary_button(ui, format!("↩ {}", t("Undo the trial"))).clicked() {
+                    save = true;
+                }
+                // Keeping it means a normal install log, so it can still be
+                // removed precisely later. No Discard: that would leave the
+                // program installed with no record of what it added.
+                if ui.button(t("Keep it installed")).clicked() {
+                    keep = true;
+                }
+            } else {
+                if theme::primary_button(ui, format!("💾 {}", t("Save install log"))).clicked() {
+                    save = true;
+                }
+                if ui.button(t("Discard")).clicked() {
+                    discard = true;
+                }
             }
         });
+        if keep {
+            self.monitor.trial = false;
+            save = true;
+        }
         if save && self.monitor.save_job.is_none() {
             let log = self.monitor.review.take().unwrap();
             let store = self.store.clone();
@@ -497,5 +546,25 @@ impl App {
         } else if discard {
             self.monitor.cancel(&self.store);
         }
+    }
+}
+
+impl App {
+    /// Remove everything a trial install added: the exact log, with files
+    /// created since and without Simple mode's trimming (every item was
+    /// made minutes ago by this installer). Protected locations are still
+    /// refused, and everything is backed up as usual.
+    pub(super) fn undo_trial(&mut self, log: &InstallLog) {
+        let plan = expunge_core::revert::build_plan(&log.changes, self.reg.as_ref());
+        let mut flow = super::plan::RemovalFlow::new(
+            tf("Undo the trial of {name}", &[("name", log.name.clone())]),
+            plan,
+            true,
+            true,
+        );
+        flow.trial = true;
+        flow.logs_to_delete = vec![log.id.clone()];
+        flow.names = vec![log.name.clone()];
+        self.open_removal(flow);
     }
 }

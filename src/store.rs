@@ -19,6 +19,9 @@ pub struct PendingSession {
     pub started: String,
     #[serde(default)]
     pub installer: String,
+    /// A trial install ("Try it, then undo"): removed again after review.
+    #[serde(default)]
+    pub trial: bool,
 }
 
 #[derive(Clone, Debug)]

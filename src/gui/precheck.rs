@@ -131,6 +131,7 @@ impl App {
         let mut install = false;
         let mut cancel = false;
         let mut preview = false;
+        let mut trial = false;
         let pc = self.monitor.precheck.as_mut().unwrap();
         theme::card(ui, |ui| {
             ui.label(
@@ -208,6 +209,14 @@ impl App {
                 {
                     preview = true;
                 }
+                if !sandbox
+                    && ui
+                        .button(format!("🧪 {}", t("Try it, then undo")))
+                        .on_hover_text(t("Installs it on this PC while recording every change, shows you what it did, then removes all of it. A restore point is made first."))
+                        .clicked()
+                {
+                    trial = true;
+                }
                 if ui.button(t("Cancel")).clicked() {
                     cancel = true;
                 }
@@ -239,9 +248,9 @@ impl App {
         if preview {
             self.start_sandbox_preview();
         }
-        if install {
+        if install || trial {
             let pc = self.monitor.precheck.take().unwrap();
-            self.begin_monitoring(ctx, pc.name, pc.path);
+            self.begin_monitoring(ctx, pc.name, pc.path, trial);
         }
         if cancel {
             self.monitor.precheck = None;

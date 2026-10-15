@@ -33,8 +33,12 @@ jobs:
           $code = $LASTEXITCODE
           if ($code -ne 0) {
             # Surface the failure as annotations so it is visible without the log.
-            Get-Content test.log | Select-String -Pattern '^error|^warning: unused|panicked|FAILED|^test result|left:|right:|^\s+-->' |
-              Select-Object -Last 45 | ForEach-Object { Write-Output "::error::$($_.Line)" }
+            # A panic's message is on the line after "panicked at".
+            Get-Content test.log | Select-String -Pattern '^error|^warning: unused|panicked|FAILED|^test result|left:|right:|^\s+-->' -Context 0,1 |
+              Select-Object -Last 45 | ForEach-Object {
+                Write-Output "::error::$($_.Line)"
+                if ($_.Line -match 'panicked') { $_.Context.PostContext | ForEach-Object { Write-Output "::error::  $_" } }
+              }
             exit $code
           }
       - name: Clippy

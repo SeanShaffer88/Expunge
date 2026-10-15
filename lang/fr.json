@@ -1488,5 +1488,12 @@
   "Keep as it is": "Laisser tel quel",
   "Keep the changes; the backup stays on the Backups page.": "Conserver les modifications ; la sauvegarde reste sur la page Sauvegardes.",
   "Restart Windows Explorer if it is using the program's files": "Redémarrer l'Explorateur Windows s'il utilise des fichiers du programme",
-  "Shell extensions stay loaded in Explorer until it restarts. Restarting it during the removal deletes them at once instead of at the next restart. The taskbar disappears for a moment.": "Les extensions du shell restent chargées dans l'Explorateur jusqu'à son redémarrage. Le redémarrer pendant la suppression les efface immédiatement au lieu d'attendre le prochain redémarrage. La barre des tâches disparaît un instant."
+  "Shell extensions stay loaded in Explorer until it restarts. Restarting it during the removal deletes them at once instead of at the next restart. The taskbar disappears for a moment.": "Les extensions du shell restent chargées dans l'Explorateur jusqu'à son redémarrage. Le redémarrer pendant la suppression les efface immédiatement au lieu d'attendre le prochain redémarrage. La barre des tâches disparaît un instant.",
+  "Before trying {name}": "Avant d'essayer {name}",
+  "Trial install: after you review it, everything it added is removed.": "Installation d'essai : après votre vérification, tout ce qu'elle a ajouté est supprimé.",
+  "Undo the trial": "Annuler l'essai",
+  "Keep it installed": "Le garder installé",
+  "Undo the trial of {name}": "Annuler l'essai de {name}",
+  "Try it, then undo": "Essayer, puis annuler",
+  "Installs it on this PC while recording every change, shows you what it did, then removes all of it. A restore point is made first.": "L'installe sur ce PC en enregistrant chaque modification, vous montre ce qu'il a fait, puis supprime tout. Un point de restauration est créé avant."
 }

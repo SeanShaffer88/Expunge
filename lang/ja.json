@@ -1488,5 +1488,12 @@
   "Keep as it is": "このままにする",
   "Keep the changes; the backup stays on the Backups page.": "変更を保持します。バックアップは [バックアップ] ページに残ります。",
   "Restart Windows Explorer if it is using the program's files": "プログラムのファイルを使用中の場合はエクスプローラーを再起動する",
-  "Shell extensions stay loaded in Explorer until it restarts. Restarting it during the removal deletes them at once instead of at the next restart. The taskbar disappears for a moment.": "シェル拡張はエクスプローラーが再起動するまで読み込まれたままです。削除中に再起動すると、次回の再起動を待たずにすぐ削除できます。タスクバーが一瞬消えます。"
+  "Shell extensions stay loaded in Explorer until it restarts. Restarting it during the removal deletes them at once instead of at the next restart. The taskbar disappears for a moment.": "シェル拡張はエクスプローラーが再起動するまで読み込まれたままです。削除中に再起動すると、次回の再起動を待たずにすぐ削除できます。タスクバーが一瞬消えます。",
+  "Before trying {name}": "{name} を試す前",
+  "Trial install: after you review it, everything it added is removed.": "試用インストール: 確認が終わると、追加されたものはすべて削除されます。",
+  "Undo the trial": "試用を元に戻す",
+  "Keep it installed": "インストールしたままにする",
+  "Undo the trial of {name}": "{name} の試用を元に戻す",
+  "Try it, then undo": "試してから元に戻す",
+  "Installs it on this PC while recording every change, shows you what it did, then removes all of it. A restore point is made first.": "すべての変更を記録しながらこの PC にインストールし、何をしたかを表示してから、すべて削除します。先に復元ポイントを作成します。"
 }

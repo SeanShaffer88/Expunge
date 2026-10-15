@@ -25,6 +25,8 @@ pub struct RemovalFlow {
     pub names: Vec<String>,
     /// Items hidden because Simple mode doesn't offer them (None = not yet filtered).
     pub hidden_for_safety: Option<usize>,
+    /// Undoing a trial install: the exact log, never trimmed for Simple mode.
+    pub trial: bool,
     pub job: Option<Job<(Vec<ActionResult>, Option<String>)>>,
     pub results: Option<(Vec<ActionResult>, Option<String>)>,
     pub open: bool,
@@ -45,6 +47,7 @@ impl RemovalFlow {
             delete_logs: true,
             names: Vec::new(),
             hidden_for_safety: None,
+            trial: false,
             job: None,
             results: None,
             open: true,
@@ -253,6 +256,7 @@ impl App {
             return;
         };
         if simple
+            && !flow.trial
             && flow.hidden_for_safety.is_none()
             && flow.job.is_none()
             && flow.results.is_none()

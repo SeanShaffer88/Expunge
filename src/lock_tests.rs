@@ -272,6 +272,7 @@ fn stopping_a_service_that_does_not_exist_is_not_an_error() {
         // what matters here is the answer for an elevated removal.
         return;
     }
-    let r = locks::stop_service("ExpungeNoSuchService-1b0e", Duration::from_secs(5)).unwrap();
+    let r = locks::stop_service("ExpungeNoSuchService-1b0e", Duration::from_secs(5))
+        .unwrap_or_else(|e| panic!("stop_service: {e:#}"));
     assert_eq!(r, ServiceStop::NotFound);
 }

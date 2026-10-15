@@ -1488,5 +1488,12 @@
   "Keep as it is": "保持现状",
   "Keep the changes; the backup stays on the Backups page.": "保留更改；备份仍保留在“备份”页面中。",
   "Restart Windows Explorer if it is using the program's files": "如果资源管理器正在使用该程序的文件，则重启资源管理器",
-  "Shell extensions stay loaded in Explorer until it restarts. Restarting it during the removal deletes them at once instead of at the next restart. The taskbar disappears for a moment.": "Shell 扩展会一直加载在资源管理器中，直到它重启。在删除过程中重启它，可以立即删除这些文件，而不必等到下次重启电脑。任务栏会短暂消失。"
+  "Shell extensions stay loaded in Explorer until it restarts. Restarting it during the removal deletes them at once instead of at the next restart. The taskbar disappears for a moment.": "Shell 扩展会一直加载在资源管理器中，直到它重启。在删除过程中重启它，可以立即删除这些文件，而不必等到下次重启电脑。任务栏会短暂消失。",
+  "Before trying {name}": "试用 {name} 之前",
+  "Trial install: after you review it, everything it added is removed.": "试用安装：查看完毕后，它添加的所有内容都会被删除。",
+  "Undo the trial": "撤销试用",
+  "Keep it installed": "保留安装",
+  "Undo the trial of {name}": "撤销 {name} 的试用",
+  "Try it, then undo": "先试用，再撤销",
+  "Installs it on this PC while recording every change, shows you what it did, then removes all of it. A restore point is made first.": "在这台电脑上安装并记录每一项更改，显示它做了什么，然后全部删除。会先创建还原点。"
 }

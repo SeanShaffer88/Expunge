@@ -1493,5 +1493,12 @@
   "Keep as it is": "Zostaw tak",
   "Keep the changes; the backup stays on the Backups page.": "Zachowaj zmiany; kopia zapasowa pozostaje na stronie Kopie zapasowe.",
   "Restart Windows Explorer if it is using the program's files": "Uruchom ponownie Eksplorator Windows, jeśli używa plików programu",
-  "Shell extensions stay loaded in Explorer until it restarts. Restarting it during the removal deletes them at once instead of at the next restart. The taskbar disappears for a moment.": "Rozszerzenia powłoki pozostają załadowane w Eksploratorze do jego ponownego uruchomienia. Ponowne uruchomienie podczas usuwania kasuje je od razu zamiast przy następnym restarcie. Pasek zadań na chwilę zniknie."
+  "Shell extensions stay loaded in Explorer until it restarts. Restarting it during the removal deletes them at once instead of at the next restart. The taskbar disappears for a moment.": "Rozszerzenia powłoki pozostają załadowane w Eksploratorze do jego ponownego uruchomienia. Ponowne uruchomienie podczas usuwania kasuje je od razu zamiast przy następnym restarcie. Pasek zadań na chwilę zniknie.",
+  "Before trying {name}": "Przed wypróbowaniem {name}",
+  "Trial install: after you review it, everything it added is removed.": "Instalacja próbna: po przejrzeniu wszystko, co dodała, zostanie usunięte.",
+  "Undo the trial": "Cofnij próbę",
+  "Keep it installed": "Zostaw zainstalowany",
+  "Undo the trial of {name}": "Cofnij próbę {name}",
+  "Try it, then undo": "Wypróbuj, potem cofnij",
+  "Installs it on this PC while recording every change, shows you what it did, then removes all of it. A restore point is made first.": "Instaluje na tym komputerze, zapisując każdą zmianę, pokazuje, co zrobiła, a potem wszystko usuwa. Najpierw tworzony jest punkt przywracania."
 }
