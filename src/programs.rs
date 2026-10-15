@@ -382,7 +382,39 @@ pub fn list_store_apps() -> Vec<InstalledProgram> {
     }
     #[cfg(not(windows))]
     {
-        Vec::new()
+        if std::env::var_os("EXPUNGE_DEMO").is_none() {
+            return Vec::new();
+        }
+        let app = |name: &str, publisher: &str, version: &str| {
+            format!(
+                r#"{{"Name":"{name}","PackageFullName":"{name}_{version}_x64__8wekyb3d8bbwe","Publisher":"CN={publisher}","Version":"{version}","InstallLocation":"C:\\Program Files\\WindowsApps\\{name}"}}"#
+            )
+        };
+        let apps = [
+            app("king.com.CandyCrushSaga", "King", "1.2840.1.0"),
+            app(
+                "Microsoft.BingNews",
+                "Microsoft Corporation",
+                "4.55.62231.0",
+            ),
+            app(
+                "Microsoft.MicrosoftSolitaireCollection",
+                "Microsoft Corporation",
+                "4.21.3240.0",
+            ),
+            app(
+                "Microsoft.GetHelp",
+                "Microsoft Corporation",
+                "10.2409.22951.0",
+            ),
+            app("SpotifyAB.SpotifyMusic", "Spotify AB", "1.247.418.0"),
+            app(
+                "Microsoft.WindowsCalculator",
+                "Microsoft Corporation",
+                "11.2409.0.0",
+            ),
+        ];
+        parse_store_json(&format!("[{}]", apps.join(",")))
     }
 }
 

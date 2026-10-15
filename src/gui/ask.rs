@@ -77,7 +77,7 @@ impl App {
             found.push((p.clone(), size, score));
         }
         if q.min_size.is_some() || q.top.is_some() || q.unused_days.is_some() {
-            found.sort_by(|a, b| b.1.cmp(&a.1));
+            found.sort_by_key(|f| std::cmp::Reverse(f.1));
         } else {
             found.sort_by(|a, b| b.2.cmp(&a.2).then(b.0.install_date.cmp(&a.0.install_date)));
         }
@@ -89,6 +89,13 @@ impl App {
             .logs
             .iter()
             .filter(|l| {
+                // Logs have no size or usage, so a question about those
+                // only lists logs that match its words.
+                let program_only =
+                    q.min_size.is_some() || q.unused_days.is_some() || q.top.is_some();
+                if program_only && !q.has_terms() {
+                    return false;
+                }
                 let date = nlquery::parse_date(&l.created);
                 (q.since.is_none() && q.until.is_none() || q.date_ok(date))
                     && (!q.has_terms()
@@ -132,6 +139,14 @@ impl App {
                 if self.ask_ui.focus {
                     r.request_focus();
                     self.ask_ui.focus = false;
+                }
+                // Results follow the typing; the search is in memory and instant.
+                if r.changed() {
+                    if self.ask_ui.text.trim().is_empty() {
+                        self.ask_ui.query = None;
+                    } else {
+                        run = true;
+                    }
                 }
                 if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                     run = true;

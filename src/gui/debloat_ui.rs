@@ -181,7 +181,7 @@ impl App {
                                     }
                                     ui.vertical(|ui| {
                                         ui.horizontal_wrapped(|ui| {
-                                            ui.label(RichText::new(&i.program.name).strong());
+                                            ui.label(RichText::new(i.title()).strong());
                                             if i.program.source == expunge_core::programs::Source::Store {
                                                 theme::badge(ui, t("Store app"), theme::MUTED);
                                             }

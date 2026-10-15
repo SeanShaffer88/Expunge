@@ -170,7 +170,7 @@ pub fn spinner(ui: &mut egui::Ui) -> egui::Response {
             })
             .collect();
         ui.painter()
-            .add(egui::Shape::line(pts, egui::Stroke::new(3.0, color)));
+            .add(egui::Shape::line(pts, egui::Stroke::new(3.0_f32, color)));
         ui.ctx()
             .request_repaint_after(std::time::Duration::from_millis(66));
     }

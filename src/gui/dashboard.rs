@@ -141,7 +141,7 @@ impl App {
                         job_progress(ui, &t("Looking for leftovers of removed programs…"), 0);
                     } else if action_row(
                         ui,
-                        "🧹",
+                        "🔍",
                         "Find leftovers of removed programs",
                         "Registrations, file types, PATH entries, firewall rules and tasks pointing to files that are gone",
                     ) {
@@ -171,7 +171,7 @@ impl App {
                             (days >= 180 && size > 0).then(|| (p.clone(), size, days))
                         })
                         .collect();
-                    wasters.sort_by(|a, b| b.1.cmp(&a.1));
+                    wasters.sort_by_key(|w| std::cmp::Reverse(w.1));
                     wasters.truncate(5);
                     if !wasters.is_empty() {
                         ui.add_space(16.0);

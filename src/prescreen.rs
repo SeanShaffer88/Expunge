@@ -249,7 +249,7 @@ pub fn screen(path: &Path) -> Screening {
             detail: "Nothing known to bundle adware was found in the setup file. Still read each page of the installer.".into(),
         });
     }
-    s.findings.sort_by(|a, b| b.level.cmp(&a.level));
+    s.findings.sort_by_key(|f| std::cmp::Reverse(f.level));
     s
 }
 

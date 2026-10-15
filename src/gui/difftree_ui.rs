@@ -217,7 +217,7 @@ pub fn diff_tree_ui(ui: &mut egui::Ui, view: &mut TreeView, cs: &ChangeSet) {
             .color(if on { Color32::BLACK } else { col });
             let b = egui::Button::new(text)
                 .fill(if on { col } else { col.gamma_multiply(0.12) })
-                .stroke(egui::Stroke::new(1.0, col.gamma_multiply(0.6)))
+                .stroke(egui::Stroke::new(1.0_f32, col.gamma_multiply(0.6)))
                 .corner_radius(10.0);
             if ui.add(b).on_hover_text(t(area.hint())).clicked() {
                 view.filter = if on { None } else { Some(area) };
@@ -267,7 +267,7 @@ pub fn diff_tree_ui(ui: &mut egui::Ui, view: &mut TreeView, cs: &ChangeSet) {
         let col = area_color(area);
         egui::Frame::new()
             .fill(col.gamma_multiply(0.06))
-            .stroke(egui::Stroke::new(1.0, col.gamma_multiply(0.35)))
+            .stroke(egui::Stroke::new(1.0_f32, col.gamma_multiply(0.35)))
             .corner_radius(8.0)
             .inner_margin(egui::Margin::symmetric(10, 6))
             .show(ui, |ui| {

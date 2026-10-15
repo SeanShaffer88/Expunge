@@ -228,7 +228,7 @@ pub fn set_enabled(
             Ok(())
         }
         _ => {
-            if let Some(b) = backup.as_deref_mut() {
+            if let Some(b) = backup {
                 b.add_value(reg, &e.key, "LegacyDisable")?;
             }
             if on {

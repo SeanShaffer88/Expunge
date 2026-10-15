@@ -328,7 +328,7 @@ struct Builder {
 }
 
 impl Builder {
-    fn insert(&mut self, segments: &[&str], full: &str, is_key: bool, change: Change, bytes: u64) {
+    fn insert(&mut self, segments: &[&str], is_key: bool, change: Change, bytes: u64) {
         let Some((first, rest)) = segments.split_first() else {
             self.change = Some(change);
             match change {
@@ -350,7 +350,7 @@ impl Builder {
             is_key,
             ..Default::default()
         });
-        child.insert(rest, full, is_key, change, bytes);
+        child.insert(rest, is_key, change, bytes);
     }
 
     fn finish(self) -> Node {
@@ -452,7 +452,7 @@ pub fn build(cs: &ChangeSet, places: &Places) -> DiffTree {
             });
         let rel = full.get(root.len()..).unwrap_or(&full);
         let segs: Vec<&str> = rel.split('\\').filter(|s| !s.is_empty()).collect();
-        b.insert(&segs, &full, is_key, change, bytes);
+        b.insert(&segs, is_key, change, bytes);
     }
     let mut tree = DiffTree::default();
     for ((_, area), b) in areas {

@@ -127,7 +127,7 @@ impl App {
             let off = all.iter().filter(|e| !e.enabled).count();
             let added = all.iter().filter(|e| !e.windows).count();
             ui.horizontal_wrapped(|ui| {
-                theme::badge(ui, tf("{n} added by programs", &[("n", added.to_string())]), theme::ACCENT_TEXT);
+                theme::badge(ui, tf("{n} added by programs", &[("n", added.to_string())]), theme::MUTED);
                 theme::badge(ui, tf("{n} broken", &[("n", broken.to_string())]), if broken > 0 { theme::BAD } else { theme::OK });
                 theme::badge(ui, tf("{n} turned off", &[("n", off.to_string())]), theme::MUTED);
             });

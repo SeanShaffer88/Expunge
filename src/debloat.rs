@@ -326,6 +326,42 @@ fn never(p: &InstalledProgram) -> bool {
     NEVER.iter().any(|n| name.contains(n))
 }
 
+impl BloatItem {
+    /// The name to show: Store package names ("king.com.CandyCrushSaga")
+    /// become readable titles ("Candy Crush Saga").
+    pub fn title(&self) -> String {
+        if self.program.source == Source::Store {
+            store_title(&self.program.name)
+        } else {
+            self.program.name.clone()
+        }
+    }
+}
+
+/// A readable title for a Store package name: the part after the publisher
+/// prefix, with words split at capitals.
+pub fn store_title(package: &str) -> String {
+    let last = package.rsplit('.').next().unwrap_or(package);
+    let looks_like_id =
+        last.chars().any(|c| c.is_ascii_digit()) && last.chars().all(|c| c.is_ascii_hexdigit());
+    if last.is_empty() || looks_like_id {
+        return package.to_string();
+    }
+    let mut out = String::new();
+    let chars: Vec<char> = last.chars().collect();
+    for (i, &c) in chars.iter().enumerate() {
+        if i > 0 && c.is_uppercase() {
+            let prev = chars[i - 1];
+            let next_lower = chars.get(i + 1).is_some_and(|n| n.is_lowercase());
+            if prev.is_lowercase() || prev.is_ascii_digit() || (prev.is_uppercase() && next_lower) {
+                out.push(' ');
+            }
+        }
+        out.push(c);
+    }
+    out
+}
+
 /// Find bloatware among installed desktop programs and Store apps.
 /// `provisioned` holds the package names Windows keeps for new accounts.
 pub fn scan(
@@ -349,14 +385,7 @@ pub fn scan(
             });
         }
     }
-    out.sort_by(|a, b| {
-        a.class.cmp(&b.class).then_with(|| {
-            a.program
-                .name
-                .to_lowercase()
-                .cmp(&b.program.name.to_lowercase())
-        })
-    });
+    out.sort_by_cached_key(|i| (i.class, i.title().to_lowercase()));
     out
 }
 
@@ -440,6 +469,21 @@ mod tests {
     }
 
     #[test]
+    fn readable_store_titles() {
+        assert_eq!(store_title("king.com.CandyCrushSaga"), "Candy Crush Saga");
+        assert_eq!(
+            store_title("Microsoft.MicrosoftSolitaireCollection"),
+            "Microsoft Solitaire Collection"
+        );
+        assert_eq!(store_title("4DF9E0F8.Netflix"), "Netflix");
+        assert_eq!(store_title("MSTeams"), "MS Teams");
+        assert_eq!(
+            store_title("Microsoft.549981C3F5F10"),
+            "Microsoft.549981C3F5F10"
+        );
+    }
+
+    #[test]
     fn finds_and_classifies() {
         let progs = vec![
             win32("McAfee LiveSafe", "McAfee, LLC"),
@@ -460,8 +504,8 @@ mod tests {
             vec![
                 "king.com.CandyCrushSaga",
                 "McAfee LiveSafe",
-                "Dell SupportAssist",
-                "Microsoft.BingWeather"
+                "Microsoft.BingWeather",
+                "Dell SupportAssist"
             ]
         );
         assert_eq!(found[0].class, Class::Recommended);

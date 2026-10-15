@@ -365,7 +365,7 @@ pub fn analyze(cs: &ChangeSet, program_dir: &Path, main_exe: &Path) -> Report {
             "Nothing in this installation is known to stop it from working as a portable app.",
         );
     }
-    r.issues.sort_by(|a, b| b.severity.cmp(&a.severity));
+    r.issues.sort_by_key(|i| std::cmp::Reverse(i.severity));
     r
 }
 
