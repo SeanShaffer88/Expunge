@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   pull_request:
+  # The slow full-system performance check runs weekly and on demand,
+  # not on every push, so ordinary CI finishes in a few minutes.
+  schedule:
+    - cron: '17 7 * * 1'
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -39,6 +44,21 @@ jobs:
         run: |
           ./target/release/expunge.exe --version
           ./target/release/expunge.exe programs | Select-Object -First 5
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Expunge-dev
+          path: target/release/expunge.exe
+
+  perf:
+    name: Performance budget (Windows)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Release build
+        run: cargo build --release --locked
       - name: Performance budget
         shell: pwsh
         run: |
@@ -71,10 +91,6 @@ jobs:
           # for the same code (the same commit measured 5 and 20 minutes);
           # memory is deterministic and stays strict.
           if ($secs -gt 1800 -or $mb -gt 1500 -or $trustSecs -gt 300) { throw "Performance budget exceeded" }
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Expunge-dev
-          path: target/release/expunge.exe
 
   core-linux:
     name: Core tests (Linux)
