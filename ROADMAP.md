@@ -15,17 +15,16 @@ Every planned feature has been built. The items below are ideas for after versio
 
 **Portable App Builder**
 - **Drive-letter and path fixing** — find absolute paths inside captured settings files and write matching `[FileWrite]` sections, so settings follow the drive.
-- **A sandbox for Windows 11 Home** — Windows Sandbox needs Pro, Enterprise or Education; a Hyper-V or other virtual machine option would keep Home PCs untouched too.
+- **An isolated sandbox for Windows 11 Home** — Home PCs now have *Try it, then undo*, which installs, records and removes again; a virtual machine option (Home has no Hyper-V, so VirtualBox or QEMU) would keep them entirely untouched.
 
 **Release readiness**
 - **Code signing certificate** — the release workflow already signs `Expunge.exe` (x64 and Arm64) and the installer, with a timestamp, as soon as the `CODESIGN_PFX` and `CODESIGN_PASSWORD` repository secrets are set. What's left is getting a certificate: a free open-source one (SignPath Foundation), Azure Artifact Signing, or an OV certificate.
 - **Antivirus false-positive reports** — the release workflow already uploads every download to VirusTotal when the `VIRUSTOTAL_API_KEY` secret is set, warns about any detection and links each report in the release notes. What's left is a free VirusTotal account for the key, and submitting any false positives to Microsoft Defender, Malwarebytes and other vendors before publishing.
-- **Files held open by services** — the stress tests cover files another program holds open; also cover running services and COM objects Explorer still has loaded.
-- **Clean-VM validation matrix** — run the full monitor, uninstall and check-clean cycle on a freshly provisioned, snapshot-isolated Windows 11 virtual machine (the CI runners are Windows Server), with complex installers: large MSI suites, Inno Setup, NSIS, Wise, InstallShield, WiX bundles and Squirrel.
-- **Long-running soak test** — run background monitoring and live activity for days under a profiler to confirm memory, handle and thread counts stay flat and no files stay locked.
+- **Windows 11 client validation** — the integration matrix (Windows Installer, NSIS, Inno Setup, Squirrel, WiX Burn, and InstallShield and Wise once the `INSTALLSHIELD_URL` and `WISE_URL` repository variables point to test installers) runs on Windows Server runners; run it on a freshly provisioned, snapshot-isolated Windows 11 virtual machine as well, and add a large MSI suite.
+- **Multi-day soak run** — `scripts/soak.ps1` is ready and runs for five hours every week in CI; run it for several days on a test VM before the first release.
 
 **Everything else**
-- **More integration tests** — add WiX bundles and Squirrel installers, and run on Windows 11 client images when GitHub offers them.
+- **More integration tests** — run on Windows 11 client images when GitHub offers them.
 - More languages and native-speaker reviews of the existing ones — see [docs/TRANSLATING.md](docs/TRANSLATING.md).
 
 ## Considered and not planned

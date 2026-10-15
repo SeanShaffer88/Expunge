@@ -108,7 +108,8 @@ Every installed program, and the safest way to remove it.
 - **Usage:** when each program was last opened and how often (from Windows' own records, kept on this PC), how much processor time it uses while running, and how long it adds to each Windows startup. The **Not used for 6 months** view lists what you could do without.
 - **Lightweight alternatives:** for heavy or ad-supported programs, free alternatives that do the same job (for example 7-Zip for WinRAR, SumatraPDF for Adobe Reader, VLC for RealPlayer or PowerDVD), installed with one click through winget or Scoop when you choose. They are suggested again right after an uninstall.
 - **Confidence colours** in every removal review: green items are safe to remove, yellow ones deserve a look, red ones touch shared parts of Windows. Each colour comes with its reasons, and **Select only green** ticks just the certain ones.
-- **Locked files** are scheduled for deletion at the next restart, and **user data is respected**: files a program created later are kept unless you choose otherwise.
+- **Running programs and locked files:** if the program is running, it is asked to close (so it can save its work) before its files go; only the program being removed is ever closed, never another application that merely loaded one of its files. Services are stopped and Expunge waits until their process has exited. If Windows Explorer has the program's shell extensions loaded, Explorer restarts during the removal so they are deleted at once. Anything still in use is scheduled for deletion at the next restart, and Expunge says which program, service or Windows component is holding it.
+- **User data is respected:** files a program created later are kept unless you choose otherwise.
 - **Transfer to another PC:** pack programs with their files, settings, and registry entries into one file and restore them on a new PC, with a compatibility check, path rewriting for different user names or drives, and one-click undo.
 - **Export the program list** as a CSV file.
 
@@ -119,6 +120,7 @@ Record an installation so it can be removed precisely later.
 - **Install and monitor:** choose an installer, or right-click it in File Explorer and select **Install with Expunge**. Expunge takes a snapshot, runs the installer, and records every change.
 - **Pre-install check:** before anything runs, the setup file is checked for bundled adware (OpenCandy, InstallCore and others), offer screens, coin miners, web installers that download more while they run, missing or broken digital signatures, and download-site wrappers. Each finding is explained in plain words.
 - **Test in Windows Sandbox first** (Windows 11 Pro, Enterprise and Education): the installer runs in a throwaway copy of Windows and Expunge shows everything it would change, on a map, without touching your PC.
+- **Try it, then undo** (Windows 11 Home, or wherever Windows Sandbox is off): the program is installed on your PC while every change is recorded, after a restore point is made; you review what it did, then Expunge removes all of it again, or you keep it with a complete install log.
 - **Manual monitoring** for anything else, including Microsoft Store apps, winget packages, scripts, and portable applications.
 - **Live activity:** files being added, changed, and removed stream in while the installer runs, and registry areas report when something under them changes.
 - **Restart-safe:** monitoring survives restarts, so installers that need a reboot are captured completely.
@@ -287,7 +289,7 @@ To make a portable app instead, open **Portable App Builder**, choose the instal
 expunge monitor --name "Photo Editor" -- C:\Downloads\setup.exe
 expunge logs [--group G] [--tag T] [--json]
 expunge revert <log-id> --dry-run
-expunge revert <log-id>
+expunge revert <log-id> --close-programs --restart-explorer
 expunge export <log-id> xml changes.xml
 expunge export <log-id> portable PhotoEditorPortable.ini
 expunge repackage <log-id> D:\Deploy\PhotoEditor
@@ -371,8 +373,9 @@ A lot of work has gone into making Expunge careful, thorough, and fast. Here is 
 - It is open source under the GPLv3, so anyone can read exactly what it does.
 
 **Tested at every step**
-- Over 120 automated tests run on every change, including stress tests with very deep registry trees, thousands of files, paths over 260 characters and files held open by other programs, on both Windows and Linux, together with static code analysis (Clippy).
-- Integration tests install real installers (Windows Installer, NSIS, and Inno Setup) on clean Windows machines, remove them with Expunge, and verify that nothing is left behind; the same installers are also turned into PortableApps.com packages and checked. These tests have already found and fixed real problems before release.
+- Over 130 automated tests run on every change, including stress tests with very deep registry trees, thousands of files, paths over 260 characters and files held open by other programs, on both Windows and Linux, together with static code analysis (Clippy). On Windows they also use real locks: a file open in another program, a DLL loaded by another process, a running program inside the folder being removed, and a real Windows service that keeps its files open until its process has exited.
+- Integration tests install real installers (Windows Installer, NSIS, Inno Setup, Squirrel and a WiX Burn bundle, plus InstallShield and Wise when a test installer is configured) on clean Windows machines, remove them with Expunge, and verify that nothing is left behind; the same installers are also turned into PortableApps.com packages and checked. These tests have already found and fixed real problems before release.
+- A weekly soak test installs and removes programs over and over for hours with background monitoring running, and fails if anything is left behind, if background monitoring misfires, or if its memory or handle use keeps growing. `scripts/soak.ps1` runs the same test for days on a test machine.
 - Performance is measured automatically: snapshot speed and memory, time to open the window, and CPU and memory use while idle, each against a fixed budget; a check fails if any budget is exceeded.
 - The Arm64 version is built and checked on every change, and translations are checked automatically for missing placeholders.
 - Releases are built by GitHub Actions directly from the public source code, and every download is published with a SHA-256 checksum so you can verify it.
