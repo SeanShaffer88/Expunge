@@ -141,14 +141,14 @@ jobs:
           | Snapshot peak memory | $mb MB | 1500 MB |
           | Snapshot file | $snapMb MB | |
           | Program list with signatures | $trustSecs s | 300 s |
-          | Expunge.exe size | $exeMb MB | |
+          | Expunge.exe size | $exeMb MB | 40 MB |
           "@ | Out-File -Append $env:GITHUB_STEP_SUMMARY
           Write-Host "snapshot ${secs}s, peak ${mb}MB, signatures ${trustSecs}s, exe ${exeMb}MB"
           Write-Host "::notice title=Performance::snapshot $secs s, peak $mb MB, file $snapMb MB, signatures $trustSecs s, exe $exeMb MB"
           # Time limits are loose because hosted runner speed varies several-fold
           # for the same code (the same commit measured 5 and 20 minutes);
           # memory is deterministic and stays strict.
-          if ($secs -gt 1800 -or $mb -gt 1500 -or $trustSecs -gt 300) { throw "Performance budget exceeded" }
+          if ($secs -gt 1800 -or $mb -gt 1500 -or $trustSecs -gt 300 -or $exeMb -gt 40) { throw "Performance budget exceeded" }
 
   core-linux:
     name: Core tests (Linux)

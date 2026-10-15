@@ -15,6 +15,11 @@ permissions:
 jobs:
   release:
     runs-on: windows-latest
+    # Optional secrets; the steps that use them are skipped when they are unset.
+    env:
+      CODESIGN_PFX: ${{ secrets.CODESIGN_PFX }}
+      CODESIGN_PASSWORD: ${{ secrets.CODESIGN_PASSWORD }}
+      VIRUSTOTAL_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -37,6 +42,22 @@ jobs:
         run: |
           rustup target add aarch64-pc-windows-msvc
           cargo build --release --locked --target aarch64-pc-windows-msvc
+
+      # Optional: set the repository secrets CODESIGN_PFX (the certificate as
+      # base64) and CODESIGN_PASSWORD to sign everything that is published.
+      # Signed downloads are trusted by SmartScreen and antivirus software.
+      - name: Sign the programs
+        if: env.CODESIGN_PFX != ''
+        shell: pwsh
+        run: |
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName | Select-Object -Last 1
+          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\cert.pfx", [Convert]::FromBase64String($env:CODESIGN_PFX))
+          try {
+            foreach ($f in 'target/release/expunge.exe', 'target/aarch64-pc-windows-msvc/release/expunge.exe') {
+              & $signtool.FullName sign /f "$env:RUNNER_TEMP\cert.pfx" /p $env:CODESIGN_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /d Expunge $f
+              if ($LASTEXITCODE -ne 0) { throw "signing $f failed" }
+            }
+          } finally { Remove-Item "$env:RUNNER_TEMP\cert.pfx" -Force }
 
       - name: Install NSIS
         shell: pwsh
@@ -89,6 +110,23 @@ jobs:
             "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
           } | Set-Content dist/SHA256SUMS.txt
 
+      - name: Sign the installer
+        if: env.CODESIGN_PFX != ''
+        shell: pwsh
+        run: |
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName | Select-Object -Last 1
+          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\cert.pfx", [Convert]::FromBase64String($env:CODESIGN_PFX))
+          try {
+            Get-ChildItem dist -Filter 'Expunge-Setup-*.exe' | ForEach-Object {
+              & $signtool.FullName sign /f "$env:RUNNER_TEMP\cert.pfx" /p $env:CODESIGN_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /d "Expunge Setup" $_.FullName
+              if ($LASTEXITCODE -ne 0) { throw "signing $($_.Name) failed" }
+            }
+          } finally { Remove-Item "$env:RUNNER_TEMP\cert.pfx" -Force }
+          # The checksums must match the signed files.
+          Get-ChildItem dist -File -Exclude SHA256SUMS.txt | ForEach-Object {
+            "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
+          } | Set-Content dist/SHA256SUMS.txt
+
       - name: Release notes
         shell: pwsh
         run: |
@@ -97,6 +135,38 @@ jobs:
           $m = [regex]::Match($log, "(?ms)^## \[$([regex]::Escape($v))\].*?(?=^## \[|\z)")
           $notes = if ($m.Success) { $m.Value } else { "Expunge $v" }
           $notes | Set-Content dist/NOTES.md
+
+      # Optional: set the repository secret VIRUSTOTAL_API_KEY to scan every
+      # download before it is published. Detections don't stop the release
+      # (tools like Expunge are often flagged by mistake); they are listed as
+      # warnings so they can be reported as false positives, and the release
+      # notes link to each file's report.
+      - name: Scan the downloads with VirusTotal
+        if: env.VIRUSTOTAL_API_KEY != ''
+        shell: pwsh
+        run: |
+          $headers = @{ 'x-apikey' = $env:VIRUSTOTAL_API_KEY }
+          $lines = @('', '### VirusTotal', '', '| File | Detections | Report |', '|---|---|---|')
+          foreach ($f in Get-ChildItem dist -File -Include 'Expunge-Setup-*.exe', 'Expunge-*-portable.zip' -Recurse) {
+            $sha = (Get-FileHash $f.FullName -Algorithm SHA256).Hash.ToLower()
+            $url = 'https://www.virustotal.com/api/v3/files'
+            if ($f.Length -gt 32MB) { $url = (Invoke-RestMethod -Headers $headers https://www.virustotal.com/api/v3/files/upload_url).data }
+            $id = (Invoke-RestMethod -Method Post -Headers $headers -Form @{ file = $f } $url).data.id
+            $stats = $null
+            foreach ($i in 1..40) {
+              Start-Sleep -Seconds 30
+              $a = Invoke-RestMethod -Headers $headers "https://www.virustotal.com/api/v3/analyses/$id"
+              if ($a.data.attributes.status -eq 'completed') { $stats = $a.data.attributes.stats; break }
+            }
+            $report = "https://www.virustotal.com/gui/file/$sha"
+            if (-not $stats) { $lines += "| $($f.Name) | not finished | [report]($report) |"; continue }
+            $bad = [int]$stats.malicious + [int]$stats.suspicious
+            $total = $bad + [int]$stats.undetected + [int]$stats.harmless
+            $lines += "| $($f.Name) | $bad / $total | [report]($report) |"
+            if ($bad -gt 0) { Write-Output "::warning title=VirusTotal::$($f.Name): $bad of $total engines flag it. Check $report and report false positives to those vendors." }
+          }
+          $lines | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          $lines | Add-Content dist/NOTES.md
 
       - uses: softprops/action-gh-release@v2
         with:
