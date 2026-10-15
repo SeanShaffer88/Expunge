@@ -42,6 +42,19 @@ pub struct Backup {
     pub items: Vec<BackupItem>,
     #[serde(default)]
     pub restored: bool,
+    /// False while the operation runs. A backup left unfinished means the
+    /// operation was interrupted (a crash or power loss); everything it had
+    /// changed so far is recorded here, so it can be undone.
+    #[serde(default = "finished_by_default")]
+    pub complete: bool,
+    /// The process that made it, to tell a running operation from one that
+    /// was interrupted.
+    #[serde(default)]
+    pub pid: u32,
+}
+
+fn finished_by_default() -> bool {
+    true
 }
 
 impl Backup {
@@ -105,6 +118,9 @@ pub struct BackupWriter {
     dir: PathBuf,
     backup: Backup,
     counter: usize,
+    /// Set by `finish` or `discard`; otherwise dropping the writer marks
+    /// the backup complete (the operation ended, even if with errors).
+    done: bool,
 }
 
 impl BackupWriter {
@@ -119,9 +135,12 @@ impl BackupWriter {
                 id,
                 title: title.to_string(),
                 created: crate::util::now_string(),
+                complete: false,
+                pid: std::process::id(),
                 ..Default::default()
             },
             counter: 0,
+            done: false,
         };
         w.save()?;
         Ok(w)
@@ -131,13 +150,19 @@ impl BackupWriter {
         &self.backup.id
     }
 
+    /// Write the manifest before each change is made (write-ahead), atomically
+    /// and flushed to disk, so a crash at any moment leaves a readable record
+    /// of everything changed so far.
     fn save(&self) -> Result<()> {
-        let json = serde_json::to_string_pretty(&self.backup)?;
-        std::fs::write(self.dir.join("manifest.json"), json)?;
-        Ok(())
+        write_manifest(&self.dir.join("manifest.json"), &self.backup)
     }
 
     pub fn add_file(&mut self, path: &Path) -> Result<()> {
+        self.copy_file(path)?;
+        self.save()
+    }
+
+    fn copy_file(&mut self, path: &Path) -> Result<()> {
         let meta = std::fs::metadata(path)?;
         self.counter += 1;
         let ext = path
@@ -152,7 +177,7 @@ impl BackupWriter {
             stored,
             size: meta.len(),
         });
-        self.save()
+        Ok(())
     }
 
     /// Back up a whole folder: the folder entries and every file inside.
@@ -167,7 +192,9 @@ impl BackupWriter {
                     original: e.path().to_string_lossy().to_string(),
                 });
             } else if e.file_type().is_file() {
-                self.add_file(e.path())?;
+                // One manifest write for the whole folder: nothing in it is
+                // deleted until this returns.
+                self.copy_file(e.path())?;
             }
         }
         self.save()
@@ -203,6 +230,7 @@ impl BackupWriter {
         self.backup
             .items
             .push(BackupItem::FileAbsent { path: path.into() });
+        let _ = self.save();
     }
 
     /// Record that the operation is about to create this folder.
@@ -210,6 +238,7 @@ impl BackupWriter {
         self.backup
             .items
             .push(BackupItem::DirAbsent { path: path.into() });
+        let _ = self.save();
     }
 
     pub fn add_key_absent(&mut self, path: &str) -> Result<()> {
@@ -223,7 +252,9 @@ impl BackupWriter {
         self.backup.items.is_empty()
     }
 
-    pub fn finish(self) -> Result<Backup> {
+    pub fn finish(mut self) -> Result<Backup> {
+        self.done = true;
+        self.backup.complete = true;
         self.save()?;
         // Also export the registry part as a standard .reg file, so it can be
         // restored by double-clicking even without Expunge.
@@ -237,7 +268,7 @@ impl BackupWriter {
                 bytes,
             )?;
         }
-        Ok(self.backup)
+        Ok(self.backup.clone())
     }
 
     pub fn dir(&self) -> &Path {
@@ -245,9 +276,56 @@ impl BackupWriter {
     }
 
     /// Remove an empty backup (nothing needed saving).
-    pub fn discard(self) {
+    pub fn discard(mut self) {
+        self.done = true;
         let _ = std::fs::remove_dir_all(&self.dir);
     }
+}
+
+impl Drop for BackupWriter {
+    fn drop(&mut self) {
+        if !self.done && !self.backup.complete {
+            self.backup.complete = true;
+            let _ = self.save();
+        }
+    }
+}
+
+/// Write a manifest atomically: to a temporary file, flushed, then renamed
+/// over the old one.
+fn write_manifest(path: &Path, b: &Backup) -> Result<()> {
+    use std::io::Write;
+    let json = serde_json::to_string_pretty(b)?;
+    let tmp = path.with_extension("json.tmp");
+    {
+        let mut f =
+            std::fs::File::create(&tmp).with_context(|| format!("write {}", tmp.display()))?;
+        f.write_all(json.as_bytes())?;
+        f.sync_all()?;
+    }
+    std::fs::rename(&tmp, path).with_context(|| format!("write {}", path.display()))?;
+    Ok(())
+}
+
+/// Operations that were interrupted before they finished (a crash, power
+/// loss or forced shutdown) and haven't been undone or dismissed.
+pub fn interrupted(list: &[Backup]) -> Vec<&Backup> {
+    list.iter()
+        .filter(|b| {
+            !b.complete
+                && !b.restored
+                && b.pid != std::process::id()
+                && !platform::process_alive(b.pid)
+        })
+        .collect()
+}
+
+/// Keep what an interrupted operation did and stop asking about it.
+pub fn mark_complete(root: &Path, id: &str) -> Result<()> {
+    let manifest = root.join(id).join("manifest.json");
+    let mut b: Backup = serde_json::from_str(&std::fs::read_to_string(&manifest)?)?;
+    b.complete = true;
+    write_manifest(&manifest, &b)
 }
 
 /// The registry contents of a backup as a `.reg` file that puts everything
@@ -416,7 +494,8 @@ pub fn restore_backup(root: &Path, id: &str, reg: &dyn Registry) -> Result<Vec<A
         results.push(r);
     }
     backup.restored = true;
-    std::fs::write(&manifest, serde_json::to_string_pretty(&backup)?)?;
+    backup.complete = true;
+    write_manifest(&manifest, &backup)?;
     Ok(results)
 }
 
@@ -476,5 +555,86 @@ mod tests {
         assert_eq!(z.get_u32("n"), Some(5));
         assert!(z.get("new").is_none());
         assert!(list_backups(&broot)[0].restored);
+    }
+
+    #[test]
+    fn an_interrupted_removal_can_be_found_and_undone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let broot = tmp.path().join("backups");
+        let work = tmp.path().join("work");
+        std::fs::create_dir_all(&work).unwrap();
+        for n in ["a.txt", "b.txt"] {
+            std::fs::write(work.join(n), n).unwrap();
+        }
+        let reg = MemRegistry::new();
+        reg.put(KeyData::new("HKCU\\Software\\Gone").with(RegValue::string("v", "1")));
+
+        // A removal that is cut off half way: the first file and the key
+        // are backed up and deleted, then the process dies (no finish, no
+        // drop).
+        let mut w = BackupWriter::new(&broot, "Removing Gone").unwrap();
+        w.add_file(&work.join("a.txt")).unwrap();
+        std::fs::remove_file(work.join("a.txt")).unwrap();
+        w.add_tree(&reg, "HKCU\\Software\\Gone").unwrap();
+        reg.delete_tree("HKCU\\Software\\Gone").unwrap();
+        let id = w.id().to_string();
+        std::mem::forget(w);
+
+        // While the process that made it runs, it isn't "interrupted".
+        let list = list_backups(&broot);
+        assert!(!list[0].complete);
+        assert!(interrupted(&list).is_empty());
+
+        // As seen after a restart (the process is gone).
+        let manifest = broot.join(&id).join("manifest.json");
+        let mut b: Backup =
+            serde_json::from_str(&std::fs::read_to_string(&manifest).unwrap()).unwrap();
+        b.pid = 0;
+        write_manifest(&manifest, &b).unwrap();
+        let list = list_backups(&broot);
+        assert_eq!(interrupted(&list).len(), 1);
+
+        // Undo what was done.
+        let res = restore_backup(&broot, &id, &reg).unwrap();
+        assert!(res.iter().all(|r| r.ok), "{res:?}");
+        assert_eq!(
+            std::fs::read_to_string(work.join("a.txt")).unwrap(),
+            "a.txt"
+        );
+        assert!(reg.exists("HKCU\\Software\\Gone"));
+        assert!(interrupted(&list_backups(&broot)).is_empty());
+    }
+
+    #[test]
+    fn keeping_an_interrupted_removal_stops_the_question() {
+        let tmp = tempfile::tempdir().unwrap();
+        let broot = tmp.path().join("backups");
+        let w = BackupWriter::new(&broot, "x").unwrap();
+        let id = w.id().to_string();
+        std::mem::forget(w);
+        let manifest = broot.join(&id).join("manifest.json");
+        let mut b: Backup =
+            serde_json::from_str(&std::fs::read_to_string(&manifest).unwrap()).unwrap();
+        b.pid = 0;
+        write_manifest(&manifest, &b).unwrap();
+        assert_eq!(interrupted(&list_backups(&broot)).len(), 1);
+        mark_complete(&broot, &id).unwrap();
+        assert!(interrupted(&list_backups(&broot)).is_empty());
+    }
+
+    #[test]
+    fn finished_and_dropped_writers_are_complete() {
+        let tmp = tempfile::tempdir().unwrap();
+        let broot = tmp.path().join("backups");
+        let w = BackupWriter::new(&broot, "finished").unwrap();
+        w.finish().unwrap();
+        {
+            let _w = BackupWriter::new(&broot, "dropped after an error").unwrap();
+        }
+        assert!(list_backups(&broot).iter().all(|b| b.complete));
+        // Backups made by older versions have no flag and count as complete.
+        let old: Backup =
+            serde_json::from_str(r#"{"id":"1","title":"t","created":"c","items":[]}"#).unwrap();
+        assert!(old.complete);
     }
 }

@@ -70,6 +70,7 @@ impl App {
                     theme::warning_banner(ui, t("Expunge is not running as Administrator. Some removals will fail. Use \"Run as Administrator\" in the left column."));
                     ui.add_space(10.0);
                 }
+                self.interrupted_ui(ui);
                 if self.monitor.is_active() {
                     theme::card(ui, |ui| {
                         ui.horizontal(|ui| {

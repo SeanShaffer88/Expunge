@@ -750,6 +750,25 @@ pub fn installer_busy() -> bool {
     }
 }
 
+/// Whether a process with this id is still running.
+pub fn process_alive(pid: u32) -> bool {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Threading::{
+        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    const STILL_ACTIVE: u32 = 259;
+    unsafe {
+        let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if h.is_null() {
+            return false;
+        }
+        let mut code = 0u32;
+        let ok = GetExitCodeProcess(h, &mut code) != 0;
+        CloseHandle(h);
+        ok && code == STILL_ACTIVE
+    }
+}
+
 /// Every running process this user can see: program file, memory in use
 /// and total CPU time. Used for the resource-use history.
 pub fn process_samples() -> Vec<crate::usage::ProcSample> {

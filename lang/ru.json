@@ -1481,5 +1481,10 @@
   "The program's own uninstall entry": "Собственная запись удаления программы",
   "Windows system configuration": "Системная конфигурация Windows",
   "Coin miner": "Криптомайнер",
-  "Offer screen": "Экран предложения"
+  "Offer screen": "Экран предложения",
+  "An earlier operation didn't finish": "Предыдущая операция не завершилась",
+  "{title}, started {created}, was interrupted, perhaps by a crash or a power cut. Part of it may already be done. Everything it changed so far is in its backup.": "{title}, начатая {created}, была прервана — возможно, сбоем или отключением питания. Часть уже могла быть выполнена. Всё, что она успела изменить, есть в её резервной копии.",
+  "Undo what was done": "Отменить сделанное",
+  "Keep as it is": "Оставить как есть",
+  "Keep the changes; the backup stays on the Backups page.": "Сохранить изменения; резервная копия останется на странице «Резервные копии»."
 }

@@ -1486,5 +1486,10 @@
   "The program's own uninstall entry": "Własny wpis dezinstalacji programu",
   "Windows system configuration": "Konfiguracja systemu Windows",
   "Coin miner": "Koparka kryptowalut",
-  "Offer screen": "Ekran oferty"
+  "Offer screen": "Ekran oferty",
+  "An earlier operation didn't finish": "Wcześniejsza operacja nie została ukończona",
+  "{title}, started {created}, was interrupted, perhaps by a crash or a power cut. Part of it may already be done. Everything it changed so far is in its backup.": "{title}, rozpoczęta {created}, została przerwana, być może przez awarię lub zanik zasilania. Część mogła już zostać wykonana. Wszystko, co dotąd zmieniła, jest w jej kopii zapasowej.",
+  "Undo what was done": "Cofnij to, co zostało zrobione",
+  "Keep as it is": "Zostaw tak",
+  "Keep the changes; the backup stays on the Backups page.": "Zachowaj zmiany; kopia zapasowa pozostaje na stronie Kopie zapasowe."
 }

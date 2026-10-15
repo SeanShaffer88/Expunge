@@ -1481,5 +1481,10 @@
   "The program's own uninstall entry": "プログラム自身のアンインストール エントリ",
   "Windows system configuration": "Windows のシステム構成",
   "Coin miner": "暗号通貨マイナー",
-  "Offer screen": "宣伝画面"
+  "Offer screen": "宣伝画面",
+  "An earlier operation didn't finish": "前回の操作が完了していません",
+  "{title}, started {created}, was interrupted, perhaps by a crash or a power cut. Part of it may already be done. Everything it changed so far is in its backup.": "{title} ({created} 開始) は、クラッシュや停電などで中断されました。一部はすでに完了している可能性があります。これまでに変更された内容はすべてバックアップにあります。",
+  "Undo what was done": "実行済みの内容を元に戻す",
+  "Keep as it is": "このままにする",
+  "Keep the changes; the backup stays on the Backups page.": "変更を保持します。バックアップは [バックアップ] ページに残ります。"
 }

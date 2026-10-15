@@ -1481,5 +1481,10 @@
   "The program's own uninstall entry": "程序自己的卸载条目",
   "Windows system configuration": "Windows 系统配置",
   "Coin miner": "加密货币挖矿程序",
-  "Offer screen": "推广页面"
+  "Offer screen": "推广页面",
+  "An earlier operation didn't finish": "之前的操作未完成",
+  "{title}, started {created}, was interrupted, perhaps by a crash or a power cut. Part of it may already be done. Everything it changed so far is in its backup.": "{title}（开始于 {created}）被中断，可能是由于崩溃或断电。部分操作可能已经完成。到目前为止更改的所有内容都在其备份中。",
+  "Undo what was done": "撤销已完成的操作",
+  "Keep as it is": "保持现状",
+  "Keep the changes; the backup stays on the Backups page.": "保留更改；备份仍保留在“备份”页面中。"
 }

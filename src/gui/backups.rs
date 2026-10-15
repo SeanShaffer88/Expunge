@@ -36,6 +36,61 @@ impl App {
         }));
     }
 
+    /// A card for operations that were cut off (crash, power loss) before
+    /// they finished, with the choice to undo or keep what they did.
+    pub fn interrupted_ui(&mut self, ui: &mut egui::Ui) {
+        if self.backups.job.is_some() {
+            return;
+        }
+        let list: Vec<(String, String, String)> = backup::interrupted(&self.backups.list)
+            .into_iter()
+            .map(|b| (b.id.clone(), b.title.clone(), b.created.clone()))
+            .collect();
+        for (id, title, created) in list {
+            let mut undo = false;
+            let mut keep = false;
+            theme::card(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("⚠").color(theme::WARN));
+                    ui.label(RichText::new(t("An earlier operation didn't finish")).strong());
+                });
+                small_muted(
+                    ui,
+                    tf(
+                        "{title}, started {created}, was interrupted, perhaps by a crash or a power cut. Part of it may already be done. Everything it changed so far is in its backup.",
+                        &[("title", title.clone()), ("created", created.clone())],
+                    ),
+                );
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    if theme::primary_button(ui, t("Undo what was done")).clicked() {
+                        undo = true;
+                    }
+                    if ui
+                        .button(t("Keep as it is"))
+                        .on_hover_text(t("Keep the changes; the backup stays on the Backups page."))
+                        .clicked()
+                    {
+                        keep = true;
+                    }
+                });
+            });
+            ui.add_space(8.0);
+            if undo {
+                self.restore_backup(&id);
+            }
+            if keep {
+                let root = self.store.backups_dir();
+                if let Err(e) = backup::mark_complete(&root, &id) {
+                    self.status = e.to_string();
+                }
+                if let Some(b) = self.backups.list.iter_mut().find(|b| b.id == id) {
+                    b.complete = true;
+                }
+            }
+        }
+    }
+
     pub fn poll_backups(&mut self) {
         if let Some(r) = self.backups.job.as_ref().and_then(|j| j.poll()) {
             self.backups.job = None;
@@ -64,6 +119,7 @@ impl App {
                 ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
                 return;
             }
+            self.interrupted_ui(ui);
             if let Some(results) = &self.backups.results {
                 let mut close = false;
                 theme::card(ui, |ui| {

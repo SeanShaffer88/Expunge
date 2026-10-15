@@ -363,6 +363,21 @@ pub fn resolve_shortcut(path: &str) -> String {
     path.to_string()
 }
 
+/// Whether a process with this id is still running.
+pub fn process_alive(pid: u32) -> bool {
+    if pid == 0 {
+        return false;
+    }
+    #[cfg(windows)]
+    {
+        windows::process_alive(pid)
+    }
+    #[cfg(not(windows))]
+    {
+        std::path::Path::new(&format!("/proc/{pid}")).exists()
+    }
+}
+
 /// Whether Windows' animation effects are on (SPI_GETCLIENTAREAANIMATION).
 pub fn animations_enabled() -> bool {
     #[cfg(windows)]

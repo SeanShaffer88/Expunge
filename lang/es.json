@@ -1481,5 +1481,10 @@
   "The program's own uninstall entry": "La propia entrada de desinstalación del programa",
   "Windows system configuration": "Configuración del sistema Windows",
   "Coin miner": "Minero de criptomonedas",
-  "Offer screen": "Pantalla de ofertas"
+  "Offer screen": "Pantalla de ofertas",
+  "An earlier operation didn't finish": "Una operación anterior no terminó",
+  "{title}, started {created}, was interrupted, perhaps by a crash or a power cut. Part of it may already be done. Everything it changed so far is in its backup.": "{title}, iniciada el {created}, se interrumpió, quizá por un bloqueo o un corte de luz. Puede que parte ya esté hecha. Todo lo que cambió hasta ahora está en su copia de seguridad.",
+  "Undo what was done": "Deshacer lo realizado",
+  "Keep as it is": "Dejarlo así",
+  "Keep the changes; the backup stays on the Backups page.": "Conservar los cambios; la copia de seguridad sigue en la página Copias de seguridad."
 }

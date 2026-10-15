@@ -1331,14 +1331,30 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
             println!("Saved {out}");
         }
         "backups" => {
-            for b in list_backups(&store()?.backups_dir()) {
+            let list = list_backups(&store()?.backups_dir());
+            let cut: Vec<String> = expunge_core::backup::interrupted(&list)
+                .iter()
+                .map(|b| b.id.clone())
+                .collect();
+            for b in &list {
                 println!(
-                    "{}  {}  {}{}  ({})",
+                    "{}  {}  {}{}{}  ({})",
                     b.id,
                     b.created,
                     b.title,
                     if b.restored { " [restored]" } else { "" },
+                    if cut.contains(&b.id) {
+                        " [INTERRUPTED]"
+                    } else {
+                        ""
+                    },
                     b.summary()
+                );
+            }
+            if !cut.is_empty() {
+                eprintln!(
+                    "{} operation(s) were interrupted before finishing. Undo with `expunge restore <backup-id>`.",
+                    cut.len()
                 );
             }
         }
