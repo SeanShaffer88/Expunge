@@ -6,7 +6,7 @@ listed in the [README](README.md#features).
 
 ## Next
 
-Everything planned as *Next* has been built; the items below are the next candidates.
+Every planned feature has been built. The items below are ideas for after version 1.0.
 
 ## Later
 
@@ -16,18 +16,12 @@ Everything planned as *Next* has been built; the items below are the next candid
 **Moving programs**
 - **MSIX registry support** — include the installation's registry entries in MSIX packages (Registry.dat).
 
-**Uninstaller**
-
-**Startup**
-
-**Disk**
-
 **Everything else**
 - **More integration tests** — add WiX bundles and Squirrel installers, and run on Windows 11 client images when GitHub offers them.
 - More languages and native-speaker reviews of the existing ones — see [docs/TRANSLATING.md](docs/TRANSLATING.md).
 
 ## Considered and not planned
-- **Kernel minifilter driver for monitoring** — a driver must be signed by Microsoft, which open-source projects can't easily get, and a driver bug can crash Windows. Snapshots plus event tracing (above) capture the same changes safely.
+- **Kernel minifilter driver for monitoring** — a driver must be signed by Microsoft, which open-source projects can't easily get, and a driver bug can crash Windows. Snapshots plus Windows' change notifications capture the same changes safely.
 - **Rewrite in C#/.NET with WinUI 3** — it would add a runtime dependency and give up the single self-contained exe. The Rust engine is already native and fast.
 - **SQLite index** — the program list is already filtered instantly in memory; the on-disk cache planned above covers the slow parts (sizes, icons, signatures) without a database.
 
