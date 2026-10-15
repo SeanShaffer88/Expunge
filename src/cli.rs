@@ -80,6 +80,11 @@ USAGE:
                                             at sign-in when turned on in Settings)
   expunge check-clean <log-id>              Check that nothing recorded in a log
                                             is still on the PC (exit 2 if so)
+  expunge restore-point [list]              List System Restore points
+  expunge restore-point create [DESCRIPTION]
+  expunge restore-point delete <number>
+  expunge restore-point rollback <number> --yes
+                                            Restart Windows into a restore point
   expunge backups                           List backups
   expunge restore <backup-id>               Undo a removal from its backup
   expunge --version | --help
@@ -1031,6 +1036,54 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                 merged.id,
                 merged.name
             );
+        }
+        "restore-point" | "restore-points" => {
+            use expunge_core::restore;
+            match args.get(1).map(String::as_str).unwrap_or("list") {
+                "list" => {
+                    let p = restore::protection();
+                    println!(
+                        "System Protection: {}",
+                        if p.enabled { "on" } else { "off" }
+                    );
+                    for r in restore::list()? {
+                        println!(
+                            "{:>5}  {}  {:<18}  {}",
+                            r.sequence,
+                            r.created,
+                            r.kind.label(),
+                            r.description
+                        );
+                    }
+                }
+                "create" => {
+                    let d = args
+                        .get(2)
+                        .cloned()
+                        .unwrap_or_else(|| "Expunge manual restore point".into());
+                    restore::create_restore_point(&d)?;
+                    println!("Created restore point: {d}");
+                }
+                "delete" => {
+                    let n: u32 = args.get(2).and_then(|x| x.parse().ok()).ok_or_else(|| {
+                        anyhow::anyhow!("usage: expunge restore-point delete <number>")
+                    })?;
+                    restore::delete(n)?;
+                    println!("Deleted restore point {n}");
+                }
+                "rollback" => {
+                    let n: u32 = args.get(2).and_then(|x| x.parse().ok()).ok_or_else(|| {
+                        anyhow::anyhow!("usage: expunge restore-point rollback <number> --yes")
+                    })?;
+                    if !has(&args, "--yes") {
+                        anyhow::bail!("Windows restarts immediately to restore point {n}; add --yes to confirm");
+                    }
+                    restore::restore_to(n)?;
+                }
+                other => anyhow::bail!(
+                    "unknown restore-point action {other}: use list, create, delete or rollback"
+                ),
+            }
         }
         "pa-capture" => {
             let job = args

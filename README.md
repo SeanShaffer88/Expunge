@@ -231,6 +231,8 @@ expunge snapshot before.snap
 expunge diff before.snap after.snap --name "Photo Editor"
 expunge backups
 expunge restore <backup-id>
+expunge restore-point create "Before installing drivers"
+expunge restore-point list
 expunge learn-noise [--seconds N] [--apply]
 expunge add-program D:\Tools\PortableEditor
 expunge uninstall "Photo Editor" "Old Toolbar" --silent
