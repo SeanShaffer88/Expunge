@@ -496,6 +496,28 @@ fn demo_programs(r: &MemRegistry) {
         KeyData::new("HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\notepad.exe")
             .with(RegValue::string("Debugger", "\"C:\\Program Files\\Notepad++\\notepad++.exe\" -notepadStyleCmdline -z")),
     );
+    // Typical Run-key autostarts for the Startup page.
+    r.put(
+        KeyData::new("HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run")
+            .with(RegValue::string("Discord", "\"C:\\Users\\demo\\AppData\\Local\\Discord\\Update.exe\" --processStart Discord.exe"))
+            .with(RegValue::string("OneDrive", "\"C:\\Program Files\\Microsoft OneDrive\\OneDrive.exe\" /background"))
+            .with(RegValue::string("Spotify", "\"C:\\Users\\demo\\AppData\\Roaming\\Spotify\\Spotify.exe\" --autostart --minimized")),
+    );
+    r.put(
+        KeyData::new("HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run")
+            .with(RegValue::string("SecurityHealth", "%windir%\\system32\\SecurityHealthSystray.exe"))
+            .with(RegValue::string("RtkAudUService", "\"C:\\Windows\\System32\\DriverStore\\FileRepository\\realtekservice.inf_amd64\\RtkAudUService64.exe\" -background")),
+    );
+    // A couple of privacy settings already changed, so the Anti-Telemetry
+    // page shows a mix of states.
+    r.put(
+        KeyData::new("HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\AdvertisingInfo")
+            .with(RegValue::dword("Enabled", 0)),
+    );
+    r.put(
+        KeyData::new("HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize")
+            .with(RegValue::dword("EnableTransparency", 0)),
+    );
 }
 
 #[cfg(windows)]
@@ -599,7 +621,8 @@ pub fn is_elevated() -> bool {
     }
     #[cfg(not(windows))]
     {
-        false
+        // Demo builds can pretend to be elevated, for screenshots.
+        std::env::var_os("EXPUNGE_DEMO_ADMIN").is_some()
     }
 }
 
