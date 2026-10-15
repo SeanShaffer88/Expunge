@@ -1201,6 +1201,18 @@ impl eframe::App for App {
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.frame += 1;
+        // Benchmarks: record why each frame was drawn (EXPUNGE_REPAINT_LOG=file).
+        if let Some(path) = std::env::var_os("EXPUNGE_REPAINT_LOG") {
+            use std::io::Write;
+            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+                let causes: Vec<String> = ctx
+                    .repaint_causes()
+                    .iter()
+                    .map(|c| format!("{}:{} {}", c.file, c.line, c.reason))
+                    .collect();
+                let _ = writeln!(f, "{:.2} {}", ctx.input(|i| i.time), causes.join(" | "));
+            }
+        }
         super::a11y::track_input_mode(ctx);
         // Ctrl+Plus / Ctrl+Minus / Ctrl+0 zoom (built into egui): remember it.
         let z = ctx.zoom_factor();
