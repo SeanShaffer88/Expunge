@@ -1495,5 +1495,7 @@
   "Keep it installed": "保留安装",
   "Undo the trial of {name}": "撤销 {name} 的试用",
   "Try it, then undo": "先试用，再撤销",
-  "Installs it on this PC while recording every change, shows you what it did, then removes all of it. A restore point is made first.": "在这台电脑上安装并记录每一项更改，显示它做了什么，然后全部删除。会先创建还原点。"
+  "Installs it on this PC while recording every change, shows you what it did, then removes all of it. A restore point is made first.": "在这台电脑上安装并记录每一项更改，显示它做了什么，然后全部删除。会先创建还原点。",
+  "Close the program if it is running": "如果程序正在运行，则将其关闭",
+  "Running copies of the program being removed are asked to close (so they can save their work) and its files are deleted at once. Other programs are never closed.": "会请求正在运行的待删除程序关闭（以便保存工作），并立即删除其文件。绝不会关闭其他程序。"
 }

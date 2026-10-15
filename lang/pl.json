@@ -1500,5 +1500,7 @@
   "Keep it installed": "Zostaw zainstalowany",
   "Undo the trial of {name}": "Cofnij próbę {name}",
   "Try it, then undo": "Wypróbuj, potem cofnij",
-  "Installs it on this PC while recording every change, shows you what it did, then removes all of it. A restore point is made first.": "Instaluje na tym komputerze, zapisując każdą zmianę, pokazuje, co zrobiła, a potem wszystko usuwa. Najpierw tworzony jest punkt przywracania."
+  "Installs it on this PC while recording every change, shows you what it did, then removes all of it. A restore point is made first.": "Instaluje na tym komputerze, zapisując każdą zmianę, pokazuje, co zrobiła, a potem wszystko usuwa. Najpierw tworzony jest punkt przywracania.",
+  "Close the program if it is running": "Zamknij program, jeśli jest uruchomiony",
+  "Running copies of the program being removed are asked to close (so they can save their work) and its files are deleted at once. Other programs are never closed.": "Uruchomione kopie usuwanego programu są proszone o zamknięcie (aby mogły zapisać pracę), a jego pliki są usuwane od razu. Inne programy nigdy nie są zamykane."
 }

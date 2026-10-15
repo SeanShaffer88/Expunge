@@ -1495,5 +1495,7 @@
   "Keep it installed": "Оставить установленным",
   "Undo the trial of {name}": "Отменить пробу {name}",
   "Try it, then undo": "Попробовать и отменить",
-  "Installs it on this PC while recording every change, shows you what it did, then removes all of it. A restore point is made first.": "Устанавливает на этот компьютер, записывая каждое изменение, показывает, что было сделано, и затем всё удаляет. Сначала создаётся точка восстановления."
+  "Installs it on this PC while recording every change, shows you what it did, then removes all of it. A restore point is made first.": "Устанавливает на этот компьютер, записывая каждое изменение, показывает, что было сделано, и затем всё удаляет. Сначала создаётся точка восстановления.",
+  "Close the program if it is running": "Закрывать программу, если она запущена",
+  "Running copies of the program being removed are asked to close (so they can save their work) and its files are deleted at once. Other programs are never closed.": "Запущенным копиям удаляемой программы предлагается закрыться (чтобы они могли сохранить работу), и её файлы удаляются сразу. Другие программы никогда не закрываются."
 }

@@ -1495,5 +1495,7 @@
   "Keep it installed": "Mantenerlo instalado",
   "Undo the trial of {name}": "Deshacer la prueba de {name}",
   "Try it, then undo": "Probar y deshacer",
-  "Installs it on this PC while recording every change, shows you what it did, then removes all of it. A restore point is made first.": "Lo instala en este PC registrando cada cambio, te muestra lo que hizo y luego lo elimina todo. Antes se crea un punto de restauración."
+  "Installs it on this PC while recording every change, shows you what it did, then removes all of it. A restore point is made first.": "Lo instala en este PC registrando cada cambio, te muestra lo que hizo y luego lo elimina todo. Antes se crea un punto de restauración.",
+  "Close the program if it is running": "Cerrar el programa si se está ejecutando",
+  "Running copies of the program being removed are asked to close (so they can save their work) and its files are deleted at once. Other programs are never closed.": "Se pide a las copias en ejecución del programa que se va a quitar que se cierren (para que puedan guardar su trabajo) y sus archivos se eliminan al momento. Nunca se cierran otros programas."
 }

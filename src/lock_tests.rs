@@ -276,3 +276,66 @@ fn stopping_a_service_that_does_not_exist_is_not_an_error() {
         .unwrap_or_else(|e| panic!("stop_service: {e:#}"));
     assert_eq!(r, ServiceStop::NotFound);
 }
+
+#[test]
+fn the_running_program_is_closed_and_its_files_removed_at_once() {
+    let Some(helper) = helper() else { return };
+    let tmp = tempfile::tempdir().unwrap();
+    let app = tmp.path().join("App");
+    std::fs::create_dir_all(&app).unwrap();
+    // The program runs from its own folder, holding its own data open.
+    let exe = app.join("App.exe");
+    std::fs::copy(&helper, &exe).unwrap();
+    let data = app.join("state.db");
+    std::fs::write(&data, b"x").unwrap();
+    let mut h = Holder::start(&exe, &["open", &path_str(&data), "300"]);
+
+    let res = run(
+        vec![Action::DeleteTree {
+            path: path_str(&app),
+        }],
+        &ExecOptions {
+            close_programs: true,
+            ..Default::default()
+        },
+    );
+    assert!(h.0.try_wait().unwrap().is_some(), "the program was closed");
+    assert!(res.iter().all(|r| r.ok), "{res:#?}");
+    assert_eq!(res[0].description, "Close the running program");
+    assert!(
+        res[0].message.contains(&format!("(process {})", h.pid())),
+        "{res:#?}"
+    );
+    assert_eq!(res[1].message, "deleted", "{res:#?}");
+    assert!(!app.exists());
+}
+
+#[test]
+fn a_program_that_only_loaded_one_of_the_files_is_not_closed() {
+    let Some(helper) = helper() else { return };
+    let tmp = tempfile::tempdir().unwrap();
+    let app = tmp.path().join("App");
+    std::fs::create_dir_all(&app).unwrap();
+    // An add-in: the host runs from elsewhere and loaded the program's DLL.
+    std::fs::copy(&helper, app.join("App.exe")).unwrap();
+    let dll = app.join("AddIn.dll");
+    copy_system_dll(&dll);
+    let mut h = Holder::start(&helper, &["load", &path_str(&dll), "120"]);
+
+    let res = run(
+        vec![Action::DeleteTree {
+            path: path_str(&app),
+        }],
+        &ExecOptions {
+            close_programs: true,
+            ..Default::default()
+        },
+    );
+    assert!(
+        h.0.try_wait().unwrap().is_none(),
+        "the host must keep running"
+    );
+    assert_eq!(res.len(), 1, "nothing was closed: {res:#?}");
+    assert!(!app.join("App.exe").exists());
+    assert!(dll.exists());
+}

@@ -1500,5 +1500,7 @@
   "Keep it installed": "Installiert lassen",
   "Undo the trial of {name}": "Test von {name} rückgängig machen",
   "Try it, then undo": "Ausprobieren, dann rückgängig machen",
-  "Installs it on this PC while recording every change, shows you what it did, then removes all of it. A restore point is made first.": "Installiert es auf diesem PC, zeichnet dabei jede Änderung auf, zeigt dir, was es getan hat, und entfernt dann alles wieder. Vorher wird ein Wiederherstellungspunkt erstellt."
+  "Installs it on this PC while recording every change, shows you what it did, then removes all of it. A restore point is made first.": "Installiert es auf diesem PC, zeichnet dabei jede Änderung auf, zeigt dir, was es getan hat, und entfernt dann alles wieder. Vorher wird ein Wiederherstellungspunkt erstellt.",
+  "Close the program if it is running": "Das Programm schließen, wenn es läuft",
+  "Running copies of the program being removed are asked to close (so they can save their work) and its files are deleted at once. Other programs are never closed.": "Laufende Instanzen des zu entfernenden Programms werden gebeten, sich zu schließen (damit sie ihre Arbeit speichern können), und seine Dateien werden sofort gelöscht. Andere Programme werden nie geschlossen."
 }

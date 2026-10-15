@@ -1500,5 +1500,7 @@
   "Keep it installed": "설치된 상태로 두기",
   "Undo the trial of {name}": "{name} 체험 되돌리기",
   "Try it, then undo": "사용해 보고 되돌리기",
-  "Installs it on this PC while recording every change, shows you what it did, then removes all of it. A restore point is made first.": "모든 변경 사항을 기록하면서 이 PC에 설치하고, 무엇을 했는지 보여 준 다음 모두 제거합니다. 먼저 복원 지점을 만듭니다."
+  "Installs it on this PC while recording every change, shows you what it did, then removes all of it. A restore point is made first.": "모든 변경 사항을 기록하면서 이 PC에 설치하고, 무엇을 했는지 보여 준 다음 모두 제거합니다. 먼저 복원 지점을 만듭니다.",
+  "Close the program if it is running": "프로그램이 실행 중이면 닫기",
+  "Running copies of the program being removed are asked to close (so they can save their work) and its files are deleted at once. Other programs are never closed.": "제거할 프로그램의 실행 중인 복사본에 종료를 요청하고(작업을 저장할 수 있음) 파일을 바로 삭제합니다. 다른 프로그램은 절대 닫지 않습니다."
 }

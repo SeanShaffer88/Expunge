@@ -344,6 +344,7 @@ impl App {
                 dry_run: false,
                 use_recycle_bin: self.settings.use_recycle_bin && !simple,
                 restart_explorer: self.settings.restart_explorer,
+                close_programs: self.settings.close_programs,
             };
             flow.job = Some(Job::spawn(ctx, move |_| {
                 let mut writer = if backup_on {

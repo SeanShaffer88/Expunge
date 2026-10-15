@@ -420,6 +420,10 @@ impl App {
                             .on_hover_text(t("Everything is backed up either way. This additionally keeps removed files in the Recycle Bin, using extra disk space."))
                             .changed();
                         changed |= ui
+                            .checkbox(&mut self.settings.close_programs, t("Close the program if it is running"))
+                            .on_hover_text(t("Running copies of the program being removed are asked to close (so they can save their work) and its files are deleted at once. Other programs are never closed."))
+                            .changed();
+                        changed |= ui
                             .checkbox(&mut self.settings.restart_explorer, t("Restart Windows Explorer if it is using the program's files"))
                             .on_hover_text(t("Shell extensions stay loaded in Explorer until it restarts. Restarting it during the removal deletes them at once instead of at the next restart. The taskbar disappears for a moment."))
                             .changed();

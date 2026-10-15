@@ -1495,5 +1495,7 @@
   "Keep it installed": "インストールしたままにする",
   "Undo the trial of {name}": "{name} の試用を元に戻す",
   "Try it, then undo": "試してから元に戻す",
-  "Installs it on this PC while recording every change, shows you what it did, then removes all of it. A restore point is made first.": "すべての変更を記録しながらこの PC にインストールし、何をしたかを表示してから、すべて削除します。先に復元ポイントを作成します。"
+  "Installs it on this PC while recording every change, shows you what it did, then removes all of it. A restore point is made first.": "すべての変更を記録しながらこの PC にインストールし、何をしたかを表示してから、すべて削除します。先に復元ポイントを作成します。",
+  "Close the program if it is running": "実行中のプログラムを閉じる",
+  "Running copies of the program being removed are asked to close (so they can save their work) and its files are deleted at once. Other programs are never closed.": "削除するプログラムの実行中のコピーに終了を求め (作業を保存できます)、そのファイルをすぐに削除します。ほかのプログラムが閉じられることはありません。"
 }

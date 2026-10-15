@@ -166,6 +166,9 @@ pub struct ExecOptions {
     /// program's DLLs loaded (shell extensions), and start it again after,
     /// so those files are deleted now instead of at the next restart.
     pub restart_explorer: bool,
+    /// Close running copies of the program being removed (only processes
+    /// whose own .exe is among the files to delete) before deleting.
+    pub close_programs: bool,
 }
 
 /// How long a service gets to stop before its removal goes ahead anyway.
@@ -577,14 +580,34 @@ pub fn execute_plan_with(
                 _ => std::cmp::Ordering::Equal,
             })
     });
+    let allowed: Vec<&Action> = items
+        .iter()
+        .filter(|i| refusal(&i.action, protected).is_none())
+        .map(|i| &i.action)
+        .collect();
+    if opts.close_programs && !opts.dry_run {
+        let exes = crate::locks::program_paths(allowed.iter().copied());
+        let refs: Vec<&Path> = exes.iter().map(|p| p.as_path()).collect();
+        let c = crate::locks::close_programs(&refs);
+        if !c.closed.is_empty() {
+            results.push(ActionResult::ok(
+                "Close the running program",
+                format!("closed {}", c.closed.join(", ")),
+            ));
+        }
+        if !c.still_running.is_empty() {
+            results.push(ActionResult::err(
+                "Close the running program",
+                format!(
+                    "{} kept running; files it uses will be deleted at the next restart",
+                    c.still_running.join(", ")
+                ),
+            ));
+        }
+    }
     // Explorer is closed once for the whole removal, not per file.
     let explorer = if opts.restart_explorer && !opts.dry_run {
-        let modules = crate::locks::module_paths(
-            items
-                .iter()
-                .filter(|i| refusal(&i.action, protected).is_none())
-                .map(|i| &i.action),
-        );
+        let modules = crate::locks::module_paths(allowed.iter().copied());
         let refs: Vec<&Path> = modules.iter().map(|p| p.as_path()).collect();
         let pause = crate::locks::pause_explorer(&refs);
         if pause.is_some() {
@@ -1314,6 +1337,7 @@ mod protected_tests {
                 dry_run,
                 use_recycle_bin: false,
                 restart_explorer: false,
+                close_programs: false,
             };
             let results = execute_plan_with(&plan_of(actions.clone()), &reg, None, &opts, &prot);
             assert_eq!(results.len(), n);

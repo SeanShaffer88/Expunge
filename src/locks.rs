@@ -105,20 +105,39 @@ pub fn is_module(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// Most files examined when looking for loaded modules in a folder being
-/// removed; keeps a huge folder from stalling the start of a removal.
+/// Program files (`.exe`).
+pub fn is_program(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("exe"))
+}
+
+/// Most files examined when looking for code in folders being removed;
+/// keeps a huge folder from stalling the start of a removal.
 pub const MODULE_SCAN_LIMIT: usize = 20_000;
 
 /// Code modules among the files these actions will delete: the files
 /// themselves, and modules inside folders removed with their contents.
 pub fn module_paths<'a>(actions: impl IntoIterator<Item = &'a Action>) -> Vec<PathBuf> {
+    files_matching(actions, is_module)
+}
+
+/// Program files among the files these actions will delete.
+pub fn program_paths<'a>(actions: impl IntoIterator<Item = &'a Action>) -> Vec<PathBuf> {
+    files_matching(actions, is_program)
+}
+
+fn files_matching<'a>(
+    actions: impl IntoIterator<Item = &'a Action>,
+    want: fn(&Path) -> bool,
+) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let mut seen = 0usize;
     for a in actions {
         match a {
             Action::DeleteFile { path } => {
                 let p = Path::new(path);
-                if is_module(p) && p.is_file() {
+                if want(p) && p.is_file() {
                     out.push(p.to_path_buf());
                 }
             }
@@ -132,7 +151,7 @@ pub fn module_paths<'a>(actions: impl IntoIterator<Item = &'a Action>) -> Vec<Pa
                     if seen > MODULE_SCAN_LIMIT {
                         return out;
                     }
-                    if e.file_type().is_file() && is_module(e.path()) {
+                    if e.file_type().is_file() && want(e.path()) {
                         out.push(e.into_path());
                     }
                 }
@@ -141,6 +160,35 @@ pub fn module_paths<'a>(actions: impl IntoIterator<Item = &'a Action>) -> Vec<Pa
         }
     }
     out
+}
+
+/// Running programs closed before a removal.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Closed {
+    /// "Atom (process 4120)"
+    pub closed: Vec<String>,
+    /// Ones that were still running afterwards.
+    pub still_running: Vec<String>,
+}
+
+/// Close every running process whose own program file is one of `exes`
+/// (the program being removed). It is asked to close first, so it can save
+/// its work, and ended if it hasn't after Windows' 30-second grace period.
+/// Processes that only have one of the program's files loaded or open (an
+/// add-in inside another application, say) are never closed; nor are
+/// services, Explorer or parts of Windows.
+pub fn close_programs(exes: &[&Path]) -> Closed {
+    if exes.is_empty() {
+        return Closed::default();
+    }
+    #[cfg(windows)]
+    {
+        crate::platform::windows::close_programs(exes)
+    }
+    #[cfg(not(windows))]
+    {
+        Closed::default()
+    }
 }
 
 /// How stopping a service went.
@@ -315,7 +363,26 @@ mod tests {
     }
 
     #[test]
+    fn programs_are_found_by_extension() {
+        let tmp = tempfile::tempdir().unwrap();
+        let d = tmp.path().join("App");
+        std::fs::create_dir_all(d.join("bin")).unwrap();
+        for f in ["App.EXE", "bin/helper.exe", "bin/core.dll", "notes.exe.txt"] {
+            std::fs::write(d.join(f), b"x").unwrap();
+        }
+        let mut got: Vec<String> = program_paths(&[Action::DeleteTree {
+            path: d.to_string_lossy().into(),
+        }])
+        .iter()
+        .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+        .collect();
+        got.sort();
+        assert_eq!(got, ["App.EXE", "helper.exe"]);
+    }
+
+    #[test]
     fn queries_with_nothing_to_ask_are_empty() {
+        assert_eq!(close_programs(&[]), Closed::default());
         assert!(file_holders(&[]).is_empty());
         assert!(pause_explorer(&[]).is_none());
     }

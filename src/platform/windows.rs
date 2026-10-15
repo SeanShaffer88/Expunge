@@ -1170,6 +1170,95 @@ pub fn pause_explorer(paths: &[&Path]) -> Option<ExplorerPause> {
     Some(ExplorerPause { session })
 }
 
+/// The full path of a process's program file.
+fn process_image(pid: u32) -> Option<String> {
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    let h = OwnedHandle::new(unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) })?;
+    let mut buf = vec![0u16; 32_768];
+    let mut len = buf.len() as u32;
+    let ok = unsafe { QueryFullProcessImageNameW(h.get(), 0, buf.as_mut_ptr(), &mut len) };
+    (ok != 0).then(|| String::from_utf16_lossy(&buf[..len as usize]))
+}
+
+/// One spelling for a path whatever form it was given in (short 8.3 names,
+/// `..`, case), for comparing two paths to the same file.
+fn same_file_key(p: &Path) -> String {
+    fold(
+        &std::fs::canonicalize(p)
+            .unwrap_or_else(|_| p.to_path_buf())
+            .to_string_lossy(),
+    )
+}
+
+pub fn close_programs(exes: &[&Path]) -> crate::locks::Closed {
+    use std::collections::HashSet;
+    use std::time::{Duration, Instant};
+    let mut out = crate::locks::Closed::default();
+    let Some(query) = RmSession::start() else {
+        return out;
+    };
+    if !query.register_files(exes) {
+        return out;
+    }
+    let wanted: HashSet<String> = exes.iter().map(|p| same_file_key(p)).collect();
+    let mut procs: Vec<RM_UNIQUE_PROCESS> = Vec::new();
+    let mut names: Vec<(u32, String)> = Vec::new();
+    for i in query.list() {
+        if matches!(i.ApplicationType, RM_SERVICE | RM_EXPLORER | RM_CRITICAL) {
+            continue;
+        }
+        let pid = i.Process.dwProcessId;
+        // Only the program itself: its own .exe is being removed.
+        let Some(image) = process_image(pid) else {
+            continue;
+        };
+        if !wanted.contains(&same_file_key(Path::new(&image))) {
+            continue;
+        }
+        if names.iter().any(|(p, _)| *p == pid) {
+            continue;
+        }
+        let mut name = from_wide_buf(&i.strAppName);
+        if name.is_empty() {
+            name = crate::platform::leaf_name(&image).to_string();
+        }
+        procs.push(i.Process);
+        names.push((pid, format!("{name} (process {pid})")));
+    }
+    drop(query);
+    if procs.is_empty() {
+        return out;
+    }
+    let shut = RmSession::start().is_some_and(|s| {
+        let rc = unsafe {
+            RmRegisterResources(
+                s.0,
+                0,
+                std::ptr::null(),
+                procs.len() as u32,
+                procs.as_ptr(),
+                0,
+                std::ptr::null(),
+            )
+        };
+        rc == 0 && unsafe { RmShutdown(s.0, RM_FORCE_SHUTDOWN, None) } == 0
+    });
+    let deadline = Instant::now() + Duration::from_secs(if shut { 10 } else { 0 });
+    for (pid, name) in names {
+        while process_alive(pid) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        if process_alive(pid) {
+            out.still_running.push(name);
+        } else {
+            out.closed.push(name);
+        }
+    }
+    out
+}
+
 // ---------------------------------------------------------------------------
 // Services: stop and wait
 // ---------------------------------------------------------------------------
@@ -1239,7 +1328,13 @@ pub fn stop_service(name: &str, timeout: std::time::Duration) -> Result<crate::l
         )
     }) else {
         let err = unsafe { GetLastError() };
-        if err == ERROR_SERVICE_DOES_NOT_EXIST {
+        // A service exists exactly when its key does; don't depend on which
+        // error code this Windows build reports for a missing one.
+        let key = format!("SYSTEM\\CurrentControlSet\\Services\\{name}");
+        let exists = RegKey::predef(HKEY_LOCAL_MACHINE)
+            .open_subkey_with_flags(&key, KEY_READ)
+            .is_ok();
+        if err == ERROR_SERVICE_DOES_NOT_EXIST || !exists {
             return Ok(ServiceStop::NotFound);
         }
         return Err(anyhow!(

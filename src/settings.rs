@@ -50,6 +50,8 @@ pub struct Settings {
     /// shell extensions loaded, so they are deleted at once rather than at
     /// the next restart. It starts again when the removal is done.
     pub restart_explorer: bool,
+    /// Close running copies of a program before removing it.
+    pub close_programs: bool,
     /// Show entries flagged as SystemComponent in the program list.
     pub show_system_components: bool,
     /// Show Microsoft Store apps in the program list.
@@ -184,6 +186,7 @@ impl Default for Settings {
             confirm_actions: true,
             use_recycle_bin: false,
             restart_explorer: true,
+            close_programs: true,
             show_system_components: false,
             show_store_apps: false,
             advanced_mode: false,
