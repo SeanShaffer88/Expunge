@@ -558,7 +558,7 @@ impl App {
                 }
                 if theme::nav_item(
                     ui,
-                    "📦",
+                    "🎒",
                     &t("Portable App Builder"),
                     self.tab == Tab::Builder,
                     None,

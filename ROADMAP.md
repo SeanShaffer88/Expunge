@@ -13,8 +13,10 @@ Every planned feature has been built. The items below are ideas for after versio
 **Monitoring**
 - **Per-value live registry view** — the live activity panel shows which registry areas change; listing each value as it changes would need event tracing (ETW).
 
-**Moving programs**
-- **MSIX registry support** — include the installation's registry entries in MSIX packages (Registry.dat).
+**Portable App Builder**
+- **Drive-letter and path fixing** — find absolute paths inside captured settings files and write matching `[FileWrite]` sections, so settings follow the drive.
+- **Dependency hints** — detect Java, .NET and Visual C++ runtimes the program needs and fill in `[Dependencies]` in appinfo.ini.
+- **A sandbox for Windows 11 Home** — Windows Sandbox needs Pro, Enterprise or Education; a Hyper-V or other virtual machine option would keep Home PCs untouched too.
 
 **Everything else**
 - **More integration tests** — add WiX bundles and Squirrel installers, and run on Windows 11 client images when GitHub offers them.

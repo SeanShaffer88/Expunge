@@ -152,6 +152,9 @@ impl App {
                 if action_row(ui, "⏪", "System Restore", "Create restore points or roll Windows back to an earlier state") {
                     self.tab = Tab::Restore;
                 }
+                if action_row(ui, "🎒", "Make a portable app", "Turn a program's installer into a PortableApps.com package") {
+                    self.tab = Tab::Builder;
+                }
 
                 if !self.logs.logs.is_empty() {
                     ui.add_space(16.0);

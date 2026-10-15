@@ -297,6 +297,92 @@ pub fn find_program_dir(cs: &ChangeSet, folders: &Folders) -> Option<String> {
         }
     }
     best.map(|(_, p)| p)
+        .or_else(|| install_location(cs))
+        .or_else(|| changed_program_root(cs, &program_roots(folders)))
+}
+
+/// The InstallLocation the installer registered, if it exists.
+fn install_location(cs: &ChangeSet) -> Option<String> {
+    let d = crate::snapshot::detect_program(cs)?;
+    let is_loc = |key: &str, name: &str| {
+        key.eq_ignore_ascii_case(&d.key) && name.eq_ignore_ascii_case("InstallLocation")
+    };
+    let loc = cs
+        .keys_added
+        .iter()
+        .find(|k| k.path.eq_ignore_ascii_case(&d.key))
+        .and_then(|k| k.get_string("InstallLocation"))
+        .or_else(|| {
+            cs.values_added
+                .iter()
+                .find(|v| is_loc(&v.key, &v.value.name))
+                .and_then(|v| v.value.as_string())
+        })
+        .or_else(|| {
+            cs.values_modified
+                .iter()
+                .find(|v| is_loc(&v.key, &v.after.name))
+                .and_then(|v| v.after.as_string())
+        })?;
+    let loc = loc
+        .trim()
+        .trim_matches('"')
+        .trim_end_matches('\\')
+        .to_string();
+    (!loc.is_empty() && Path::new(&loc).is_dir()).then_some(loc)
+}
+
+/// Folders programs are installed into (each program gets a folder inside).
+fn program_roots(folders: &Folders) -> Vec<String> {
+    let mut roots: Vec<String> = ["ProgramFiles", "ProgramFiles(x86)", "ProgramW6432"]
+        .iter()
+        .filter_map(|k| std::env::var(k).ok())
+        .collect();
+    for (real, var) in &folders.map {
+        if var == "%LOCALAPPDATA%" {
+            roots.push(format!("{real}\\Programs"));
+            roots.push(real.clone());
+        }
+    }
+    roots.push("C:\\Program Files".into());
+    roots.push("C:\\Program Files (x86)".into());
+    roots
+}
+
+/// When the program's folder already existed (an upgrade, or a program that
+/// was already installed): the folder under a program root whose program
+/// files changed the most.
+fn changed_program_root(cs: &ChangeSet, roots: &[String]) -> Option<String> {
+    let mut totals: Vec<(String, u64)> = Vec::new();
+    let changed = cs
+        .files_added
+        .iter()
+        .filter(|f| !f.is_dir)
+        .chain(cs.files_modified.iter().map(|m| &m.after));
+    for f in changed {
+        let Some(root) = roots.iter().find(|r| inside(&f.path, r)) else {
+            continue;
+        };
+        let rest = &f.path[root.len() + 1..];
+        let Some((top, _)) = rest.split_once('\\') else {
+            continue;
+        };
+        let dir = format!("{root}\\{top}");
+        // Only folders that hold a changed program file count.
+        let weight = f.size + if is_exe(&f.path) { 1 << 40 } else { 0 };
+        match totals
+            .iter_mut()
+            .find(|(d, _)| d.eq_ignore_ascii_case(&dir))
+        {
+            Some((_, t)) => *t += weight,
+            None => totals.push((dir, weight)),
+        }
+    }
+    totals
+        .into_iter()
+        .filter(|(_, t)| *t >= 1 << 40)
+        .max_by_key(|(_, t)| *t)
+        .map(|(d, _)| d)
 }
 
 /// The program's main executable inside `program_dir`: the target of a new
@@ -334,11 +420,36 @@ pub fn find_main_exe(cs: &ChangeSet, program_dir: &str, app_name: &str) -> Optio
         .filter(|c| c.is_alphanumeric())
         .collect();
     let depth = |p: &str| p.matches('\\').count();
-    cs.files_added
+    let mut candidates: Vec<FileEntry> = cs
+        .files_added
         .iter()
+        .chain(cs.files_modified.iter().map(|m| &m.after))
         .filter(|f| {
             !f.is_dir && is_exe(&f.path) && inside(&f.path, program_dir) && !looks_bad(&f.path)
         })
+        .cloned()
+        .collect();
+    if candidates.is_empty() {
+        // The folder came from InstallLocation: look at what is on disk.
+        for e in walkdir::WalkDir::new(program_dir)
+            .max_depth(3)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            let p = e.path().to_string_lossy().to_string();
+            if e.file_type().is_file() && is_exe(&p) && !looks_bad(&p) {
+                let size = e.metadata().map(|m| m.len()).unwrap_or(0);
+                candidates.push(FileEntry {
+                    path: p,
+                    is_dir: false,
+                    size,
+                    mtime: 0,
+                });
+            }
+        }
+    }
+    candidates
+        .iter()
         .max_by_key(|f| {
             let stem: String = leaf(&f.path)
                 .to_lowercase()
@@ -516,7 +627,15 @@ pub fn build_package(
         ));
     }
     let program_dir = find_program_dir(cs, folders)
-        .ok_or_else(|| anyhow!("no program files were found in the captured changes"))?;
+        .ok_or_else(|| {
+            let st = cs.stats();
+            anyhow!(
+                "no program files were found in the captured changes ({} files and {} folders added, {} files changed). Did the installer finish, and was it installed for this user or all users?",
+                st.files_added,
+                st.dirs_added,
+                st.files_modified
+            )
+        })?;
     let exe = find_main_exe(cs, &program_dir, &d.name)
         .ok_or_else(|| anyhow!("no program file (.exe) was found in {program_dir}"))?;
     let mut warnings = Vec::new();
@@ -1128,6 +1247,27 @@ mod tests {
         assert_eq!(
             find_main_exe(&cs2, &pd, "Foo").unwrap(),
             "C:\\Program Files\\Foo\\foo.exe"
+        );
+    }
+
+    #[test]
+    fn finds_an_existing_program_folder_that_changed() {
+        let changed = |p: &str, size| crate::model::FileChange {
+            before: file(p, 1),
+            after: file(p, size),
+        };
+        let cs = ChangeSet {
+            files_modified: vec![
+                changed("C:\\Program Files\\7-Zip\\7zFM.exe", 900_000),
+                changed("C:\\Program Files\\7-Zip\\7z.dll", 1_800_000),
+                changed("C:\\Program Files\\Big\\data.bin", 900_000_000),
+            ],
+            ..Default::default()
+        };
+        let roots = vec!["C:\\Program Files".to_string()];
+        assert_eq!(
+            changed_program_root(&cs, &roots).unwrap(),
+            "C:\\Program Files\\7-Zip"
         );
     }
 
