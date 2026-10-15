@@ -10,12 +10,15 @@ use expunge_core::i18n::{t, tf};
 use expunge_core::model::human_size;
 use expunge_core::restore::{self, Protection, RestorePoint};
 
+/// Restore points (or why they couldn't be read) and System Protection.
+type Loaded = (Result<Vec<RestorePoint>, String>, Protection);
+
 #[derive(Default)]
 pub struct RestoreState {
     pub loaded: bool,
     pub points: Option<Result<Vec<RestorePoint>, String>>,
     pub protection: Option<Protection>,
-    pub load_job: Option<Job<(Result<Vec<RestorePoint>, String>, Protection)>>,
+    pub load_job: Option<Job<Loaded>>,
     /// A create, delete or settings change in progress; returns a message.
     pub action_job: Option<Job<Result<String, String>>>,
     pub message: Option<Result<String, String>>,

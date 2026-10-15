@@ -111,7 +111,7 @@ pub fn parse_points(json: &str) -> Vec<RestorePoint> {
             kind: Kind::from_type(r.restore_point_type),
         })
         .collect();
-    v.sort_by(|a, b| b.sequence.cmp(&a.sequence));
+    v.sort_by_key(|p| std::cmp::Reverse(p.sequence));
     v
 }
 
