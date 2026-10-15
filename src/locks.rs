@@ -172,8 +172,9 @@ pub struct Closed {
 }
 
 /// Close every running process whose own program file is one of `exes`
-/// (the program being removed). It is asked to close first, so it can save
-/// its work, and ended if it hasn't after Windows' 30-second grace period.
+/// (the program being removed). A program with a window is asked to close
+/// first, so it can save its work, and ended if it hasn't after Windows'
+/// 30-second grace period; console and windowless ones are ended at once.
 /// Processes that only have one of the program's files loaded or open (an
 /// add-in inside another application, say) are never closed; nor are
 /// services, Explorer or parts of Windows.

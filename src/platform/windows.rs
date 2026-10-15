@@ -1001,6 +1001,8 @@ const RM_FORCE_SHUTDOWN: u32 = 0x1;
 const RM_SERVICE: i32 = 3;
 const RM_EXPLORER: i32 = 4;
 const RM_CRITICAL: i32 = 1000;
+const RM_MAIN_WINDOW: i32 = 1;
+const RM_OTHER_WINDOW: i32 = 2;
 /// Paths registered with one Restart Manager session at most.
 const RM_MAX_FILES: usize = 4096;
 
@@ -1170,6 +1172,14 @@ pub fn pause_explorer(paths: &[&Path]) -> Option<ExplorerPause> {
     Some(ExplorerPause { session })
 }
 
+/// End a process at once.
+fn end_process(pid: u32) {
+    use windows_sys::Win32::System::Threading::{OpenProcess, TerminateProcess, PROCESS_TERMINATE};
+    if let Some(h) = OwnedHandle::new(unsafe { OpenProcess(PROCESS_TERMINATE, 0, pid) }) {
+        unsafe { TerminateProcess(h.get(), 1) };
+    }
+}
+
 /// The full path of a process's program file.
 fn process_image(pid: u32) -> Option<String> {
     use windows_sys::Win32::System::Threading::{
@@ -1203,7 +1213,12 @@ pub fn close_programs(exes: &[&Path]) -> crate::locks::Closed {
         return out;
     }
     let wanted: HashSet<String> = exes.iter().map(|p| same_file_key(p)).collect();
+    // Programs with a window are asked to close, so they can save. Console
+    // and windowless ones are ended directly: the Restart Manager would
+    // signal their whole console, which can include whoever started them
+    // (Expunge's own command line, a terminal).
     let mut procs: Vec<RM_UNIQUE_PROCESS> = Vec::new();
+    let mut end_directly: Vec<u32> = Vec::new();
     let mut names: Vec<(u32, String)> = Vec::new();
     for i in query.list() {
         if matches!(i.ApplicationType, RM_SERVICE | RM_EXPLORER | RM_CRITICAL) {
@@ -1224,27 +1239,35 @@ pub fn close_programs(exes: &[&Path]) -> crate::locks::Closed {
         if name.is_empty() {
             name = crate::platform::leaf_name(&image).to_string();
         }
-        procs.push(i.Process);
+        if matches!(i.ApplicationType, RM_MAIN_WINDOW | RM_OTHER_WINDOW) {
+            procs.push(i.Process);
+        } else {
+            end_directly.push(pid);
+        }
         names.push((pid, format!("{name} (process {pid})")));
     }
     drop(query);
-    if procs.is_empty() {
+    if names.is_empty() {
         return out;
     }
-    let shut = RmSession::start().is_some_and(|s| {
-        let rc = unsafe {
-            RmRegisterResources(
-                s.0,
-                0,
-                std::ptr::null(),
-                procs.len() as u32,
-                procs.as_ptr(),
-                0,
-                std::ptr::null(),
-            )
-        };
-        rc == 0 && unsafe { RmShutdown(s.0, RM_FORCE_SHUTDOWN, None) } == 0
-    });
+    for pid in &end_directly {
+        end_process(*pid);
+    }
+    let shut = procs.is_empty()
+        || RmSession::start().is_some_and(|s| {
+            let rc = unsafe {
+                RmRegisterResources(
+                    s.0,
+                    0,
+                    std::ptr::null(),
+                    procs.len() as u32,
+                    procs.as_ptr(),
+                    0,
+                    std::ptr::null(),
+                )
+            };
+            rc == 0 && unsafe { RmShutdown(s.0, RM_FORCE_SHUTDOWN, None) } == 0
+        });
     let deadline = Instant::now() + Duration::from_secs(if shut { 10 } else { 0 });
     for (pid, name) in names {
         while process_alive(pid) && Instant::now() < deadline {

@@ -36,6 +36,36 @@ jobs:
             file: is.exe
             exe: '{file}'
             args: /VERYSILENT|/SUPPRESSMSGBOXES|/NORESTART|/SP-
+          # Per-user, under AppData; starts the program when it finishes.
+          - name: Squirrel (Atom)
+            url: https://github.com/atom/atom/releases/download/v1.60.0/AtomSetup-x64.exe
+            file: atom.exe
+            exe: '{file}'
+            args: --silent
+            roots: '%LOCALAPPDATA%|%USERPROFILE%\.atom'
+          # A WiX Burn bundle (chained MSIs, Package Cache, a bundle entry
+          # besides the MSI's), with shell extensions and a tray program.
+          - name: WiX Burn bundle (PowerToys)
+            url: https://github.com/microsoft/PowerToys/releases/download/v0.101.2362.0/PowerToysSetup-0.101.2362.0-x64.exe
+            file: powertoys.exe
+            exe: '{file}'
+            args: /quiet|/norestart
+            roots: '%ProgramData%\Package Cache'
+          # Proprietary installer types with no stable public download: set
+          # the repository variables (Settings > Secrets and variables >
+          # Actions > Variables) to a setup file you may use for testing.
+          - name: InstallShield
+            url: ${{ vars.INSTALLSHIELD_URL }}
+            file: is_setup.exe
+            exe: '{file}'
+            args: ${{ vars.INSTALLSHIELD_ARGS || '/s|/v/qn' }}
+            needs_var: INSTALLSHIELD_URL
+          - name: Wise
+            url: ${{ vars.WISE_URL }}
+            file: wise_setup.exe
+            exe: '{file}'
+            args: ${{ vars.WISE_ARGS || '/s' }}
+            needs_var: WISE_URL
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -48,11 +78,13 @@ jobs:
           New-Item -ItemType Directory it, it/ExpungeData | Out-Null
           Copy-Item target/release/expunge.exe it/Expunge.exe
           New-Item it/portable -ItemType File | Out-Null
+          # Extra folders this installer type writes to (AppData, Package Cache).
+          $roots = @('${{ matrix.roots }}'.Split('|') | Where-Object { $_ } | ForEach-Object { @{ path = $_; recursive = $true } })
           @{
             first_run_done = $true
             registry_roots = @('HKLM\SOFTWARE', 'HKLM\SYSTEM\CurrentControlSet\Services', 'HKCU\Software', 'HKCU\Environment',
                                'HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment')
-            file_roots = @(
+            file_roots = $roots + @(
               @{ path = '%ProgramFiles%'; recursive = $true },
               @{ path = '%ProgramFiles(x86)%'; recursive = $true },
               @{ path = '%ProgramData%\Microsoft\Windows\Start Menu'; recursive = $true },
@@ -62,8 +94,14 @@ jobs:
             )
           } | ConvertTo-Json -Depth 5 | Set-Content it/ExpungeData/settings.json
       - name: Download installer
+        id: download
         shell: pwsh
         run: |
+          if ('${{ matrix.needs_var }}' -and -not '${{ matrix.url }}') {
+            Write-Output "::notice title=${{ matrix.name }} not tested::Set the repository variable ${{ matrix.needs_var }} to a setup file's URL to include this installer type."
+            "skip=true" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
           $out = "$env:RUNNER_TEMP\${{ matrix.file }}"
           $urls = @("${{ matrix.url }}") + @("${{ matrix.mirror }}" | Where-Object { $_ })
           foreach ($u in $urls) {
@@ -76,6 +114,7 @@ jobs:
           }
           throw "could not download the installer"
       - name: Install under monitoring
+        if: steps.download.outputs.skip != 'true'
         id: monitor
         shell: pwsh
         run: |
@@ -109,6 +148,7 @@ jobs:
           "id=$($log.id)" >> $env:GITHUB_OUTPUT
           "name=$($log.name)" >> $env:GITHUB_OUTPUT
       - name: Make a silent installer from the log
+        if: steps.download.outputs.skip != 'true'
         shell: pwsh
         run: |
           $p = Start-Process ./it/Expunge.exe -ArgumentList 'repackage', '${{ steps.monitor.outputs.id }}', "$PWD\silent" -Wait -PassThru -NoNewWindow -RedirectStandardOutput out.txt -RedirectStandardError err.txt
@@ -118,13 +158,15 @@ jobs:
           if (-not $setup) { throw "no Setup.exe" }
           Write-Host "Silent setup: $($setup.Name) ($([math]::Round($setup.Length / 1MB, 1)) MB)"
       - name: Remove with Expunge
+        if: steps.download.outputs.skip != 'true'
         shell: pwsh
         run: |
-          $p = Start-Process ./it/Expunge.exe -ArgumentList 'revert', '${{ steps.monitor.outputs.id }}', '--keep-log' -Wait -PassThru -NoNewWindow -RedirectStandardOutput out.txt -RedirectStandardError err.txt
+          $p = Start-Process ./it/Expunge.exe -ArgumentList 'revert', '${{ steps.monitor.outputs.id }}', '--close-programs', '--restart-explorer', '--keep-log' -Wait -PassThru -NoNewWindow -RedirectStandardOutput out.txt -RedirectStandardError err.txt
           $out = (Get-Content out.txt) + (Get-Content err.txt)
           $out | ForEach-Object { Write-Host $_ }
           if ($p.ExitCode -ne 0) { $out | Select-String 'FAIL' | Select-Object -First 20 | ForEach-Object { Write-Output "::error::$_" }; throw "revert reported failures" }
       - name: Verify nothing is left
+        if: steps.download.outputs.skip != 'true'
         shell: pwsh
         run: |
           $p = Start-Process ./it/Expunge.exe -ArgumentList 'check-clean', '${{ steps.monitor.outputs.id }}' -Wait -PassThru -NoNewWindow -RedirectStandardOutput out.txt -RedirectStandardError err.txt
