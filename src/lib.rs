@@ -12,6 +12,7 @@ pub mod autoruns;
 pub mod backup;
 pub mod cache;
 pub mod cleaner;
+pub mod diskmap;
 pub mod features;
 pub mod i18n;
 pub mod leftovers;

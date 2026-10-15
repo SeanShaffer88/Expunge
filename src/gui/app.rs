@@ -20,6 +20,7 @@ pub enum Tab {
     Startup,
     Cleaner,
     Privacy,
+    Disk,
     Lab,
     Settings,
 }
@@ -71,6 +72,7 @@ pub struct App {
     pub programs: programs::ProgramsState,
     pub extras: super::extras::ExtrasState,
     pub privacy: super::privacy::PrivacyState,
+    pub disk: super::disk::DiskState,
     /// Transfer export or restore window.
     pub transfer: Option<super::transfer_ui::TransferUi>,
     pub monitor: monitor::MonitorState,
@@ -146,6 +148,7 @@ impl App {
             programs: Default::default(),
             extras: Default::default(),
             privacy: Default::default(),
+            disk: Default::default(),
             transfer: None,
             monitor: Default::default(),
             logs: Default::default(),
@@ -527,6 +530,11 @@ impl App {
                 ui.add_space(14.0);
                 ui.label(RichText::new(t("TOOLS")).small().color(theme::MUTED));
                 ui.add_space(2.0);
+                if theme::nav_item(ui, "📊", &t("Disk space"), self.tab == Tab::Disk, None)
+                    .clicked()
+                {
+                    self.tab = Tab::Disk;
+                }
                 if self.settings.advanced_mode
                     && theme::nav_item(ui, "🔁", &t("Windows Updates"), false, None).clicked()
                 {
@@ -580,6 +588,10 @@ impl App {
             ),
             Tab::Cleaner => ("Cleaner", "Free space taken by temporary files and caches"),
             Tab::Privacy => ("Anti-Telemetry", "Stop Windows collecting data, remove clutter, and tune Windows — every change can be undone"),
+            Tab::Disk => (
+                "Disk space",
+                "See which folders and files take up the most space",
+            ),
             Tab::Lab => (
                 "Installer Lab",
                 "Tools for developers: lint installers, test uninstallers, compare snapshots",
@@ -888,6 +900,11 @@ fn page_help(tab: Tab) -> &'static [&'static str] {
             "Pick a preset (Minimal is safe for everyone) or tick individual items, then click Apply. A restore point is created first.",
             "Every change is recorded: untick an item and apply again to undo it exactly.",
         ],
+        Tab::Disk => &[
+            "The map shows a drive or folder as blocks: the bigger the block, the more space it uses. Colors show the kind of file.",
+            "Click a block or double-click a list entry to look inside a folder. Use the arrow button or Backspace to go back up.",
+            "Nothing is deleted here. Use Show in File Explorer to deal with large files yourself, or the Programs and Cleaner pages to remove programs and junk safely.",
+        ],
         Tab::Lab => &[
             "Installer lint reviews a recorded installation and points out packaging problems, with advice on fixing them.",
             "Uninstaller test runs a program's own uninstaller and reports exactly what it left behind — useful for testing your own installers.",
@@ -1066,8 +1083,9 @@ impl App {
             let ctrl_tab = self.ctrl_tab.take();
             if let Some(back) = ctrl_tab {
                 let mut order = tabs.to_vec();
+                order.insert(8, Tab::Disk);
                 if self.settings.advanced_mode {
-                    order.insert(8, Tab::Lab);
+                    order.insert(9, Tab::Lab);
                 }
                 let pos = order.iter().position(|t| *t == self.tab).unwrap_or(0);
                 let n = order.len();
@@ -1173,6 +1191,7 @@ impl eframe::App for App {
             Tab::Startup => self.ui_startup(ctx),
             Tab::Cleaner => self.ui_cleaner(ctx),
             Tab::Privacy => self.ui_privacy(ctx),
+            Tab::Disk => self.ui_disk(ctx),
             Tab::Lab => self.ui_lab(ctx),
             Tab::Settings => self.ui_settings(ctx),
         }

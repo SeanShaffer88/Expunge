@@ -5,6 +5,7 @@ mod app;
 mod backups;
 mod cleaner;
 mod dashboard;
+mod disk;
 mod extras;
 mod lab;
 mod logs;

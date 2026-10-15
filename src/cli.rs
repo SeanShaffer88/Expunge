@@ -59,6 +59,8 @@ USAGE:
                                             silent install/uninstall scripts
   expunge orphans [--json]                  List registrations left by removed
                                             programs (pointing to missing files)
+  expunge disk [folder] [--top N] [--json]  Largest folders and files under a
+                                            folder or drive (default: C:\\)
   expunge backups                           List backups
   expunge restore <backup-id>               Undo a removal from its backup
   expunge --version | --help
@@ -427,6 +429,65 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                     return Ok(if failed == 0 { 0 } else { 2 });
                 }
                 _ => anyhow::bail!("usage: expunge transfer export|check|import …"),
+            }
+        }
+        "disk" => {
+            let folder = args
+                .get(1)
+                .filter(|a| !a.starts_with("--"))
+                .cloned()
+                .unwrap_or_else(|| {
+                    if cfg!(windows) {
+                        "C:\\".into()
+                    } else {
+                        "/".into()
+                    }
+                });
+            let top: usize = arg_value(&args, "--top")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(20);
+            let progress = expunge_core::snapshot::Progress::default();
+            let map = expunge_core::diskmap::scan(std::path::Path::new(&folder), &progress);
+            let entries = expunge_core::diskmap::largest(&map, top);
+            if has(&args, "--json") {
+                let items: Vec<_> = entries
+                    .iter()
+                    .map(|(path, size, dir)| {
+                        serde_json::json!({ "path": path, "bytes": size, "folder": dir })
+                    })
+                    .collect();
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "root": folder,
+                        "bytes": map.root.size,
+                        "files": map.root.files,
+                        "unreadable_folders": map.unreadable,
+                        "largest": items,
+                    })
+                );
+            } else {
+                println!(
+                    "{}: {} in {} files",
+                    folder,
+                    expunge_core::model::human_size(map.root.size),
+                    map.root.files
+                );
+                for (path, size, dir) in &entries {
+                    println!(
+                        "{:>10}  {}{}",
+                        expunge_core::model::human_size(*size),
+                        path,
+                        if *dir {
+                            std::path::MAIN_SEPARATOR_STR
+                        } else {
+                            ""
+                        }
+                    );
+                }
+                if map.unreadable > 0 {
+                    eprintln!("{} folders could not be read.", map.unreadable);
+                }
             }
         }
         "orphans" => {
