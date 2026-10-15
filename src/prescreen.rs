@@ -136,16 +136,16 @@ pub fn scan_bytes(hay: &[u8], size: u64) -> Vec<Finding> {
         if find(hay, needle) && seen.insert(*name) {
             out.push(Finding {
                 level: Level::Danger,
-                title: format!("Bundled adware: {name}"),
-                detail: format!("The setup file contains {name}, software used to install extra programs, toolbars or browser changes. Choose Custom or Advanced installation and untick every offer, or get the program from its official website."),
+                title: crate::i18n::tf("Bundled adware: {name}", &[("name", name.to_string())]),
+                detail: crate::i18n::tf("The setup file contains {name}, software used to install extra programs, toolbars or browser changes. Choose Custom or Advanced installation and untick every offer, or get the program from its official website.", &[("name", name.to_string())]),
             });
         }
     }
     if let Some(m) = MINERS.iter().find(|m| find(hay, m)) {
         out.push(Finding {
             level: Level::Danger,
-            title: "Coin miner".into(),
-            detail: format!("The setup file mentions {m}, which is used to mine cryptocurrency with your PC's power. Don't run it unless you know why it is there."),
+            title: crate::i18n::t("Coin miner"),
+            detail: crate::i18n::tf("The setup file mentions {name}, which is used to mine cryptocurrency with your PC's power. Don't run it unless you know why it is there.", &[("name", m.to_string())]),
         });
     }
     let offers: Vec<&str> = TRIAL_OFFERS
@@ -156,15 +156,15 @@ pub fn scan_bytes(hay: &[u8], size: u64) -> Vec<Finding> {
     if !offers.is_empty() {
         out.push(Finding {
             level: Level::Caution,
-            title: "Other software may be offered".into(),
-            detail: format!("The setup file mentions {}. Installers often offer such programs on a separate page that is ticked by default. Read every page and untick what you don't want.", offers.join(", ")),
+            title: crate::i18n::t("Other software may be offered"),
+            detail: crate::i18n::tf("The setup file mentions {list}. Installers often offer such programs on a separate page that is ticked by default. Read every page and untick what you don't want.", &[("list", offers.join(", "))]),
         });
     }
     if let Some(p) = OFFER_PHRASES.iter().find(|p| find(hay, p)) {
         out.push(Finding {
             level: Level::Caution,
-            title: "Offer screen".into(),
-            detail: format!("The setup contains text used by offer screens (\"{p}\"). Look for pre-ticked boxes and decline offers you don't want."),
+            title: crate::i18n::t("Offer screen"),
+            detail: crate::i18n::tf("The setup contains text used by offer screens (\"{text}\"). Look for pre-ticked boxes and decline offers you don't want.", &[("text", p.to_string())]),
         });
     }
     let web = (find(hay, "http://") || find(hay, "https://"))
@@ -172,8 +172,8 @@ pub fn scan_bytes(hay: &[u8], size: u64) -> Vec<Finding> {
     if size < 6 * 1024 * 1024 && web {
         out.push(Finding {
             level: Level::Info,
-            title: "Downloads during setup".into(),
-            detail: "This looks like a small web installer that downloads the program while it runs, so this check can't see everything it installs. Testing it in Windows Sandbox first shows what it really does.".into(),
+            title: crate::i18n::t("Downloads during setup"),
+            detail: crate::i18n::t("This looks like a small web installer that downloads the program while it runs, so this check can't see everything it installs. Testing it in Windows Sandbox first shows what it really does."),
         });
     }
     out
@@ -211,13 +211,13 @@ pub fn screen(path: &Path) -> Screening {
         crate::trust::Trust::Signed { .. } => {}
         crate::trust::Trust::Unsigned => s.findings.push(Finding {
             level: Level::Caution,
-            title: "Not digitally signed".into(),
-            detail: "Nobody vouches for this file. Most reputable software is signed; download it from the publisher's own website if you can.".into(),
+            title: crate::i18n::t("Not digitally signed"),
+            detail: crate::i18n::t("Nobody vouches for this file. Most reputable software is signed; download it from the publisher's own website if you can."),
         }),
         crate::trust::Trust::Invalid { reason, .. } => s.findings.push(Finding {
             level: Level::Danger,
-            title: "Broken signature".into(),
-            detail: format!("The file's digital signature doesn't check out ({reason}). It may have been altered after it was signed."),
+            title: crate::i18n::t("Broken signature"),
+            detail: crate::i18n::tf("The file's digital signature doesn't check out ({reason}). It may have been altered after it was signed.", &[("reason", crate::i18n::t(&reason.to_string()))]),
         }),
         _ => {}
     }
@@ -237,8 +237,8 @@ pub fn screen(path: &Path) -> Screening {
         if let Some(m) = mirrors.iter().find(|m| l.contains(*m)) {
             s.findings.push(Finding {
                 level: Level::Caution,
-                title: "Downloaded from a download site".into(),
-                detail: format!("This came from {} rather than the publisher. Some download sites wrap installers with their own offers.", m.trim_end_matches('/')),
+                title: crate::i18n::t("Downloaded from a download site"),
+                detail: crate::i18n::tf("This came from {site} rather than the publisher. Some download sites wrap installers with their own offers.", &[("site", m.trim_end_matches('/').to_string())]),
             });
         }
     }
