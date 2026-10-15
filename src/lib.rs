@@ -33,6 +33,7 @@ pub mod startup;
 pub mod store;
 pub mod transfer;
 pub mod trust;
+pub mod tweaks;
 pub mod updates;
 pub mod util;
 pub mod winget;

@@ -19,6 +19,7 @@ pub enum Tab {
     Backups,
     Startup,
     Cleaner,
+    Privacy,
     Lab,
     Settings,
 }
@@ -38,6 +39,10 @@ pub enum Confirm {
     SetFeature(String, bool),
     /// Run one deep (Windows) cleanup.
     DeepClean(expunge_core::slimmer::DeepItem),
+    /// Apply the ticked Anti-Telemetry changes.
+    ApplyTweaks,
+    /// Remove the ticked pre-installed apps.
+    RemoveBloat,
 }
 
 pub struct ConfirmDialog {
@@ -65,6 +70,7 @@ pub struct App {
     pub languages: Vec<(String, String)>,
     pub programs: programs::ProgramsState,
     pub extras: super::extras::ExtrasState,
+    pub privacy: super::privacy::PrivacyState,
     /// Transfer export or restore window.
     pub transfer: Option<super::transfer_ui::TransferUi>,
     pub monitor: monitor::MonitorState,
@@ -139,6 +145,7 @@ impl App {
             languages,
             programs: Default::default(),
             extras: Default::default(),
+            privacy: Default::default(),
             transfer: None,
             monitor: Default::default(),
             logs: Default::default(),
@@ -278,6 +285,8 @@ impl App {
             Confirm::CleanJunk => self.start_clean(),
             Confirm::SetFeature(name, enable) => self.set_feature(name, enable),
             Confirm::DeepClean(item) => self.start_deep(item),
+            Confirm::ApplyTweaks => self.start_apply_tweaks(false),
+            Confirm::RemoveBloat => self.start_remove_bloat(),
             Confirm::DeleteStartup(i) => self.delete_startup(i),
             Confirm::DeleteTask(i) => self.delete_task(i),
             Confirm::ResetSettings => {
@@ -489,7 +498,7 @@ impl App {
                 ui.add_space(14.0);
                 let monitoring = self.monitor.is_active();
                 let broken = self.programs.broken.len();
-                let items: [(Tab, &str, &str, Option<String>); 7] = [
+                let items: [(Tab, &str, &str, Option<String>); 8] = [
                     (Tab::Dashboard, "🏠", "Dashboard", None),
                     (
                         Tab::Programs,
@@ -507,6 +516,7 @@ impl App {
                     (Tab::Backups, "💾", "Backups", None),
                     (Tab::Startup, "🚀", "Startup", None),
                     (Tab::Cleaner, "🗑", "Cleaner", None),
+                    (Tab::Privacy, "🔒", "Anti-Telemetry", None),
                 ];
                 for (tab, icon, label, badge) in items {
                     if theme::nav_item(ui, icon, &t(label), self.tab == tab, badge).clicked() {
@@ -569,6 +579,7 @@ impl App {
                 "Programs, services and tasks that start with Windows",
             ),
             Tab::Cleaner => ("Cleaner", "Free space taken by temporary files and caches"),
+            Tab::Privacy => ("Anti-Telemetry", "Stop Windows collecting data, remove clutter, and tune Windows — every change can be undone"),
             Tab::Lab => (
                 "Installer Lab",
                 "Tools for developers: lint installers, test uninstallers, compare snapshots",
@@ -872,6 +883,11 @@ fn page_help(tab: Tab) -> &'static [&'static str] {
             "Programs and Windows leave temporary files behind. They are safe to delete and are recreated when needed.",
             "Click Scan to see how much space each kind uses, choose what to clean, then click Clean.",
         ],
+        Tab::Privacy => &[
+            "Windows sends data about how you use your PC to Microsoft and shows ads and suggestions. These switches turn that off.",
+            "Pick a preset (Minimal is safe for everyone) or tick individual items, then click Apply. A restore point is created first.",
+            "Every change is recorded: untick an item and apply again to undo it exactly.",
+        ],
         Tab::Lab => &[
             "Installer lint reviews a recorded installation and points out packaging problems, with advice on fixing them.",
             "Uninstaller test runs a program's own uninstaller and reports exactly what it left behind — useful for testing your own installers.",
@@ -1015,6 +1031,7 @@ impl App {
             Tab::Backups,
             Tab::Startup,
             Tab::Cleaner,
+            Tab::Privacy,
             Tab::Settings,
         ];
         let mut go: Option<Tab> = None;
@@ -1028,6 +1045,7 @@ impl App {
                 Key::Num6,
                 Key::Num7,
                 Key::Num8,
+                Key::Num9,
             ]
             .iter()
             .enumerate()
@@ -1049,7 +1067,7 @@ impl App {
             if let Some(back) = ctrl_tab {
                 let mut order = tabs.to_vec();
                 if self.settings.advanced_mode {
-                    order.insert(7, Tab::Lab);
+                    order.insert(8, Tab::Lab);
                 }
                 let pos = order.iter().position(|t| *t == self.tab).unwrap_or(0);
                 let n = order.len();
@@ -1154,6 +1172,7 @@ impl eframe::App for App {
             Tab::Backups => self.ui_backups(ctx),
             Tab::Startup => self.ui_startup(ctx),
             Tab::Cleaner => self.ui_cleaner(ctx),
+            Tab::Privacy => self.ui_privacy(ctx),
             Tab::Lab => self.ui_lab(ctx),
             Tab::Settings => self.ui_settings(ctx),
         }

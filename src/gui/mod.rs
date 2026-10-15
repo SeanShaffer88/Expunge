@@ -10,6 +10,7 @@ mod lab;
 mod logs;
 mod monitor;
 mod plan;
+mod privacy;
 mod programs;
 mod settings_tab;
 mod startup_tab;

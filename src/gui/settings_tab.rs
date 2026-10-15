@@ -26,7 +26,7 @@ const SHORTCUTS: &[(&str, &str)] = &[
     ),
     ("Delete", "Uninstall the selected program"),
     ("Esc", "Close a dialog or window, or leave a text box"),
-    ("Ctrl+1 … Ctrl+8", "Go to a page"),
+    ("Ctrl+1 … Ctrl+9", "Go to a page"),
     ("Ctrl+Tab / Ctrl+Shift+Tab", "Next / previous page"),
     ("Ctrl+F", "Search"),
     ("F5", "Refresh"),

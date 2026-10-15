@@ -61,6 +61,7 @@ It is a free, GPL-licensed alternative to commercial tools like Total Uninstall 
 - Hard-coded protection for critical folders and registry keys — they can never be deleted, whatever a log says.
 
 **Tools**
+- **Anti-Telemetry**: turn off Windows telemetry, ads, suggestions, Copilot and Recall; restrict app permissions; delay or pause updates; set a private DNS; remove pre-installed apps; run Windows repair tools. Minimal / Standard / Advanced presets, a restore point before every change, and exact one-click undo.
 - **Windows Updates** window (Advanced mode): list installed updates and uninstall individual ones (uses DISM, which works for modern cumulative updates; permanent servicing-stack updates are labelled).
 - **Startup manager**: Run keys and Startup folders (Task Manager-compatible enable/disable), services and drivers, scheduled tasks, plus (Advanced) every other autostart location: Winlogon, Active Setup, program replacements, AppInit DLLs, Explorer extensions, icon overlays, browser helpers, boot programs and WMI subscriptions.
 - **Junk cleaner**: temp files, crash and memory dumps, Windows logs, Delivery Optimization and Windows Update downloads, shader and browser caches, Prefetch, Recycle Bin.
@@ -75,7 +76,7 @@ It is a free, GPL-licensed alternative to commercial tools like Total Uninstall 
 - **Simple and Advanced modes**, chosen on first launch. Simple mode uses plain language and only offers options that can't harm Windows or slow the PC; Advanced mode shows every technical detail and tool.
 - **Help on every page** (Help button or F1) explaining terms like *snapshot* and *leftover* in everyday words.
 - **Safety labels** on every removal item: *Safe*, *Review* or *Careful*.
-- **Accessible**: screen-reader support, adjustable text size, high-contrast option, full keyboard shortcuts (Ctrl+1–8 pages, Ctrl+F search, F5 refresh, Delete uninstall, F1 help).
+- **Accessible**: screen-reader support, adjustable text size, high-contrast option, full keyboard shortcuts (Ctrl+1–9 pages, Ctrl+F search, F5 refresh, Delete uninstall, F1 help).
 
 **For developers — Installer Lab**
 - **Installer lint**: reviews a recorded installation for packaging mistakes (missing or incomplete uninstall entry, files in System32, per-user data from per-machine installs, PATH edits, autostart, services, scheduled tasks, shell extensions, file associations, firewall rules, changed shared values) with advice for each. Export as Markdown.
