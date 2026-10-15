@@ -20,6 +20,10 @@ pub struct LogsState {
     /// "Which program created this?" search.
     pub path_search: String,
     pub editing: bool,
+    /// Tags being edited, as typed.
+    pub tags_text: String,
+    /// Show only this group ("" = all).
+    pub group_filter: String,
     pub loader: super::Reload<Vec<InstallLog>>,
     pub repackage_job: Option<Job<Result<expunge_core::repackage::Summary, String>>>,
 }
@@ -209,6 +213,7 @@ fn clone_meta(l: &InstallLog) -> InstallLog {
         uninstall_key: l.uninstall_key.clone(),
         notes: l.notes.clone(),
         group: l.group.clone(),
+        tags: l.tags.clone(),
         changes: ChangeSet::default(),
     }
 }
@@ -341,6 +346,27 @@ impl App {
                     r.request_focus();
                     self.focus_search = false;
                 }
+                let mut groups: Vec<String> =
+                    self.logs.logs.iter().map(|l| l.group.clone()).filter(|g| !g.is_empty()).collect();
+                groups.sort_by_key(|g| g.to_lowercase());
+                groups.dedup();
+                if !groups.is_empty() {
+                    ui.add_space(4.0);
+                    egui::ComboBox::from_id_salt("log_group_filter")
+                        .selected_text(if self.logs.group_filter.is_empty() {
+                            t("All groups")
+                        } else {
+                            self.logs.group_filter.clone()
+                        })
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut self.logs.group_filter, String::new(), t("All groups"));
+                            for g in &groups {
+                                ui.selectable_value(&mut self.logs.group_filter, g.clone(), g);
+                            }
+                        });
+                } else {
+                    self.logs.group_filter.clear();
+                }
                 ui.add_space(6.0);
                 let f = self.logs.filter.to_lowercase();
                 egui::ScrollArea::vertical()
@@ -363,12 +389,18 @@ impl App {
                             .iter()
                             .enumerate()
                             .filter(|(_, l)| {
-                                f.is_empty()
-                                    || l.name.to_lowercase().contains(&f)
-                                    || l.publisher.to_lowercase().contains(&f)
+                                l.matches(&f)
+                                    && (self.logs.group_filter.is_empty()
+                                        || l.group == self.logs.group_filter)
                             })
                             .map(|(n, _)| n)
                             .collect();
+                        // Grouped logs first, by group name; ungrouped last.
+                        let mut shown = shown;
+                        shown.sort_by_key(|&n| {
+                            let g = &self.logs.logs[n].group;
+                            (g.is_empty(), g.to_lowercase())
+                        });
                         let cur =
                             self.logs.selected.as_ref().and_then(|id| {
                                 shown.iter().position(|&n| &self.logs.logs[n].id == id)
@@ -380,12 +412,19 @@ impl App {
                             self.logs.selected = Some(self.logs.logs[n].id.clone());
                             self.logs.editing = false;
                         }
-                        for (n, log) in self.logs.logs.iter().enumerate() {
-                            if !f.is_empty()
-                                && !log.name.to_lowercase().contains(&f)
-                                && !log.publisher.to_lowercase().contains(&f)
-                            {
-                                continue;
+                        let any_group = self.logs.logs.iter().any(|l| !l.group.is_empty());
+                        let mut last_group: Option<&str> = None;
+                        for &n in &shown {
+                            let log = &self.logs.logs[n];
+                            if any_group && last_group != Some(log.group.as_str()) {
+                                last_group = Some(log.group.as_str());
+                                ui.add_space(4.0);
+                                let title = if log.group.is_empty() {
+                                    t("Not in a group")
+                                } else {
+                                    log.group.clone()
+                                };
+                                ui.label(RichText::new(title.to_uppercase()).small().color(theme::MUTED));
                             }
                             let sel = self.logs.selected.as_deref() == Some(&log.id);
                             let fill = if sel {
@@ -400,6 +439,13 @@ impl App {
                                 .show(ui, |ui| {
                                     ui.set_width(ui.available_width());
                                     ui.label(RichText::new(&log.name).strong());
+                                    if !log.tags.is_empty() {
+                                        ui.horizontal_wrapped(|ui| {
+                                            for tag in &log.tags {
+                                                theme::badge(ui, tag, theme::MUTED);
+                                            }
+                                        });
+                                    }
                                     small_muted(
                                         ui,
                                         format!(
@@ -516,6 +562,7 @@ impl App {
                     });
                     if ui.button(t("Edit details")).clicked() {
                         self.logs.editing = !self.logs.editing;
+                        self.logs.tags_text = log.tags.join(", ");
                     }
                     if ui.button(t("Delete log")).clicked() {
                         self.ask(
@@ -546,6 +593,12 @@ impl App {
                         ui.label(t("Version"));
                         ui.text_edit_singleline(&mut l.version);
                         ui.end_row();
+                        ui.label(t("Group"));
+                        ui.add(egui::TextEdit::singleline(&mut l.group).hint_text(t("e.g. Work tools")));
+                        ui.end_row();
+                        ui.label(t("Tags"));
+                        ui.add(egui::TextEdit::singleline(&mut self.logs.tags_text).hint_text(t("Separate tags with commas")));
+                        ui.end_row();
                         ui.label(t("Notes"));
                         ui.text_edit_multiline(&mut l.notes);
                         ui.end_row();
@@ -555,6 +608,10 @@ impl App {
                     }
                 });
                 if save {
+                    let tags = expunge_core::model::parse_tags(&self.logs.tags_text);
+                    let group = self.logs.logs[idx].group.trim().to_string();
+                    self.logs.logs[idx].tags = tags;
+                    self.logs.logs[idx].group = group;
                     let l = self.logs.logs[idx].clone();
                     if let Err(e) = self.store.save_log(&l) {
                         self.set_status(e.to_string());

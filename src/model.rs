@@ -392,7 +392,32 @@ pub struct InstallLog {
     pub notes: String,
     #[serde(default)]
     pub group: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
     pub changes: ChangeSet,
+}
+
+impl InstallLog {
+    /// Whether the log matches a search: name, publisher, group or a tag.
+    pub fn matches(&self, query_lower: &str) -> bool {
+        query_lower.is_empty()
+            || self.name.to_lowercase().contains(query_lower)
+            || self.publisher.to_lowercase().contains(query_lower)
+            || self.group.to_lowercase().contains(query_lower)
+            || self.tags.iter().any(|t| t.to_lowercase().contains(query_lower))
+    }
+}
+
+/// Split "a, b ,c" into tidy, unique tags.
+pub fn parse_tags(s: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for t in s.split([',', ';']) {
+        let t = t.trim();
+        if !t.is_empty() && !out.iter().any(|o| o.eq_ignore_ascii_case(t)) {
+            out.push(t.to_string());
+        }
+    }
+    out
 }
 
 /// Human-friendly byte size.
@@ -432,5 +457,25 @@ mod tests {
     fn sizes() {
         assert_eq!(human_size(512), "512 B");
         assert_eq!(human_size(1536), "1.5 KB");
+    }
+}
+
+#[cfg(test)]
+mod tag_tests {
+    use super::*;
+
+    #[test]
+    fn tags_parse_and_match() {
+        assert_eq!(parse_tags(" work, Dev ;work,, dev "), vec!["work", "Dev"]);
+        let log = InstallLog {
+            name: "Photo Editor".into(),
+            group: "Creative".into(),
+            tags: vec!["trial".into()],
+            ..Default::default()
+        };
+        assert!(log.matches("creat"));
+        assert!(log.matches("tria"));
+        assert!(log.matches(""));
+        assert!(!log.matches("office"));
     }
 }

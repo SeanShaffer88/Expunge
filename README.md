@@ -60,6 +60,7 @@ Expunge is a free, GPL-licensed alternative to commercial tools such as Total Un
 - **Restart-safe:** monitoring continues across restarts, so installers that require a reboot are captured completely.
 - **Automatic exclusions:** temporary files, logs, and browser and application caches are ignored, so each log contains only the installer's real changes.
 - **Background-noise learning:** Expunge observes what your PC changes on its own and offers to exclude it from future captures.
+- **Groups and tags:** organize install logs into groups and label them with tags; search and filter by either.
 - **Review before saving:** inspect every captured change and discard background noise with one click.
 - **Automatic detection** of the program's name, publisher, and version.
 

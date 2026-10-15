@@ -25,7 +25,10 @@ USAGE:
   expunge snapshot <file.snap>              Save a snapshot of the system
   expunge diff <before.snap> <after.snap> [--name NAME]
                                             Compare two snapshots, save a log
-  expunge logs [--json]                     List saved install logs
+  expunge logs [--group G] [--tag T] [--json]
+                                            List saved install logs
+  expunge tag <log-id> [--group G] [--tags a,b]
+                                            Set a log's group and tags
   expunge programs [--all] [--trust] [--json]
                                             List installed programs (--trust adds
                                             each program's digital signature)
@@ -250,17 +253,61 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
             println!("{}", serde_json::to_string_pretty(&v)?);
         }
         "logs" => {
-            for l in store()?.list_logs() {
-                let st = l.changes.stats();
-                println!(
-                    "{}  {}  {}  ({} files, {})",
-                    l.id,
-                    l.created,
-                    l.name,
-                    st.files_added,
-                    human_size(st.bytes_added)
-                );
+            let group = arg_value(&args, "--group");
+            let tag = arg_value(&args, "--tag");
+            let logs: Vec<_> = store()?
+                .list_logs()
+                .into_iter()
+                .filter(|l| group.as_ref().is_none_or(|g| l.group.eq_ignore_ascii_case(g)))
+                .filter(|l| tag.as_ref().is_none_or(|t| l.tags.iter().any(|x| x.eq_ignore_ascii_case(t))))
+                .collect();
+            if has(&args, "--json") {
+                let items: Vec<_> = logs
+                    .iter()
+                    .map(|l| {
+                        let st = l.changes.stats();
+                        serde_json::json!({
+                            "id": l.id, "name": l.name, "publisher": l.publisher,
+                            "version": l.version, "created": l.created,
+                            "group": l.group, "tags": l.tags,
+                            "files_added": st.files_added, "bytes_added": st.bytes_added,
+                        })
+                    })
+                    .collect();
+                println!("{}", serde_json::to_string_pretty(&items)?);
+            } else {
+                for l in &logs {
+                    let st = l.changes.stats();
+                    let mut extra = String::new();
+                    if !l.group.is_empty() {
+                        extra.push_str(&format!("  [{}]", l.group));
+                    }
+                    if !l.tags.is_empty() {
+                        extra.push_str(&format!("  #{}", l.tags.join(" #")));
+                    }
+                    println!(
+                        "{}  {}  {}  ({} files, {}){extra}",
+                        l.id,
+                        l.created,
+                        l.name,
+                        st.files_added,
+                        human_size(st.bytes_added)
+                    );
+                }
             }
+        }
+        "tag" => {
+            let id = args.get(1).ok_or_else(|| anyhow::anyhow!("usage: expunge tag <log-id> [--group G] [--tags a,b]"))?;
+            let st = store()?;
+            let mut log = st.load_log(id)?;
+            if let Some(g) = arg_value(&args, "--group") {
+                log.group = g.trim().to_string();
+            }
+            if let Some(t) = arg_value(&args, "--tags") {
+                log.tags = expunge_core::model::parse_tags(&t);
+            }
+            st.save_log(&log)?;
+            println!("{}: group \"{}\", tags [{}]", log.name, log.group, log.tags.join(", "));
         }
         "updates" => {
             let list = expunge_core::winget::list_upgrades()?;

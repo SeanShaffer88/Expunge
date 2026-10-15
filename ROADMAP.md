@@ -34,7 +34,6 @@ Everything planned as *Next* has been built; the items below are the next candid
 - **System health dashboard** — disk space trend, memory use, and services that stopped unexpectedly.
 - **Complete command line** — every feature scriptable for unattended maintenance: classic uninstall by name, batch queue, junk cleaning, startup management.
 - **Integration tests on clean Windows 11 virtual machines** — real NSIS, Inno Setup, MSI and WiX installers installed, monitored, uninstalled and verified clean on every release.
-- **Groups and tags** for install logs.
 - **Arm64 builds.**
 - More languages — see [docs/TRANSLATING.md](docs/TRANSLATING.md).
 
