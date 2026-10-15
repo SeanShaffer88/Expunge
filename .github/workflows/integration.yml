@@ -22,15 +22,18 @@ jobs:
           - name: Windows Installer (7-Zip MSI)
             url: https://www.7-zip.org/a/7z2409-x64.msi
             file: 7z.msi
-            run: msiexec /i "{file}" /qn /norestart
+            exe: msiexec
+            args: /i|{file}|/qn|/norestart
           - name: NSIS (7-Zip)
             url: https://www.7-zip.org/a/7z2409-x64.exe
             file: 7z.exe
-            run: '"{file}" /S'
+            exe: '{file}'
+            args: /S
           - name: Inno Setup
             url: https://jrsoftware.org/download.php/is.exe?site=1
             file: is.exe
-            run: '"{file}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-'
+            exe: '{file}'
+            args: /VERYSILENT|/SUPPRESSMSGBOXES|/NORESTART|/SP-
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -64,10 +67,15 @@ jobs:
         shell: pwsh
         run: |
           $file = "$env:RUNNER_TEMP\${{ matrix.file }}"
-          $cmd = '${{ matrix.run }}'.Replace('{file}', $file)
-          $parts = [System.Management.Automation.PSParser]::Tokenize($cmd, [ref]$null) | ForEach-Object { $_.Content }
-          $json = & ./it/Expunge.exe monitor --no-prompt --json -- @parts
-          if ($LASTEXITCODE -ne 0) { throw "monitor failed" }
+          $exe = '${{ matrix.exe }}'.Replace('{file}', $file)
+          $argv = '${{ matrix.args }}'.Replace('{file}', $file).Split('|')
+          $json = & ./it/Expunge.exe monitor --no-prompt --json -- $exe @argv 2> err.txt
+          $code = $LASTEXITCODE
+          Get-Content err.txt | ForEach-Object { Write-Host $_ }
+          if ($code -ne 0) {
+            Get-Content err.txt | Select-Object -Last 20 | ForEach-Object { Write-Output "::error::$_" }
+            throw "monitor failed (exit $code)"
+          }
           $log = $json | ConvertFrom-Json
           "Recorded $($log.name) $($log.version): $($log.stats | ConvertTo-Json -Compress)"
           if (-not $log.uninstall_key) { throw "the installation registered no uninstall entry" }
@@ -79,12 +87,14 @@ jobs:
       - name: Remove with Expunge
         shell: pwsh
         run: |
-          ./it/Expunge.exe revert ${{ steps.monitor.outputs.id }} --keep-log
-          if ($LASTEXITCODE -ne 0) { throw "revert reported failures" }
+          $out = ./it/Expunge.exe revert ${{ steps.monitor.outputs.id }} --keep-log 2>&1
+          $out | ForEach-Object { Write-Host $_ }
+          if ($LASTEXITCODE -ne 0) { $out | Select-String 'FAIL' | Select-Object -First 20 | ForEach-Object { Write-Output "::error::$_" }; throw "revert reported failures" }
       - name: Verify nothing is left
         shell: pwsh
         run: |
-          ./it/Expunge.exe check-clean ${{ steps.monitor.outputs.id }}
-          if ($LASTEXITCODE -ne 0) { throw "leftovers remain" }
+          $out = ./it/Expunge.exe check-clean ${{ steps.monitor.outputs.id }} 2>&1
+          $out | ForEach-Object { Write-Host $_ }
+          if ($LASTEXITCODE -ne 0) { $out | Select-Object -First 25 | ForEach-Object { Write-Output "::error::$_" }; throw "leftovers remain" }
           $still = ./it/Expunge.exe programs | Select-String -SimpleMatch "${{ steps.monitor.outputs.name }}"
           if ($still) { throw "the program is still listed: $still" }
