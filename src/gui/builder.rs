@@ -210,6 +210,7 @@ impl App {
             learn_seconds: 30,
             sandbox: false,
             settings: self.settings.clone(),
+            preview_only: false,
         };
         if b.use_sandbox {
             let work = self

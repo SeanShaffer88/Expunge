@@ -1126,6 +1126,7 @@ dependencies = [
  "egui_extras",
  "flate2",
  "image",
+ "memchr",
  "notify",
  "rfd",
  "serde",

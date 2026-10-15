@@ -226,7 +226,7 @@ pub fn detect_installer(path: &Path) -> InstallerKind {
         let mut buf = vec![0u8; 4 * 1024 * 1024];
         let n = f.read(&mut buf).unwrap_or(0);
         let hay = &buf[..n];
-        let has = |needle: &[u8]| hay.windows(needle.len()).any(|w| w == needle);
+        let has = |needle: &[u8]| memchr::memmem::find(hay, needle).is_some();
         if has(b"Inno Setup") || has(b"InnoSetupLdrWindow") {
             return InstallerKind::Inno;
         }
@@ -814,6 +814,8 @@ pub struct Job {
     pub learn_seconds: u64,
     /// Running inside Windows Sandbox: ask with message boxes, shut down at the end.
     pub sandbox: bool,
+    /// Only record what the installer does (a preview); build no package.
+    pub preview_only: bool,
     /// The host's capture settings (roots and exclusions).
     pub settings: Settings,
 }
@@ -891,6 +893,9 @@ pub fn capture(
         }
     }
     log.changes = cs;
+    if job.preview_only {
+        return Ok((log, Package::default()));
+    }
     let mut details = job.details.clone();
     if details.version.is_empty() {
         details.version = log.version.clone();

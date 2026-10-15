@@ -23,6 +23,8 @@ pub enum Phase {
 
 #[derive(Default)]
 pub struct MonitorState {
+    /// Screening (and optional sandbox test) before installing.
+    pub precheck: Option<super::precheck::PreCheck>,
     pub tree: super::difftree_ui::TreeView,
     pub show_list: bool,
     pub phase: Phase,
@@ -77,11 +79,7 @@ impl App {
         ) else {
             return;
         };
-        let name = path
-            .file_stem()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_default();
-        self.begin_monitoring(ctx, name, path.to_string_lossy().to_string());
+        self.precheck_installer(ctx, path.to_string_lossy().to_string());
     }
 
     pub fn begin_monitoring(&mut self, ctx: &egui::Context, name: String, installer: String) {
@@ -354,6 +352,9 @@ impl App {
     }
 
     fn monitor_idle(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        if self.ui_precheck(ui, ctx) {
+            return;
+        }
         ui.add_space(20.0);
         ui.vertical_centered(|ui| {
             ui.heading(RichText::new(t("Install with monitoring")).strong());

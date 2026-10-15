@@ -11,6 +11,7 @@ mod lab;
 mod logs;
 mod monitor;
 mod plan;
+mod precheck;
 mod programs;
 mod restore_ui;
 mod settings_tab;

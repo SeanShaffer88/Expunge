@@ -820,6 +820,7 @@ impl App {
         self.poll_lab();
         self.poll_builder(ctx);
         self.poll_silent_package();
+        self.poll_precheck(ctx);
         if let Some(job) = &self.programs.restore_job {
             if let Some(r) = job.poll() {
                 self.programs.restore_job = None;
@@ -1089,11 +1090,8 @@ impl App {
             ));
             return;
         }
-        let name = std::path::Path::new(&path)
-            .file_stem()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_default();
-        self.begin_monitoring(ctx, name, path);
+        // "Install with Expunge": check the setup file first.
+        self.precheck_installer(ctx, path);
     }
 
     /// Keyboard shortcuts.

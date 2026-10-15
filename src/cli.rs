@@ -184,6 +184,7 @@ fn portable_build(args: &[String], reg: &dyn Registry) -> anyhow::Result<i32> {
         learn_seconds: 30,
         sandbox: false,
         settings: settings.clone(),
+        preview_only: false,
     };
     let here = has(args, "--here") || !pafbuild::sandbox_available();
     let (pkg_dir, app_id) = if here {

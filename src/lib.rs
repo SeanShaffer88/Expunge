@@ -28,6 +28,7 @@ pub mod patools;
 pub mod platform;
 pub mod portability;
 pub mod portable;
+pub mod prescreen;
 pub mod programs;
 pub mod repackage;
 pub mod report;
