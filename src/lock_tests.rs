@@ -61,6 +61,27 @@ impl Holder {
     }
 }
 
+/// Start a helper and let go of it, as a launcher would: no handle to the
+/// process stays open here (an open process handle keeps its program file
+/// in use even after it has exited). Returns its process id.
+fn start_detached(exe: &Path, args: &[&str]) -> u32 {
+    let mut child = Command::new(exe)
+        .args(args)
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("start lockholder");
+    let mut line = String::new();
+    BufReader::new(child.stdout.take().unwrap())
+        .read_line(&mut line)
+        .unwrap();
+    assert_eq!(
+        line.trim(),
+        "ready",
+        "lockholder did not get hold of the file"
+    );
+    child.id()
+}
+
 impl Drop for Holder {
     fn drop(&mut self) {
         let _ = self.0.kill();
@@ -288,7 +309,7 @@ fn the_running_program_is_closed_and_its_files_removed_at_once() {
     std::fs::copy(&helper, &exe).unwrap();
     let data = app.join("state.db");
     std::fs::write(&data, b"x").unwrap();
-    let mut h = Holder::start(&exe, &["open", &path_str(&data), "300"]);
+    let pid = start_detached(&exe, &["open", &path_str(&data), "300"]);
 
     let res = run(
         vec![Action::DeleteTree {
@@ -299,11 +320,15 @@ fn the_running_program_is_closed_and_its_files_removed_at_once() {
             ..Default::default()
         },
     );
-    assert!(h.0.try_wait().unwrap().is_some(), "the program was closed");
+    let still = platform::windows::process_alive(pid);
+    if still {
+        let _ = platform::run_hidden("taskkill.exe", &["/F", "/PID", &pid.to_string()]);
+    }
+    assert!(!still, "the program was closed");
     assert!(res.iter().all(|r| r.ok), "{res:#?}");
     assert_eq!(res[0].description, "Close the running program");
     assert!(
-        res[0].message.contains(&format!("(process {})", h.pid())),
+        res[0].message.contains(&format!("(process {pid})")),
         "{res:#?}"
     );
     assert_eq!(res[1].message, "deleted", "{res:#?}");
