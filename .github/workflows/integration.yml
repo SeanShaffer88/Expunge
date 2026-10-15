@@ -30,7 +30,8 @@ jobs:
             exe: '{file}'
             args: /S
           - name: Inno Setup
-            url: https://jrsoftware.org/download.php/is.exe?site=1
+            url: https://files.jrsoftware.org/is/6/innosetup-6.4.3.exe
+            mirror: https://github.com/jrsoftware/issrc/releases/download/is-6_4_3/innosetup-6.4.3.exe
             file: is.exe
             exe: '{file}'
             args: /VERYSILENT|/SUPPRESSMSGBOXES|/NORESTART|/SP-
@@ -61,7 +62,18 @@ jobs:
           } | ConvertTo-Json -Depth 5 | Set-Content it/ExpungeData/settings.json
       - name: Download installer
         shell: pwsh
-        run: Invoke-WebRequest -Uri "${{ matrix.url }}" -OutFile "$env:RUNNER_TEMP\${{ matrix.file }}"
+        run: |
+          $out = "$env:RUNNER_TEMP\${{ matrix.file }}"
+          $urls = @("${{ matrix.url }}") + @("${{ matrix.mirror }}" | Where-Object { $_ })
+          foreach ($u in $urls) {
+            try {
+              Invoke-WebRequest -Uri $u -OutFile $out -MaximumRedirection 10
+              $b = [IO.File]::ReadAllBytes($out)[0..1]
+              if ($b[0] -eq 0x4D -and $b[1] -eq 0x5A -or "${{ matrix.file }}".EndsWith('.msi')) { "Downloaded $u"; exit 0 }
+              "Not a program file: $u"
+            } catch { "Download failed: $u ($_)" }
+          }
+          throw "could not download the installer"
       - name: Install under monitoring
         id: monitor
         shell: pwsh
