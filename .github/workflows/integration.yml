@@ -14,19 +14,20 @@ jobs:
   installer:
     name: ${{ matrix.name }}
     runs-on: windows-latest
-    timeout-minutes: 120
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: Windows Installer (7-Zip MSI)
-            url: https://www.7-zip.org/a/7z2409-x64.msi
-            file: 7z.msi
+          # Programs the runner image doesn't already have installed.
+          - name: Windows Installer (KeePassXC MSI)
+            url: https://github.com/keepassxreboot/keepassxc/releases/download/2.7.9/KeePassXC-2.7.9-Win64.msi
+            file: kp.msi
             exe: msiexec
             args: /i|{file}|/qn|/norestart
-          - name: NSIS (7-Zip)
-            url: https://www.7-zip.org/a/7z2409-x64.exe
-            file: 7z.exe
+          - name: NSIS (Notepad++)
+            url: https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.7.1/npp.8.7.1.Installer.x64.exe
+            file: npp.exe
             exe: '{file}'
             args: /S
           - name: Inno Setup
@@ -117,27 +118,27 @@ jobs:
   portable:
     name: Portable App Builder (${{ matrix.name }})
     runs-on: windows-latest
-    timeout-minutes: 90
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         include:
+          # Programs the runner image doesn't already have installed.
           - name: MSI
-            url: https://www.7-zip.org/a/7z2409-x64.msi
-            file: 7z.msi
-            app: 7-Zip
-            exe: 7zFM.exe
+            url: https://github.com/keepassxreboot/keepassxc/releases/download/2.7.9/KeePassXC-2.7.9-Win64.msi
+            file: kp.msi
+            app: KeePassXC
+            exe: KeePassXC.exe
           - name: NSIS
-            url: https://www.7-zip.org/a/7z2409-x64.exe
-            file: 7z.exe
-            app: 7-Zip
-            exe: 7zFM.exe
+            url: https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.7.1/npp.8.7.1.Installer.x64.exe
+            file: npp.exe
+            app: Notepad++
+            exe: notepad++.exe
           - name: Inno Setup
-            url: https://files.jrsoftware.org/is/6/innosetup-6.4.3.exe
-            mirror: https://github.com/jrsoftware/issrc/releases/download/is-6_4_3/innosetup-6.4.3.exe
-            file: is.exe
-            app: Inno Setup
-            exe: Compil32.exe
+            url: https://github.com/greenshot/greenshot/releases/download/Greenshot-RELEASE-1.2.10.6/Greenshot-INSTALLER-1.2.10.6-RELEASE.exe
+            file: greenshot.exe
+            app: Greenshot
+            exe: Greenshot.exe
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
