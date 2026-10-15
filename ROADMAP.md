@@ -18,8 +18,6 @@ Everything planned as *Next* has been built; the items below are the next candid
 - **MSIX output** for repackaged installations (needs Microsoft's free MSIX Packaging Tool to sign the result).
 
 **Uninstaller**
-- **Pre- and post-uninstall scripts** — run a PowerShell or batch script before or after removing a specific program (for example, to export its settings or stop a service first). Advanced mode only.
-- **"Hunter" mode** — drag a crosshair onto a window, tray icon or shortcut to identify and remove its program.
 
 **Startup**
 - **Reputation check** (opt-in, off by default) — look up unknown startup items and installers by file hash in public malware databases. Only hashes are sent, never files.

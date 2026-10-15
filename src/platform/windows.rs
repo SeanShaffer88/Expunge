@@ -712,3 +712,42 @@ pub fn installer_busy() -> bool {
         }
     }
 }
+
+/// The window in front, if it belongs to another process: its program's
+/// full path and its title. Used by the "find a program by its window" tool.
+pub fn foreground_program() -> Option<(String, String)> {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Threading::{
+        GetCurrentProcessId, OpenProcess, QueryFullProcessImageNameW,
+        PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId,
+    };
+    unsafe {
+        let hwnd = GetForegroundWindow();
+        if hwnd.is_null() {
+            return None;
+        }
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(hwnd, &mut pid);
+        if pid == 0 || pid == GetCurrentProcessId() {
+            return None;
+        }
+        let mut title = [0u16; 256];
+        let n = GetWindowTextW(hwnd, title.as_mut_ptr(), title.len() as i32);
+        let title = String::from_utf16_lossy(&title[..n.max(0) as usize]);
+        let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if h.is_null() {
+            return None;
+        }
+        let mut buf = [0u16; 1024];
+        let mut len = buf.len() as u32;
+        let ok = QueryFullProcessImageNameW(h, 0, buf.as_mut_ptr(), &mut len);
+        CloseHandle(h);
+        if ok == 0 {
+            return None;
+        }
+        Some((String::from_utf16_lossy(&buf[..len as usize]), title))
+    }
+}

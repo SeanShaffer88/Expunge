@@ -335,6 +335,40 @@ pub fn unsupported_windows() -> Option<u32> {
     None
 }
 
+/// The program behind the window in front (path, window title), when it
+/// belongs to another process.
+pub fn foreground_program() -> Option<(String, String)> {
+    #[cfg(windows)]
+    {
+        windows::foreground_program()
+    }
+    #[cfg(not(windows))]
+    {
+        None
+    }
+}
+
+/// Where a shortcut (.lnk) points; other paths are returned unchanged.
+pub fn resolve_shortcut(path: &str) -> String {
+    if !path.to_lowercase().ends_with(".lnk") {
+        return path.to_string();
+    }
+    #[cfg(windows)]
+    {
+        let script = format!(
+            "(New-Object -ComObject WScript.Shell).CreateShortcut('{}').TargetPath",
+            path.replace('\'', "''")
+        );
+        if let Ok((0, out)) = run_hidden("powershell", &["-NoProfile", "-NonInteractive", "-Command", &script]) {
+            let out = out.trim();
+            if !out.is_empty() {
+                return out.to_string();
+            }
+        }
+    }
+    path.to_string()
+}
+
 pub fn computer_name() -> String {
     std::env::var("COMPUTERNAME")
         .or_else(|_| std::env::var("HOSTNAME"))

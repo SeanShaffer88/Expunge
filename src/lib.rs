@@ -16,6 +16,7 @@ pub mod diskmap;
 pub mod duplicates;
 pub mod boot;
 pub mod schedule;
+pub mod scripts;
 pub mod features;
 pub mod i18n;
 pub mod leftovers;

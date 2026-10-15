@@ -7,6 +7,8 @@ All notable changes to Expunge are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Find a program by its window** (Programs > *Find by window*): click the button, then click any window, and Expunge selects the installed program it belongs to. Dropping a shortcut or program file onto the Programs page does the same.
+- **Pre- and post-uninstall scripts** (Advanced mode; program details > *Uninstall scripts*): commands that run before a program's uninstaller starts (for example to export settings or stop a service) and after it finishes. Scripts receive the program's name and folder in `%EXPUNGE_PROGRAM%` and `%EXPUNGE_INSTALL_DIR%`, and their outcome appears in the uninstall report.
 - **Startup impact**: the Startup page shows how long the last Windows startup took and how much each startup program slowed it down (High, Medium or Low), measured by Windows' own boot diagnostics (needs Administrator rights). Also in `expunge startup`.
 - **Delayed start**: *Delay* starts a startup program 2 minutes after you sign in instead of immediately, so Windows is ready sooner. It uses a Task Scheduler task and switches the original entry off without deleting it; *Start normally* undoes it exactly.
 - **Browser privacy cleaning** in the Junk cleaner, each item off until you tick it: cookies, browsing history, website data (local storage, databases, offline data) and saved sessions for Chrome, Edge, Brave, Vivaldi, Opera and Firefox, LibreWolf, Waterfox and Floorp, in every profile. Firefox history is kept because it shares a file with bookmarks (its form history is removed). Plus the Windows font cache (Advanced mode).

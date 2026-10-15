@@ -76,6 +76,8 @@ For programs that were installed without monitoring:
 - **Deep leftover scan:** after the vendor's uninstaller finishes, Expunge searches for remaining folders, shortcuts, registry keys, autostart entries, App Paths, services, COM registrations, file types and associations, context-menu entries, shell extensions, environment variables, `PATH` entries, firewall rules, scheduled tasks, and folders left empty.
 - **Unattended batch uninstallation:** queue any number of programs and walk away. Silent switches are detected for each installer technology (Windows Installer, Inno Setup, NSIS, WiX, and Squirrel); uninstallers run one at a time; restarts are deferred until the end; stalled uninstallers are skipped; and a single combined leftover scan follows.
 - **Silent uninstallation** for individual programs, and **forced removal** when a program's uninstaller is broken or missing.
+- **Find by window:** click any window (or drop a shortcut) to find which installed program it belongs to.
+- **Pre- and post-uninstall scripts** (Advanced mode): run your own commands before and after a specific program is removed.
 - **Broken-entry finder** for programs whose uninstaller or installation folder no longer exists.
 - **Orphan scan:** a system-wide search for registrations, file types, shell extensions, `PATH` entries, firewall rules, and tasks that point to files that no longer exist.
 - **Trust information:** shows who digitally signed each program, and flags unsigned programs and invalid signatures that may indicate tampering.
