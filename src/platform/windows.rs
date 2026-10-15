@@ -9,7 +9,31 @@ use std::path::Path;
 use winreg::enums::*;
 use winreg::RegKey;
 
-use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, HANDLE, WAIT_OBJECT_0};
+use windows_sys::Win32::Foundation::{
+    CloseHandle, GetLastError, HANDLE, WAIT_FAILED, WAIT_OBJECT_0,
+};
+
+/// A kernel handle that is closed when it goes out of scope, on every path
+/// (early returns, errors, panics).
+struct OwnedHandle(HANDLE);
+
+impl OwnedHandle {
+    /// Wrap a handle returned by Windows; `None` if the call failed.
+    fn new(h: HANDLE) -> Option<Self> {
+        (!h.is_null() && h != INVALID_HANDLE).then_some(OwnedHandle(h))
+    }
+    fn get(&self) -> HANDLE {
+        self.0
+    }
+}
+
+impl Drop for OwnedHandle {
+    fn drop(&mut self) {
+        unsafe { CloseHandle(self.0) };
+    }
+}
+
+const INVALID_HANDLE: HANDLE = -1isize as HANDLE;
 use windows_sys::Win32::Security::{
     GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY,
 };
@@ -164,16 +188,18 @@ pub fn is_elevated() -> bool {
         if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
             return false;
         }
+        let Some(token) = OwnedHandle::new(token) else {
+            return false;
+        };
         let mut elev = TOKEN_ELEVATION { TokenIsElevated: 0 };
         let mut len = 0u32;
         let ok = GetTokenInformation(
-            token,
+            token.get(),
             TokenElevation,
             &mut elev as *mut _ as *mut _,
             std::mem::size_of::<TOKEN_ELEVATION>() as u32,
             &mut len,
         );
-        CloseHandle(token);
         ok != 0 && elev.TokenIsElevated != 0
     }
 }
@@ -192,12 +218,18 @@ impl ChildProcess {
             return Some(0);
         }
         unsafe {
-            if WaitForSingleObject(self.handle, 0) == WAIT_OBJECT_0 {
-                let mut code = 0u32;
-                GetExitCodeProcess(self.handle, &mut code);
-                Some(code)
-            } else {
-                None
+            match WaitForSingleObject(self.handle, 0) {
+                WAIT_OBJECT_0 => {
+                    let mut code = 0u32;
+                    if GetExitCodeProcess(self.handle, &mut code) == 0 {
+                        code = GetLastError();
+                    }
+                    Some(code)
+                }
+                // The handle can't be waited on: report it as ended with the
+                // error, rather than waiting forever.
+                WAIT_FAILED => Some(GetLastError().max(1)),
+                _ => None,
             }
         }
     }
@@ -739,65 +771,63 @@ pub fn installer_busy() -> bool {
     use windows_sys::Win32::System::Threading::OpenMutexW;
     const SYNCHRONIZE: u32 = 0x0010_0000;
     let name: Vec<u16> = "Global\\_MSIExecute\0".encode_utf16().collect();
-    unsafe {
-        let h = OpenMutexW(SYNCHRONIZE, 0, name.as_ptr());
-        if h.is_null() {
-            false
-        } else {
-            windows_sys::Win32::Foundation::CloseHandle(h);
-            true
-        }
-    }
+    unsafe { OwnedHandle::new(OpenMutexW(SYNCHRONIZE, 0, name.as_ptr())).is_some() }
 }
 
 /// Whether a process with this id is still running.
 pub fn process_alive(pid: u32) -> bool {
-    use windows_sys::Win32::Foundation::CloseHandle;
     use windows_sys::Win32::System::Threading::{
         GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
     };
     const STILL_ACTIVE: u32 = 259;
     unsafe {
-        let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
-        if h.is_null() {
+        let Some(h) = OwnedHandle::new(OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid))
+        else {
             return false;
-        }
+        };
         let mut code = 0u32;
-        let ok = GetExitCodeProcess(h, &mut code) != 0;
-        CloseHandle(h);
-        ok && code == STILL_ACTIVE
+        GetExitCodeProcess(h.get(), &mut code) != 0 && code == STILL_ACTIVE
     }
 }
 
 /// Every running process this user can see: program file, memory in use
 /// and total CPU time. Used for the resource-use history.
 pub fn process_samples() -> Vec<crate::usage::ProcSample> {
-    use windows_sys::Win32::Foundation::{CloseHandle, FILETIME};
+    use windows_sys::Win32::Foundation::FILETIME;
     use windows_sys::Win32::System::ProcessStatus::{
         K32EnumProcesses, K32GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS,
     };
     use windows_sys::Win32::System::Threading::{
         GetProcessTimes, OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
     };
+    // Grow the buffer until the list fits (a full buffer may be truncated).
     let mut pids = vec![0u32; 4096];
-    let mut needed = 0u32;
-    let ok = unsafe { K32EnumProcesses(pids.as_mut_ptr(), (pids.len() * 4) as u32, &mut needed) };
-    if ok == 0 {
-        return Vec::new();
+    loop {
+        let mut needed = 0u32;
+        let bytes = (pids.len() * 4) as u32;
+        if unsafe { K32EnumProcesses(pids.as_mut_ptr(), bytes, &mut needed) } == 0 {
+            return Vec::new();
+        }
+        if needed < bytes || pids.len() >= 1 << 20 {
+            pids.truncate(needed as usize / 4);
+            break;
+        }
+        pids = vec![0u32; pids.len() * 2];
     }
-    pids.truncate(needed as usize / 4);
     let ft = |f: FILETIME| ((f.dwHighDateTime as u64) << 32) | f.dwLowDateTime as u64;
     let mut out = Vec::new();
     for pid in pids.into_iter().filter(|&p| p > 4) {
         unsafe {
-            let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
-            if h.is_null() {
+            let Some(owned) =
+                OwnedHandle::new(OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid))
+            else {
                 continue;
-            }
+            };
+            let h = owned.get();
             let mut buf = [0u16; 1024];
             let mut len = buf.len() as u32;
             let path = if QueryFullProcessImageNameW(h, 0, buf.as_mut_ptr(), &mut len) != 0 {
-                String::from_utf16_lossy(&buf[..len as usize])
+                String::from_utf16_lossy(&buf[..(len as usize).min(buf.len())])
             } else {
                 String::new()
             };
@@ -815,7 +845,7 @@ pub fn process_samples() -> Vec<crate::usage::ProcSample> {
             } else {
                 0
             };
-            CloseHandle(h);
+            drop(owned);
             if !path.is_empty() {
                 out.push(crate::usage::ProcSample {
                     path,
@@ -853,10 +883,11 @@ pub fn watch_registry(
     let key = open(path, KEY_NOTIFY)?;
     let raw = key.raw_handle() as windows_sys::Win32::System::Registry::HKEY;
     unsafe {
-        let event = CreateEventW(std::ptr::null(), 0, 0, std::ptr::null());
-        if event.is_null() {
+        let Some(owned) = OwnedHandle::new(CreateEventW(std::ptr::null(), 0, 0, std::ptr::null()))
+        else {
             return Err(anyhow!("could not create an event"));
-        }
+        };
+        let event = owned.get();
         while !stop.load(Ordering::Relaxed) {
             let rc = RegNotifyChangeKeyValue(
                 raw,
@@ -866,7 +897,6 @@ pub fn watch_registry(
                 1,
             );
             if rc != 0 {
-                CloseHandle(event);
                 return Err(anyhow!(
                     "registry notifications unavailable for {path} ({rc})"
                 ));
@@ -875,13 +905,22 @@ pub fn watch_registry(
                 if stop.load(Ordering::Relaxed) {
                     break;
                 }
-                if WaitForSingleObject(event, 400) == WAIT_OBJECT_0 {
-                    on_change();
-                    break;
+                match WaitForSingleObject(event, 400) {
+                    WAIT_OBJECT_0 => {
+                        on_change();
+                        break;
+                    }
+                    // Never spin on a wait that can't succeed.
+                    WAIT_FAILED => {
+                        return Err(anyhow!(
+                            "waiting for registry changes failed for {path}: {}",
+                            std::io::Error::last_os_error()
+                        ))
+                    }
+                    _ => {}
                 }
             }
         }
-        CloseHandle(event);
     }
     drop(key);
     Ok(())
@@ -914,6 +953,7 @@ pub fn lower_thread_priority() {
 
 /// Delete one System Restore point (srclient.dll's SRRemoveRestorePoint).
 pub fn remove_restore_point(sequence: u32) -> Result<()> {
+    use windows_sys::Win32::Foundation::FreeLibrary;
     use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
     let name = wide("srclient.dll");
     unsafe {
@@ -922,10 +962,13 @@ pub fn remove_restore_point(sequence: u32) -> Result<()> {
             return Err(anyhow!("System Restore is not available"));
         }
         let Some(f) = GetProcAddress(lib, b"SRRemoveRestorePoint\0".as_ptr()) else {
+            FreeLibrary(lib);
             return Err(anyhow!("System Restore is not available"));
         };
         let remove: unsafe extern "system" fn(u32) -> u32 = std::mem::transmute(f);
-        match remove(sequence) {
+        let rc = remove(sequence);
+        FreeLibrary(lib);
+        match rc {
             0 => Ok(()),
             code => Err(anyhow!(
                 "Windows could not delete the restore point (error {code})"

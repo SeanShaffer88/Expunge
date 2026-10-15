@@ -51,6 +51,9 @@ pub mod trust;
 pub mod usage;
 pub mod util;
 
+#[cfg(test)]
+mod stress_tests;
+
 pub const APP_NAME: &str = "Expunge";
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const APP_AUTHOR: &str = "Sean Shaffer";
