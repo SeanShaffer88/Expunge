@@ -21,6 +21,7 @@ pub mod leftovers;
 pub mod live;
 pub mod merge;
 pub mod model;
+pub mod nlquery;
 pub mod noise;
 pub mod orphans;
 pub mod pafbuild;
@@ -44,6 +45,7 @@ pub mod startup;
 pub mod store;
 pub mod transfer;
 pub mod trust;
+pub mod usage;
 pub mod util;
 
 pub const APP_NAME: &str = "Expunge";

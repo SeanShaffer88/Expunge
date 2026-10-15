@@ -29,6 +29,7 @@ const SHORTCUTS: &[(&str, &str)] = &[
     ("Ctrl+1 … Ctrl+9", "Go to a page"),
     ("Ctrl+Tab / Ctrl+Shift+Tab", "Next / previous page"),
     ("Ctrl+F", "Search"),
+    ("Ctrl+K", "Ask Expunge (plain-language search)"),
     ("F5", "Refresh"),
     ("F10", "Go to the menu bar (then arrow keys)"),
     ("F1", "Help for this page"),

@@ -928,6 +928,8 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
             let mut stale = false;
             loop {
                 std::thread::sleep(poll);
+                // Resource-use history, every five minutes.
+                expunge_core::usage::sample_and_save(&st.root, 290);
                 // Manual monitoring records this installation itself.
                 if st.pending().is_some() {
                     stale = true;

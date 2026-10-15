@@ -729,6 +729,65 @@ pub fn installer_busy() -> bool {
     }
 }
 
+/// Every running process this user can see: program file, memory in use
+/// and total CPU time. Used for the resource-use history.
+pub fn process_samples() -> Vec<crate::usage::ProcSample> {
+    use windows_sys::Win32::Foundation::{CloseHandle, FILETIME};
+    use windows_sys::Win32::System::ProcessStatus::{
+        K32EnumProcesses, K32GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS,
+    };
+    use windows_sys::Win32::System::Threading::{
+        GetProcessTimes, OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    let mut pids = vec![0u32; 4096];
+    let mut needed = 0u32;
+    let ok = unsafe { K32EnumProcesses(pids.as_mut_ptr(), (pids.len() * 4) as u32, &mut needed) };
+    if ok == 0 {
+        return Vec::new();
+    }
+    pids.truncate(needed as usize / 4);
+    let ft = |f: FILETIME| ((f.dwHighDateTime as u64) << 32) | f.dwLowDateTime as u64;
+    let mut out = Vec::new();
+    for pid in pids.into_iter().filter(|&p| p > 4) {
+        unsafe {
+            let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if h.is_null() {
+                continue;
+            }
+            let mut buf = [0u16; 1024];
+            let mut len = buf.len() as u32;
+            let path = if QueryFullProcessImageNameW(h, 0, buf.as_mut_ptr(), &mut len) != 0 {
+                String::from_utf16_lossy(&buf[..len as usize])
+            } else {
+                String::new()
+            };
+            let mut mem: PROCESS_MEMORY_COUNTERS = std::mem::zeroed();
+            mem.cb = std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32;
+            let ws = if K32GetProcessMemoryInfo(h, &mut mem, mem.cb) != 0 {
+                mem.WorkingSetSize as u64
+            } else {
+                0
+            };
+            let (mut c, mut e, mut k, mut u): (FILETIME, FILETIME, FILETIME, FILETIME) =
+                std::mem::zeroed();
+            let cpu = if GetProcessTimes(h, &mut c, &mut e, &mut k, &mut u) != 0 {
+                (ft(k) + ft(u)) / 10_000
+            } else {
+                0
+            };
+            CloseHandle(h);
+            if !path.is_empty() {
+                out.push(crate::usage::ProcSample {
+                    path,
+                    working_set: ws,
+                    cpu_ms: cpu,
+                });
+            }
+        }
+    }
+    out
+}
+
 /// Run this process at background priority (low CPU and disk priority).
 pub fn background_priority() {
     use windows_sys::Win32::System::Threading::{

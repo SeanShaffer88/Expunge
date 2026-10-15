@@ -156,6 +156,55 @@ impl App {
                     self.tab = Tab::Builder;
                 }
 
+                // "What are the top 5 space-wasters I haven't opened in 6 months?"
+                if !self.programs.usage.is_empty() {
+                    let mut wasters: Vec<(expunge_core::programs::InstalledProgram, u64, i64)> = self
+                        .programs
+                        .list
+                        .iter()
+                        .filter_map(|p| {
+                            let days = self.unused_days(p)?;
+                            let size = if p.size_kb > 0 { p.size_kb * 1024 } else { self.programs.sizes.get(&p.key).copied().unwrap_or(0) };
+                            (days >= 180 && size > 0).then(|| (p.clone(), size, days))
+                        })
+                        .collect();
+                    wasters.sort_by(|a, b| b.1.cmp(&a.1));
+                    wasters.truncate(5);
+                    if !wasters.is_empty() {
+                        ui.add_space(16.0);
+                        ui.label(RichText::new(t("Space-wasters you don't use")).heading().strong());
+                        small_muted(ui, t("The biggest programs not opened in the last 6 months."));
+                        ui.add_space(6.0);
+                        let total: u64 = wasters.iter().map(|w| w.1).sum();
+                        theme::card(ui, |ui| {
+                            let max = wasters.first().map(|w| w.1).unwrap_or(1).max(1) as f32;
+                            for (p, size, days) in &wasters {
+                                ui.horizontal(|ui| {
+                                    let (rect, _) = ui.allocate_exact_size(egui::vec2(90.0, 8.0), egui::Sense::hover());
+                                    ui.painter().rect_filled(rect, 4.0, theme::LINE);
+                                    let mut fill = rect;
+                                    fill.set_width(rect.width() * (*size as f32 / max).max(0.05));
+                                    ui.painter().rect_filled(fill, 4.0, theme::ACCENT_TEXT);
+                                    if ui.link(RichText::new(&p.name).strong()).clicked() {
+                                        self.programs.selected = Some(p.key.clone());
+                                        self.programs.filter.clear();
+                                        self.tab = Tab::Programs;
+                                    }
+                                    small_muted(ui, format!("{} · {}", expunge_core::model::human_size(*size), tf("not opened for {n} months", &[("n", (days / 30).to_string())])));
+                                });
+                            }
+                            ui.add_space(4.0);
+                            ui.horizontal(|ui| {
+                                small_muted(ui, tf("{size} in total", &[("size", expunge_core::model::human_size(total))]));
+                                if ui.button(t("Review and uninstall…")).clicked() {
+                                    let chosen: Vec<_> = wasters.iter().map(|w| w.0.clone()).collect();
+                                    self.start_uninstall(chosen, false);
+                                }
+                            });
+                        });
+                    }
+                }
+
                 if !self.logs.logs.is_empty() {
                     ui.add_space(16.0);
                     ui.label(RichText::new(t("Recently monitored")).heading().strong());

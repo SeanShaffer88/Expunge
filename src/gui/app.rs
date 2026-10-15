@@ -72,6 +72,8 @@ pub struct App {
     pub programs: programs::ProgramsState,
     pub restore: super::restore_ui::RestoreState,
     pub builder: super::builder::BuilderState,
+    /// "Ask Expunge" plain-language search (Ctrl+K).
+    pub ask_ui: super::ask::AskState,
     /// Live activity while monitoring an installation.
     pub live: Option<expunge_core::live::LiveWatcher>,
     /// Whether background monitoring is on (read from Task Scheduler once).
@@ -151,6 +153,7 @@ impl App {
             programs: Default::default(),
             restore: Default::default(),
             builder: Default::default(),
+            ask_ui: Default::default(),
             live: None,
             auto_watch: None,
             auto_watch_job: None,
@@ -649,6 +652,16 @@ impl App {
                         {
                             self.help_open = !self.help_open;
                         }
+                        ui.add_space(4.0);
+                        if ui
+                            .button(format!("🔎 {}", t("Ask Expunge")))
+                            .on_hover_text(t(
+                                "Search programs and install logs in plain words (Ctrl+K)",
+                            ))
+                            .clicked()
+                        {
+                            self.open_ask();
+                        }
                     });
                 });
                 if self.help_open {
@@ -821,6 +834,23 @@ impl App {
         self.poll_builder(ctx);
         self.poll_silent_package();
         self.poll_precheck(ctx);
+        // Resource-use history: a quick sample of running programs every
+        // five minutes while Expunge is open (background monitoring does the
+        // same when it is on).
+        {
+            use std::sync::atomic::{AtomicI64, Ordering};
+            static LAST: AtomicI64 = AtomicI64::new(0);
+            let now = chrono::Utc::now().timestamp();
+            if now - LAST.load(Ordering::Relaxed) >= 300 {
+                LAST.store(now, Ordering::Relaxed);
+                let root = self.store.root.clone();
+                std::thread::spawn(move || {
+                    #[cfg(windows)]
+                    expunge_core::platform::windows::lower_thread_priority();
+                    expunge_core::usage::sample_and_save(&root, 290);
+                });
+            }
+        }
         if let Some(job) = &self.programs.restore_job {
             if let Some(r) = job.poll() {
                 self.programs.restore_job = None;
@@ -1109,6 +1139,7 @@ impl App {
             Tab::Settings,
         ];
         let mut go: Option<Tab> = None;
+        let mut ask = false;
         ctx.input_mut(|i| {
             for (n, key) in [
                 Key::Num1,
@@ -1130,6 +1161,9 @@ impl App {
             }
             if i.consume_key(Modifiers::CTRL, Key::F) {
                 self.focus_search = true;
+            }
+            if i.consume_key(Modifiers::CTRL, Key::K) {
+                ask = true;
             }
             if i.consume_key(Modifiers::NONE, Key::F1) {
                 self.help_open = !self.help_open;
@@ -1160,6 +1194,9 @@ impl App {
             && super::a11y::escape_pressed(ctx)
         {
             self.help_open = false;
+        }
+        if ask {
+            self.open_ask();
         }
         if let Some(tab) = go {
             self.tab = tab;
@@ -1270,6 +1307,7 @@ impl eframe::App for App {
         self.ui_removal(ctx);
         self.ui_transfer(ctx);
         self.dialogs(ctx);
+        self.ui_ask(ctx);
         self.welcome(ctx);
         self.shortcuts(ctx);
         super::a11y::focus_ring(ctx, theme::ACCENT_TEXT);

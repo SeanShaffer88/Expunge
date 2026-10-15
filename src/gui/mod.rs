@@ -2,6 +2,7 @@
 
 mod a11y;
 mod app;
+mod ask;
 mod backups;
 mod builder;
 mod cleaner;

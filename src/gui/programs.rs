@@ -25,6 +25,8 @@ pub enum View {
     Monitored,
     Broken,
     Unsigned,
+    /// Not opened for six months or more.
+    Unused,
     Store,
 }
 
@@ -48,6 +50,9 @@ pub struct ProgramsState {
     pub store_apps: Vec<InstalledProgram>,
     pub broken: HashSet<String>,
     pub sizes: HashMap<String, u64>,
+    /// Last opened, memory, CPU and startup delay, by program key.
+    pub usage: HashMap<String, expunge_core::usage::ProgramUsage>,
+    pub usage_job: Option<Job<HashMap<String, expunge_core::usage::ProgramUsage>>>,
     pub job: Option<Job<(Vec<InstalledProgram>, HashSet<String>)>>,
     pub store_job: Option<Job<Vec<InstalledProgram>>>,
     pub size_job: Option<Job<HashMap<String, u64>>>,
@@ -272,7 +277,24 @@ impl App {
         self.programs.needs_refresh = false;
     }
 
+    /// Days since a program was last opened; for programs Windows has no
+    /// record of opening, days since it was installed. None while unknown.
+    pub fn unused_days(&self, p: &InstalledProgram) -> Option<i64> {
+        let now = chrono::Utc::now().timestamp();
+        let u = self.programs.usage.get(&p.key)?;
+        match u.last_opened {
+            Some(ts) => Some((now - ts) / 86_400),
+            None => expunge_core::nlquery::parse_date(&p.install_date)
+                .map(|d| (chrono::Local::now().date_naive() - d).num_days()),
+        }
+    }
+
     pub fn poll_programs(&mut self, ctx: &egui::Context) {
+        if let Some(u) = self.programs.usage_job.as_ref().and_then(|j| j.poll()) {
+            self.programs.usage_job = None;
+            self.programs.usage = u;
+            self.programs.visible_cache = None;
+        }
         if self.programs.needs_refresh && self.removal.as_ref().is_none_or(|r| r.job.is_none()) {
             self.refresh_programs(ctx);
         }
@@ -284,6 +306,16 @@ impl App {
             self.set_status(tf("{n} programs installed", &[("n", n.to_string())]));
             self.load_icons(ctx);
             self.check_trust(ctx);
+            // How each program is used, worked out in the background.
+            let reg = self.reg.clone();
+            let root = self.store.root.clone();
+            let list = self.programs.list.clone();
+            self.programs.usage_job = Some(Job::spawn(ctx, move |_| {
+                let data = expunge_core::usage::UsageData::gather(reg.as_ref(), &root);
+                list.iter()
+                    .map(|p| (p.key.clone(), data.for_program(p)))
+                    .collect()
+            }));
             // Measure folders for programs that don't report their size.
             let todo: Vec<(String, String)> = self
                 .programs
@@ -520,6 +552,7 @@ impl App {
                     st.trust.get(&p.key),
                     Some(Trust::Unsigned | Trust::Invalid { .. })
                 ),
+                View::Unused => self.unused_days(p).is_some_and(|d| d >= 180),
                 _ => true,
             })
             .filter(|p| {
@@ -681,6 +714,7 @@ impl App {
                                 )],
                             ),
                         ),
+                        (View::Unused, t("Not used for 6 months")),
                         (View::Store, t("Store apps")),
                     ];
                     let views = views.to_vec();
@@ -953,6 +987,56 @@ impl App {
                     },
                 );
                 field(ui, "Location", &p.install_location);
+                if let Some(u) = self.programs.usage.get(&p.key) {
+                    let ago = |ts: i64| {
+                        let days = (chrono::Utc::now().timestamp() - ts) / 86_400;
+                        match days {
+                            0 => t("today"),
+                            1 => t("yesterday"),
+                            d if d < 60 => tf("{n} days ago", &[("n", d.to_string())]),
+                            d if d < 730 => tf("{n} months ago", &[("n", (d / 30).to_string())]),
+                            d => tf("{n} years ago", &[("n", (d / 365).to_string())]),
+                        }
+                    };
+                    let opened = match (u.last_opened, u.runs) {
+                        (Some(ts), Some(r)) => {
+                            format!("{} ({})", ago(ts), tf("{n} times", &[("n", r.to_string())]))
+                        }
+                        (Some(ts), None) => ago(ts),
+                        (None, _) => t("No record of it being opened"),
+                    };
+                    field(ui, "Last opened", &opened);
+                    if let (Some(avg), Some(peak)) = (u.avg_ram, u.peak_ram) {
+                        field(
+                            ui,
+                            "Memory",
+                            &tf(
+                                "{avg} on average, up to {peak}",
+                                &[("avg", human_size(avg)), ("peak", human_size(peak))],
+                            ),
+                        );
+                    }
+                    if let Some(c) = u.cpu_percent {
+                        field(
+                            ui,
+                            "Processor",
+                            &tf(
+                                "{n}% of one core while running",
+                                &[("n", format!("{c:.1}"))],
+                            ),
+                        );
+                    }
+                    if let Some(ms) = u.startup_ms {
+                        field(
+                            ui,
+                            "Startup delay",
+                            &tf(
+                                "{n} s at each start of Windows",
+                                &[("n", format!("{:.1}", ms as f64 / 1000.0))],
+                            ),
+                        );
+                    }
+                }
                 if let Some(tr) = self.programs.trust.get(&p.key) {
                     let text = match tr {
                         Trust::Signed { signer } => {
