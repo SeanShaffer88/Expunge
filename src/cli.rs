@@ -55,12 +55,12 @@ USAGE:
                                             for what the log recorded
   expunge portable-build <installer> --name NAME [--version V] [--publisher P]
                  [--category C] [--silent] [--out DIR] [--here] [--defaults]
-                 [--no-prompt]
+                 [--no-prompt] [--no-compile]
                                             Capture an installation in Windows
                                             Sandbox (or on this PC with --here)
-                                            and build a PortableApps.com package,
-                                            compiled when the PortableApps.com
-                                            Launcher and Installer are found
+                                            and build a PortableApps.com package
+                                            with its launcher and .paf.exe
+                                            installer
   expunge add-program <folder|program.exe> [--name NAME]
                                             List a program Windows doesn't know
                                             (e.g. portable) so it can be analyzed
@@ -242,16 +242,21 @@ fn portable_build(args: &[String], reg: &dyn Registry) -> anyhow::Result<i32> {
         )
     };
     println!("Package: {}", pkg_dir.display());
-    let tools = pafbuild::find_tools(&settings.portableapps_dir);
-    if tools.launcher_generator.is_none() || tools.installer.is_none() {
-        eprintln!(
-            "The PortableApps.com Launcher and Installer weren't both found, so the package wasn't compiled.\n  {}\n  {}",
-            pafbuild::LAUNCHER_URL,
-            pafbuild::INSTALLER_URL
-        );
+    if let Ok(info) =
+        std::fs::read_to_string(pkg_dir.join("Other").join("Source").join("Readme.txt"))
+    {
+        if let Some((_, check)) = info.split_once("Portability check:") {
+            eprintln!("Portability check:{}", check.trim_end());
+        }
+    }
+    if has(args, "--no-compile") {
         return Ok(0);
     }
-    let c = pafbuild::compile(&pkg_dir, &app_id, &tools, &|p| eprintln!("{p}…"))?;
+    let tools = pafbuild::find_tools(&settings.portableapps_dir);
+    let c = pafbuild::compile(&pkg_dir, &app_id, &tools, &st.root, &|p| eprintln!("{p}…"))?;
+    if let Some(l) = c.launcher {
+        println!("Launcher: {}", l.display());
+    }
     if let Some(p) = c.paf {
         println!("Installer: {}", p.display());
     }

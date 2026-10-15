@@ -57,7 +57,7 @@ Total Uninstall's features, as listed on its website, and where to find each one
 | Autorun manager | Startup page, with startup impact, delayed start, services, tasks and other autostarts |
 | Command line | Full command line (`expunge --help`) |
 | Portable version | Portable download, for x64 and Arm64 |
-| **Only in Expunge** | System Restore manager, Portable App Builder, PortableApps.com Launcher export, free and open source |
+| **Only in Expunge** | System Restore manager, Portable App Builder (with a portability check and the PortableApps.com Launcher built in), PortableApps.com Launcher export, free and open source |
 
 ## The tools
 
@@ -177,7 +177,14 @@ Turn a program's installer into a PortableApps.com Format package.
 - **Isolated capture in Windows Sandbox** (Windows 11 Pro, Enterprise, and Education): the installation happens in a throwaway copy of Windows, so your PC is never touched. On other editions it runs on your PC and is recorded, so the program can be removed precisely afterwards.
 - **Clean results:** Expunge first watches Windows for 30 seconds to learn what changes on its own, then runs the installer (silently for MSI, NSIS, and Inno Setup installers if you like) and lets you start the program once so its first-run settings are captured.
 - **A complete package:** the program's files in `App\AppName`, `appinfo.ini`, icons taken from the program, `help.html`, and Launcher settings made from the comparison, with shortcuts, installer bookkeeping, and the program's own folder left out. The settings created on first run can be included as the package's defaults.
-- **Compiled for you:** with the PortableApps.com Launcher and Installer installed, Expunge also makes the launcher and the `.paf.exe` installer. Edit the Launcher settings and compile again with one click.
+- **Portability check:** before you share the package, Expunge tells you what could stop the program from working portably, and adjusts the package where it can:
+  - **Java:** programs written in Java that don't bring their own Java runtime are marked as needing Java, so the PortableApps.com Launcher uses jPortable or an installed Java.
+  - **.NET:** the .NET Framework is part of Windows 11, but programs built for newer .NET versions need the matching runtime on every PC unless they include it; Expunge names the version.
+  - **Visual C++ runtimes** the installer put into Windows are copied next to the program, so the portable version doesn't need the Redistributable.
+  - **Things that can't travel:** services, drivers, Explorer extensions and COM components, files written into the Windows folder, and programs that always ask for administrator rights.
+  - **64-bit-only programs** are marked as such in the package.
+- **Nothing else to install:** Expunge compiles the launcher with the official PortableApps.com Launcher source and the NSIS compiler that comes with it, exactly as the PortableApps.com Launcher Generator does. Release downloads include it; otherwise it is downloaded once from GitHub (about 6 MB) and checked against a pinned SHA-256 fingerprint. The `.paf.exe` installer is built with Expunge's own installer script, which installs packages like PortableApps.com installers do (into the PortableApps folder, keeping your settings on upgrades, with the Platform's `/DESTINATION=` option and silent installs). If the official PortableApps.com Installer is installed, Expunge uses it instead, which is what portableapps.com expects for published apps.
+- **Compile again with one click** after editing the Launcher settings.
 
 ### Settings and accessibility
 
@@ -334,5 +341,7 @@ See [ROADMAP.md](ROADMAP.md). Ideas and pull requests are welcome; see [CONTRIBU
 Copyright © 2026 Sean Shaffer.
 
 Expunge is free software: you can redistribute it and/or modify it under the terms of the **GNU General Public License, version 3** (or, at your option, any later version). See [LICENSE](LICENSE) for details.
+
+The release downloads include the [PortableApps.com Launcher](https://github.com/PortableApps/Launcher) source and the NSIS compiler distributed with it, under their own licenses (GPLv2 and the zlib/libpng license); they are separate programs that Expunge runs, unchanged.
 
 Total Uninstall is a trademark of its owner. Expunge is an independent project and is not affiliated with Total Uninstall or its developer.

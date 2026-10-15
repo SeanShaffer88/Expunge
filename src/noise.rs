@@ -158,6 +158,10 @@ pub const REGISTRY_PATTERNS: &[&str] = &[
     "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Reliability",
     "HKLM\\SYSTEM\\CurrentControlSet\\Services\\bam",
     "HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces",
+    // Shadow copy writers' diagnostics, written when Windows Installer
+    // creates a restore point, and Storage Sense's own bookkeeping.
+    "HKLM\\SYSTEM\\CurrentControlSet\\Services\\VSS\\Diag",
+    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\StorageSense",
 ];
 
 pub fn builtin_file_exclusions() -> Vec<String> {

@@ -183,3 +183,19 @@ jobs:
           if (-not $exe) { throw "${{ matrix.exe }} was not copied into App" }
           if (-not (Test-Path "$root\App\AppInfo\appicon.ico")) { throw "no appicon.ico" }
           if (-not (Test-Path "$root\help.html")) { throw "no help.html" }
+      - name: Check the launcher and installer, and install it like the Platform does
+        shell: pwsh
+        run: |
+          $pkg = Get-ChildItem pkg -Directory | Select-Object -First 1
+          $id = $pkg.Name
+          if (-not (Test-Path "$($pkg.FullName)\$id.exe")) { throw "no launcher $id.exe" }
+          $paf = Get-ChildItem pkg -Filter "$id*.paf.exe" | Select-Object -First 1
+          if (-not $paf) { throw "no .paf.exe installer" }
+          Write-Host "Installer: $($paf.Name) ($([math]::Round($paf.Length / 1MB, 1)) MB)"
+          New-Item -ItemType Directory pa | Out-Null
+          $p = Start-Process $paf.FullName -ArgumentList '/S', "/DESTINATION=$PWD\pa\" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "the installer exited with $($p.ExitCode)" }
+          foreach ($want in "$id.exe", 'App\AppInfo\appinfo.ini', "App\AppInfo\Launcher\$id.ini", 'Data') {
+            if (-not (Test-Path "pa\$id\$want")) { throw "the installed copy lacks $want" }
+          }
+          Write-Host "Installed to pa\$id"

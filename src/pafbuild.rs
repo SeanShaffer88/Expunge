@@ -130,6 +130,21 @@ pub fn package_version(v: &str) -> String {
 }
 
 pub fn appinfo_ini(d: &AppDetails) -> String {
+    appinfo_ini_with(d, &crate::portability::Needs::default())
+}
+
+pub fn appinfo_ini_with(d: &AppDetails, needs: &crate::portability::Needs) -> String {
+    let yes_no = |v: bool| if v { "yes" } else { "no" };
+    let deps = if needs.java || needs.x64_only || needs.admin {
+        format!(
+            "[Dependencies]\r\nUsesJava={}\r\nUsesGhostscript=no\r\nRequires64bitOS={}\r\nRequiresAdmin={}\r\n\r\n",
+            yes_no(needs.java),
+            yes_no(needs.x64_only),
+            yes_no(needs.admin)
+        )
+    } else {
+        String::new()
+    };
     let b = |v: bool| if v { "true" } else { "false" };
     let publisher = match (d.publisher.trim(), d.packager.trim()) {
         ("", "") => "Unknown".to_string(),
@@ -159,7 +174,7 @@ pub fn appinfo_ini(d: &AppDetails) -> String {
          Category={category}\r\nDescription={description}\r\nLanguage={lang}\r\n\r\n\
          [License]\r\nShareable={sh}\r\nOpenSource={os}\r\nFreeware={fw}\r\nCommercialUse={cu}\r\n\r\n\
          [Version]\r\nPackageVersion={pv}\r\nDisplayVersion={dv}\r\n\r\n\
-         [Control]\r\nIcons=1\r\nStart={id}.exe\r\n",
+         {deps}[Control]\r\nIcons=1\r\nStart={id}.exe\r\n",
         name = d.display_name(),
         id = d.app_id(),
         home = d.homepage.trim(),
@@ -606,6 +621,9 @@ pub struct Package {
     pub launcher_ini: String,
     /// Things the user should check before publishing.
     pub warnings: Vec<String>,
+    /// What could stop the program from working portably.
+    #[serde(default)]
+    pub portability: crate::portability::Report,
 }
 
 /// Build a PortableApps.com Format folder in `out_dir\<AppID>` from a
@@ -648,8 +666,28 @@ pub fn build_package(
     let app_dir = d.app_dir();
     let (files, bytes) = copy_tree(Path::new(&program_dir), &app.join(&app_dir))?;
 
+    progress("Checking how well the program works portably");
+    let report = crate::portability::analyze(cs, Path::new(&program_dir), Path::new(&exe));
+    // Visual C++ runtimes go next to the program (app-local deployment).
+    let exe_dir_in_app = app.join(&app_dir).join(
+        Path::new(exe[program_dir.len()..].trim_start_matches('\\'))
+            .parent()
+            .unwrap_or(Path::new("")),
+    );
+    for dll in &report.needs.runtime_dlls {
+        let to = exe_dir_in_app.join(leaf(dll));
+        if !to.exists() {
+            if let Err(e) = std::fs::copy(dll, &to) {
+                warnings.push(format!("Could not copy {dll}: {e}"));
+            }
+        }
+    }
+
     progress("Writing the PortableApps.com files");
-    std::fs::write(appinfo.join("appinfo.ini"), appinfo_ini(d))?;
+    std::fs::write(
+        appinfo.join("appinfo.ini"),
+        appinfo_ini_with(d, &report.needs),
+    )?;
     if !write_icons(&exe, &appinfo) {
         warnings.push("No icon could be read from the program; add appicon.ico and the PNG icons to App\\AppInfo.".into());
     }
@@ -665,9 +703,16 @@ pub fn build_package(
     );
     let launcher = format!(
         "; Made by Expunge Portable App Builder. Review the sections below before publishing.\r\n\r\n\
-         [Launch]\r\nProgramExecutable={rel_exe}\r\nDirectoryMoveOK=yes\r\nSupportsUNC=yes\r\n\r\n{}{}",
+         {java}[Launch]\r\nProgramExecutable={rel_exe}\r\nDirectoryMoveOK=yes\r\nSupportsUNC=yes\r\n\r\n{}{}{issues}",
         settings.sections.replace("\r\n", "\n").replace('\n', "\r\n"),
         settings.notes.replace("\r\n", "\n").replace('\n', "\r\n"),
+        java = if report.needs.java { "[Activate]\r\nJava=require\r\n\r\n" } else { "" },
+        issues = report
+            .issues
+            .iter()
+            .filter(|i| i.severity > crate::portability::Severity::Info)
+            .map(|i| format!("; {}: {}. {}\r\n", i.severity.label(), i.title, i.detail))
+            .collect::<String>(),
     );
     std::fs::write(
         appinfo.join("Launcher").join(format!("{id}.ini")),
@@ -678,8 +723,14 @@ pub fn build_package(
         pkg.join("Other").join("Source").join("Readme.txt"),
         format!(
             "{} was captured and packaged by Expunge (https://github.com/SeanShaffer88/Expunge).\r\n\r\n\
-             The Launcher settings are in App\\AppInfo\\Launcher\\{id}.ini.\r\n",
-            d.display_name()
+             The Launcher settings are in App\\AppInfo\\Launcher\\{id}.ini.\r\n\r\n\
+             Portability check:\r\n{}",
+            d.display_name(),
+            report
+                .issues
+                .iter()
+                .map(|i| format!("- {}: {}. {}\r\n", i.severity.label(), i.title, i.detail))
+                .collect::<String>()
         ),
     )?;
 
@@ -743,6 +794,7 @@ pub fn build_package(
         bytes,
         launcher_ini: launcher,
         warnings,
+        portability: report,
     })
 }
 
@@ -1101,32 +1153,36 @@ pub fn compile(
     pkg_dir: &Path,
     app_id: &str,
     tools: &PaTools,
+    data_root: &Path,
     report: &dyn Fn(&str),
 ) -> Result<Compiled> {
     let mut out = Compiled::default();
     let quote = |p: &Path| format!("\"{}\"", p.display());
-    if let Some(g) = &tools.launcher_generator {
-        report("Making the launcher");
-        let _ = std::fs::remove_file(pkg_dir.join(format!("{app_id}.exe")));
-        platform::spawn_command_line(&format!("{} {}", quote(g), quote(pkg_dir)))?.wait();
-        let exe = pkg_dir.join(format!("{app_id}.exe"));
-        if !exe.is_file() {
-            let log = g.parent().map(|d| {
-                d.join("Data")
-                    .join("PortableApps.comLauncherGeneratorLog.txt")
-            });
-            let detail = log
-                .and_then(|l| std::fs::read_to_string(l).ok())
-                .map(|s| s.lines().rev().take(5).collect::<Vec<_>>().join(" / "))
-                .unwrap_or_default();
-            return Err(anyhow!(
-                "the Launcher Generator didn't make {app_id}.exe {detail}"
-            ));
+    // The launcher: compiled from the official PortableApps.com Launcher
+    // source, which Expunge carries (or fetches once) with its compiler.
+    let toolchain = crate::patools::ensure(data_root, report);
+    match (&toolchain, &tools.launcher_generator) {
+        (Ok(tc), _) => {
+            report("Making the launcher");
+            out.launcher = Some(crate::patools::build_launcher(tc, pkg_dir)?);
         }
-        out.launcher = Some(exe);
+        (Err(_), Some(g)) => {
+            report("Making the launcher");
+            let _ = std::fs::remove_file(pkg_dir.join(format!("{app_id}.exe")));
+            platform::spawn_command_line(&format!("{} {}", quote(g), quote(pkg_dir)))?.wait();
+            let exe = pkg_dir.join(format!("{app_id}.exe"));
+            if !exe.is_file() {
+                return Err(anyhow!("the Launcher Generator didn't make {app_id}.exe"));
+            }
+            out.launcher = Some(exe);
+        }
+        (Err(e), None) => return Err(anyhow!("{e}")),
     }
+    // The installer: the official PortableApps.com Installer when it is
+    // installed (needed only to publish on portableapps.com), otherwise
+    // Expunge's own.
+    report("Making the installer");
     if let Some(i) = &tools.installer {
-        report("Making the installer");
         let start = std::time::SystemTime::now() - std::time::Duration::from_secs(2);
         platform::spawn_command_line(&format!("{} {}", quote(i), quote(pkg_dir)))?.wait();
         let parent = pkg_dir.parent().unwrap_or(pkg_dir);
@@ -1134,6 +1190,10 @@ pub fn compile(
         if out.paf.is_none() {
             return Err(anyhow!("the PortableApps.com Installer didn't make a .paf.exe; open it and build the package to see why"));
         }
+    } else {
+        let tc = toolchain.map_err(|e| anyhow!("{e}"))?;
+        let work = data_root.join("tools").join("work");
+        out.paf = Some(crate::patools::build_installer(&tc, pkg_dir, &work)?);
     }
     Ok(out)
 }

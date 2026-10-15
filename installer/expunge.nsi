@@ -99,6 +99,14 @@ Section "Expunge" SecMain
   SectionIn RO
   SetOutPath "$INSTDIR"
   File "/oname=Expunge.exe" "${EXE}"
+  !ifdef TOOLS
+    ; The PortableApps.com Launcher (official source and its NSIS compiler)
+    ; used by the Portable App Builder.
+    RMDir /r "$INSTDIR\tools\PortableApps.com Launcher"
+    SetOutPath "$INSTDIR\tools\PortableApps.com Launcher"
+    File /r "${TOOLS}\*.*"
+    SetOutPath "$INSTDIR"
+  !endif
   File "/oname=LICENSE.txt" "..\LICENSE"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
 
@@ -135,6 +143,8 @@ Section "Uninstall"
   Delete "$INSTDIR\Expunge.exe"
   Delete "$INSTDIR\LICENSE.txt"
   Delete "$INSTDIR\Uninstall.exe"
+  RMDir /r "$INSTDIR\tools\PortableApps.com Launcher"
+  RMDir "$INSTDIR\tools"
   RMDir "$INSTDIR"
   Delete "$SMPROGRAMS\${APP}.lnk"
   Delete "$DESKTOP\${APP}.lnk"

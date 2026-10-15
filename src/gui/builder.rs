@@ -25,7 +25,9 @@ pub struct BuilderState {
     sandbox: Option<bool>,
     out_dir: String,
     tools: Option<PaTools>,
-    tools_job: Option<Job<PaTools>>,
+    /// The built-in PortableApps.com Launcher source is already on this PC.
+    toolchain_ready: bool,
+    tools_job: Option<Job<(PaTools, bool)>>,
     /// What the capture is doing, as shown to the user.
     stage: Arc<Mutex<String>>,
     /// Set when the user says the installation is finished (this-PC mode).
@@ -79,14 +81,21 @@ impl App {
 
     fn refresh_tools(&mut self, ctx: &egui::Context) {
         let dir = self.settings.portableapps_dir.clone();
-        self.builder.tools_job = Some(Job::spawn(ctx, move |_| pafbuild::find_tools(&dir)));
+        let root = self.store.root.clone();
+        self.builder.tools_job = Some(Job::spawn(ctx, move |_| {
+            (
+                pafbuild::find_tools(&dir),
+                expunge_core::patools::find(&root).is_some(),
+            )
+        }));
     }
 
     pub fn poll_builder(&mut self, ctx: &egui::Context) {
         let b = &mut self.builder;
-        if let Some(tools) = b.tools_job.as_ref().and_then(|j| j.poll()) {
+        if let Some((tools, ready)) = b.tools_job.as_ref().and_then(|j| j.poll()) {
             b.tools_job = None;
             b.tools = Some(tools);
+            b.toolchain_ready = ready;
         }
         if let Some(r) = b.capture_job.as_ref().and_then(|j| j.poll()) {
             b.capture_job = None;
@@ -157,34 +166,28 @@ impl App {
         }
     }
 
-    /// Compile straight away when both PortableApps.com tools are installed.
+    /// Make the launcher and installer straight away.
     fn after_capture(&mut self, ctx: &egui::Context) {
-        let ready = self
-            .builder
-            .tools
-            .as_ref()
-            .is_some_and(|t| t.launcher_generator.is_some() && t.installer.is_some());
-        if ready {
-            self.start_compile(ctx);
-        }
+        self.start_compile(ctx);
     }
 
     fn start_compile(&mut self, ctx: &egui::Context) {
         let Some((dir, pkg)) = self.builder.package.clone() else {
             return;
         };
-        let Some(tools) = self.builder.tools.clone() else {
-            return;
-        };
+        let tools = self.builder.tools.clone().unwrap_or_default();
         self.builder.error = None;
         self.builder.compiled = None;
         let stage = self.builder.stage.clone();
+        let root = self.store.root.clone();
         self.builder.compile_job = Some(Job::spawn(ctx, move |_| {
-            pafbuild::compile(&dir, &pkg.app_id, &tools, &|p| {
+            let r = pafbuild::compile(&dir, &pkg.app_id, &tools, &root, &|p| {
                 *stage.lock().unwrap() = p.to_string()
             })
-            .map_err(|e| e.to_string())
+            .map_err(|e| e.to_string());
+            r
         }));
+        self.builder.toolchain_ready = true;
     }
 
     fn start_capture(&mut self, ctx: &egui::Context) {
@@ -458,42 +461,31 @@ impl App {
 
     fn ui_builder_tools(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         let tools = self.builder.tools.clone();
-        match &tools {
-            None => {
-                spinner(ui);
-            }
-            Some(tools) => {
-                let row = |ui: &mut egui::Ui, name: &str, path: &Option<PathBuf>, url: &str| {
-                    ui.horizontal(|ui| match path {
-                        Some(p) => {
-                            ui.label(RichText::new("✔").color(theme::OK));
-                            ui.label(t(name));
-                            small_muted(ui, p.display().to_string());
-                        }
-                        None => {
-                            ui.label(RichText::new("✖").color(theme::WARN));
-                            ui.label(t(name));
-                            ui.hyperlink_to(t("Download"), url);
-                        }
-                    });
-                };
-                row(
-                    ui,
-                    "PortableApps.com Launcher",
-                    &tools.launcher_generator,
-                    pafbuild::LAUNCHER_URL,
-                );
-                row(
-                    ui,
-                    "PortableApps.com Installer",
-                    &tools.installer,
-                    pafbuild::INSTALLER_URL,
-                );
-                if tools.launcher_generator.is_none() || tools.installer.is_none() {
-                    small_muted(ui, t("Without them you still get the finished package folder. Install them in your PortableApps folder (or choose it below) to also get the launcher and the .paf.exe installer."));
+        ui.horizontal_wrapped(|ui| {
+            ui.label(RichText::new("✔").color(theme::OK));
+            ui.label(t("PortableApps.com Launcher: built in"));
+            small_muted(
+                ui,
+                if self.builder.toolchain_ready {
+                    t("ready")
+                } else {
+                    t("the official source is downloaded from GitHub the first time (about 6 MB)")
+                },
+            );
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.label(RichText::new("✔").color(theme::OK));
+            match tools.as_ref().and_then(|t| t.installer.clone()) {
+                Some(p) => {
+                    ui.label(t("Installer: the official PortableApps.com Installer"));
+                    small_muted(ui, p.display().to_string());
+                }
+                None => {
+                    ui.label(t("Installer: built in"));
+                    small_muted(ui, t("to publish on portableapps.com, install the official PortableApps.com Installer and Expunge uses it instead"));
                 }
             }
-        }
+        });
         ui.horizontal(|ui| {
             ui.label(t("PortableApps folder"));
             let mut dir = self.settings.portableapps_dir.clone();
@@ -580,6 +572,21 @@ impl App {
                 small_muted(ui, format!("⚠ {w}"));
             }
             ui.add_space(6.0);
+            ui.label(RichText::new(t("Portability check")).strong());
+            for i in &pkg.portability.issues {
+                use expunge_core::portability::Severity;
+                let (icon, color) = match i.severity {
+                    Severity::Problem => ("✖", theme::BAD),
+                    Severity::Warning => ("⚠", theme::WARN),
+                    Severity::Info => ("ℹ", theme::MUTED),
+                };
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(RichText::new(icon).color(color));
+                    ui.label(RichText::new(t(&i.title)).color(color).strong());
+                });
+                small_muted(ui, t(&i.detail));
+            }
+            ui.add_space(6.0);
             ui.horizontal_wrapped(|ui| {
                 if ui.button(t("Open folder")).clicked() {
                     platform::shell_open(&dir.to_string_lossy());
@@ -588,9 +595,8 @@ impl App {
                 if ui.button(t("Edit Launcher settings")).clicked() {
                     platform::shell_open(&launcher_ini.to_string_lossy());
                 }
-                let can_compile = self.builder.tools.as_ref().is_some_and(|t| t.launcher_generator.is_some() || t.installer.is_some());
-                if ui.add_enabled(can_compile, egui::Button::new(if self.builder.compiled.is_some() { t("Compile again") } else { t("Compile") }))
-                    .on_hover_text(t("Make the launcher and the .paf.exe installer with the PortableApps.com tools (do this again after editing the settings)."))
+                if ui.add(egui::Button::new(if self.builder.compiled.is_some() { t("Compile again") } else { t("Compile") }))
+                    .on_hover_text(t("Make the launcher and the .paf.exe installer again, for example after editing the Launcher settings."))
                     .clicked()
                 {
                     self.start_compile(&ctx);
