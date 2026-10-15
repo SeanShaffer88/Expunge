@@ -110,7 +110,7 @@ For programs that were installed without monitoring:
 - **Windows features and app aliases** (Advanced mode): turn optional Windows features on or off, and see which app execution aliases are active.
 - **Program transfer:** package programs together with their files, settings, and registry entries, then restore them on another PC. Includes a compatibility check, automatic path rewriting for different user names or drives, and one-click undo.
 - **"Which program created this?":** search for any file or registry path across all monitored installations.
-- **Repackaging:** turn a monitored installation into a deployable folder containing a silent `install.ps1`, an `install.reg`, and an `uninstall.ps1`.
+- **Repackaging:** turn a monitored installation into a deployable folder containing a silent `install.ps1`, an `install.reg`, and an `uninstall.ps1`, or into an MSIX package (Advanced mode).
 - **Export** install logs as an HTML report, a `.reg` undo script, a PowerShell removal script, or JSON for import on another PC.
 
 ### Safety

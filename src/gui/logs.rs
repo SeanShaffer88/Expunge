@@ -25,7 +25,7 @@ pub struct LogsState {
     /// Show only this group ("" = all).
     pub group_filter: String,
     pub loader: super::Reload<Vec<InstallLog>>,
-    pub repackage_job: Option<Job<Result<expunge_core::repackage::Summary, String>>>,
+    pub repackage_job: Option<Job<Result<(expunge_core::repackage::Summary, Option<expunge_core::msix::MsixResult>), String>>>,
 }
 
 /// Collapsible lists of every change. With `editable`, each entry gets a ✖
@@ -244,7 +244,7 @@ impl App {
     }
 
     /// Repackage a log as a deployable folder, in the background.
-    fn start_repackage(&mut self, log: InstallLog) {
+    fn start_repackage(&mut self, log: InstallLog, msix: bool) {
         if self.logs.repackage_job.is_some() {
             return;
         }
@@ -254,8 +254,15 @@ impl App {
         let reg = self.reg.clone();
         self.set_status(tf("Repackaging {name}…", &[("name", log.name.clone())]));
         self.logs.repackage_job = Some(Job::spawn(&self.ctx, move |pr| {
-            expunge_core::repackage::repackage(&log, reg.as_ref(), &dir, &|s| pr.set_phase(s))
-                .map_err(|e| e.to_string())
+            let s = expunge_core::repackage::repackage(&log, reg.as_ref(), &dir, &|s| pr.set_phase(s))
+                .map_err(|e| e.to_string())?;
+            let m = if msix {
+                pr.set_phase("MSIX".to_string());
+                Some(expunge_core::msix::build(&s.folder, &log).map_err(|e| e.to_string())?)
+            } else {
+                None
+            };
+            Ok((s, m))
         }));
     }
 
@@ -265,7 +272,7 @@ impl App {
         };
         self.logs.repackage_job = None;
         match r {
-            Ok(s) => {
+            Ok((s, m)) => {
                 let mut msg = tf(
                     "Package ready: {files} files ({size}), {keys} registry keys.",
                     &[
@@ -280,6 +287,14 @@ impl App {
                         "{n} recorded files no longer exist and were left out.",
                         &[("n", s.missing.to_string())],
                     ));
+                }
+                if let Some(m) = m {
+                    msg.push(' ');
+                    msg.push_str(&if m.package.is_some() {
+                        t("The MSIX package is ready; sign it before installing (see MSIX-README.txt).")
+                    } else {
+                        t("The MSIX layout is ready; pack and sign it with the Windows SDK (see MSIX-README.txt).")
+                    });
                 }
                 self.set_status(msg);
                 expunge_core::platform::shell_open(&s.folder.to_string_lossy());
@@ -557,7 +572,17 @@ impl App {
                         {
                             ui.close();
                             let full = self.logs.logs[idx].clone();
-                            self.start_repackage(full);
+                            self.start_repackage(full, false);
+                        }
+                        if self.settings.advanced_mode
+                            && ui
+                                .button(t("Repackage as MSIX…"))
+                                .on_hover_text(t("The same folder plus an MSIX package layout (and an .msix file when the Windows SDK is installed), for modern deployment."))
+                                .clicked()
+                        {
+                            ui.close();
+                            let full = self.logs.logs[idx].clone();
+                            self.start_repackage(full, true);
                         }
                     });
                     if ui.button(t("Edit details")).clicked() {

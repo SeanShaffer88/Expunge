@@ -14,7 +14,7 @@ Everything planned as *Next* has been built; the items below are the next candid
 - **Per-value live registry view** — the live activity panel shows which registry areas change; listing each value as it changes would need event tracing (ETW).
 
 **Moving programs**
-- **MSIX output** for repackaged installations (needs Microsoft's free MSIX Packaging Tool to sign the result).
+- **MSIX registry support** — include the installation's registry entries in MSIX packages (Registry.dat).
 
 **Uninstaller**
 

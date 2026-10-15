@@ -57,7 +57,8 @@ USAGE:
   expunge transfer check <package>          Check a package against this PC
   expunge transfer import <package> [--overwrite]
                                             Restore a package (undo from backups)
-  expunge repackage <log-id> <folder>       Turn a monitored installation into a
+  expunge repackage <log-id> <folder> [--msix]
+                                            Turn a monitored installation into a
                                             folder with files, install.reg and
                                             silent install/uninstall scripts
   expunge orphans [--json]                  List registrations left by removed
@@ -392,7 +393,7 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
         }
         "repackage" => {
             let (Some(id), Some(dir)) = (args.get(1), args.get(2)) else {
-                anyhow::bail!("usage: expunge repackage <log-id> <folder>")
+                anyhow::bail!("usage: expunge repackage <log-id> <folder> [--msix]")
             };
             let st = store()?;
             let log = st.load_log(id)?;
@@ -410,6 +411,13 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                 s.keys,
                 s.values
             );
+            if has(&args, "--msix") {
+                let m = expunge_core::msix::build(&s.folder, &log)?;
+                match &m.package {
+                    Some(p) => println!("MSIX package: {} (unsigned; see MSIX-README.txt)", p.display()),
+                    None => println!("MSIX layout: {} (pack with MakeAppx; see MSIX-README.txt)", m.layout.display()),
+                }
+            }
             if s.missing > 0 {
                 eprintln!(
                     "{} recorded files no longer exist and were left out.",
