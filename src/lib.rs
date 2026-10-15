@@ -8,6 +8,7 @@
 //! Software Foundation, either version 3 of the License, or (at your option)
 //! any later version. See LICENSE for details.
 
+pub mod alternatives;
 pub mod autoruns;
 pub mod autowatch;
 pub mod backup;

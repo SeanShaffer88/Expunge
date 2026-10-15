@@ -1130,6 +1130,10 @@ impl App {
                 self.programs.needs_refresh = true;
             }
         });
+        if p.source != Source::Store {
+            ui.add_space(8.0);
+            self.alternatives_ui(ui, std::slice::from_ref(&p.name));
+        }
         if let Some(log) = log_for(&self.logs.logs, p) {
             ui.add_space(10.0);
             let id = log.id.clone();

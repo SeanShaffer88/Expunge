@@ -76,6 +76,7 @@ pub struct App {
     pub builder: super::builder::BuilderState,
     pub shell: super::shell_ui::ShellState,
     pub debloat: super::debloat_ui::DebloatState,
+    pub alt: super::alt_ui::AltState,
     /// "Ask Expunge" plain-language search (Ctrl+K).
     pub ask_ui: super::ask::AskState,
     /// Live activity while monitoring an installation.
@@ -159,6 +160,7 @@ impl App {
             builder: Default::default(),
             shell: Default::default(),
             debloat: Default::default(),
+            alt: Default::default(),
             ask_ui: Default::default(),
             live: None,
             auto_watch: None,
@@ -878,6 +880,7 @@ impl App {
         self.poll_builder(ctx);
         self.poll_shell();
         self.poll_debloat();
+        self.poll_alternatives();
         self.poll_silent_package();
         self.poll_precheck(ctx);
         // Resource-use history: a quick sample of running programs every

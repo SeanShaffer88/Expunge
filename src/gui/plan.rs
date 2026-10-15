@@ -242,6 +242,13 @@ impl App {
 
     pub fn ui_removal(&mut self, ctx: &egui::Context) {
         let simple = !self.settings.advanced_mode;
+        let installed: Vec<String> = self
+            .programs
+            .list
+            .iter()
+            .map(|p| p.name.to_lowercase())
+            .collect();
+        let alt = &mut self.alt;
         let Some(flow) = &mut self.removal else {
             return;
         };
@@ -276,6 +283,8 @@ impl App {
                     }
                     ui.add_space(6.0);
                     results_ui(ui, results);
+                    ui.add_space(8.0);
+                    super::alt_ui::alternatives_widget(ui, alt, &installed, &flow.names);
                     ui.add_space(8.0);
                     if theme::primary_button(ui, t("Close")).clicked() {
                         close = true;
