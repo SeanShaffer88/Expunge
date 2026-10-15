@@ -76,6 +76,9 @@ USAGE:
                                             Clean junk automatically
   expunge startup [--json]                  List startup programs
   expunge startup enable|disable <name>     Turn a startup program on or off
+  expunge reputation <file>... [--vt-key KEY]
+                                            Look files up online by their hash
+                                            (only the hash is sent)
   expunge backups                           List backups
   expunge restore <backup-id>               Undo a removal from its backup
   expunge --version | --help
@@ -865,6 +868,34 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                     }
                 }
             }
+        }
+        "reputation" => {
+            let files: Vec<&String> = {
+                let mut v = Vec::new();
+                let mut skip = false;
+                for a in &args[1..] {
+                    if skip { skip = false; continue; }
+                    if a == "--vt-key" { skip = true; continue; }
+                    v.push(a);
+                }
+                v
+            };
+            if files.is_empty() {
+                anyhow::bail!("name at least one file");
+            }
+            let key = arg_value(&args, "--vt-key").unwrap_or_else(|| store().map(|s| s.load_settings().virustotal_key).unwrap_or_default());
+            let mut bad = false;
+            for f in files {
+                let hash = expunge_core::reputation::sha256_file(std::path::Path::new(f))?;
+                match expunge_core::reputation::check(&hash, Some(&key)) {
+                    Ok(v) => {
+                        bad |= v.is_bad();
+                        println!("{f}\n  sha256 {hash}\n  {v:?}\n  {}", expunge_core::reputation::virustotal_url(&hash));
+                    }
+                    Err(e) => println!("{f}\n  sha256 {hash}\n  lookup failed: {e}"),
+                }
+            }
+            return Ok(if bad { 2 } else { 0 });
         }
         "orphans" => {
             let plan = expunge_core::orphans::scan_system(reg.as_ref());

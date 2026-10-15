@@ -56,6 +56,11 @@ pub struct Settings {
     pub high_contrast: bool,
     /// The welcome screen has been completed.
     pub first_run_done: bool,
+    /// Allow looking up file hashes online (off by default). Only hashes
+    /// are sent, never files.
+    pub reputation_online: bool,
+    /// Optional VirusTotal API key for detection counts.
+    pub virustotal_key: String,
 }
 
 /// In Simple mode the safety switches are locked to their safe values,
@@ -113,6 +118,8 @@ impl Default for Settings {
             advanced_mode: false,
             high_contrast: false,
             first_run_done: false,
+            reputation_online: false,
+            virustotal_key: String::new(),
         }
     }
 }

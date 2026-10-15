@@ -366,6 +366,24 @@ impl App {
                         self.programs.needs_refresh = true;
                     }
                 });
+                ui.add_space(10.0);
+                theme::card(ui, |ui| {
+                    ui.label(RichText::new(t("Online reputation check")).heading());
+                    ui.add_space(4.0);
+                    changed |= ui
+                        .checkbox(&mut self.settings.reputation_online, t("Let me look up startup programs and other files online"))
+                        .changed();
+                    small_muted(ui, t("Off by default. Only a file's fingerprint (SHA-256 hash) is sent, never the file, and only when you click Check. Known published software is recognized through CIRCL's public hash lookup."));
+                    if self.settings.reputation_online {
+                        ui.horizontal(|ui| {
+                            ui.label(t("VirusTotal API key (optional)"));
+                            changed |= ui
+                                .add(egui::TextEdit::singleline(&mut self.settings.virustotal_key).password(true).desired_width(260.0))
+                                .changed();
+                        });
+                        small_muted(ui, t("With a free VirusTotal key, results also show how many antivirus engines flag the file."));
+                    }
+                });
                 if changed {
                     self.save_settings();
                 }

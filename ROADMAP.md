@@ -20,7 +20,6 @@ Everything planned as *Next* has been built; the items below are the next candid
 **Uninstaller**
 
 **Startup**
-- **Reputation check** (opt-in, off by default) — look up unknown startup items and installers by file hash in public malware databases. Only hashes are sent, never files.
 
 **Disk**
 

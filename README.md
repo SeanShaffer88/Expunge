@@ -96,6 +96,7 @@ For programs that were installed without monitoring:
 - **Built-in safeguards:** Minimal, Standard, and Advanced presets; a restore point before every change; and a record of every previous value, so each setting can be reversed exactly.
 
 ### System tools
+- **Reputation check** (opt-in): look up startup programs and installers online by their SHA-256 fingerprint (only the hash is sent), with optional VirusTotal detection counts.
 - **System health:** free space on every drive with its 30-day trend, memory use, and services that stopped unexpectedly, at a glance on the dashboard.
 - **Startup manager:** Run keys and Startup folders (with Task Manager–compatible enabling and disabling, the startup impact Windows measured for each program, and delayed start), services and drivers, and scheduled tasks. Advanced mode adds every other autostart location: Winlogon, Active Setup, Image File Execution Options, AppInit DLLs, Explorer extensions, icon overlays, browser helper objects, boot-time programs, and WMI subscriptions.
 - **Disk space map:** a treemap of any drive or folder in which each block's size matches the space it uses, colored by file type (videos, music, pictures, archives and disk images, programs, documents). Click any block to look inside it, or use the size-sorted list beside it with the keyboard. Read-only, so it is safe in Simple mode.
