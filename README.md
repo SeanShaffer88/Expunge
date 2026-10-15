@@ -31,7 +31,7 @@ Most uninstallers run the vendor's own uninstaller and then *guess* at what was 
 
 **Expunge closes that gap.** It takes a snapshot of the system before and after an installation and records every file, folder, registry key and value, service, and scheduled task that changed. Later, it turns that record into a precise, reviewable removal plan. Everything Expunge deletes or changes is backed up first, so it can be undone.
 
-Expunge does everything [Total Uninstall](https://www.martau.com/) does, from install monitoring and complete uninstallation to the cleaner, the autorun manager, snapshots, profiles and moving programs to another PC, and it is free for everyone under the GPLv3. It also adds tools of its own: a **System Restore manager** and a **Portable App Builder** that turns any installer into a PortableApps.com package.
+Expunge does everything [Total Uninstall](https://www.martau.com/) does, from install monitoring and complete uninstallation to the cleaner, the autorun manager, snapshots, profiles and moving programs to another PC, and it is free for everyone under the GPLv3. It also adds tools of its own: a **map of where every installation put things**, **confidence colours** on every leftover, a **pre-install check** for adware with an optional test run in Windows Sandbox, **silent installers** made from any recorded installation, **Ask Expunge** for questions in plain language, **usage tracking** that finds the programs you never open, suggestions of **lightweight alternatives** installable through winget or Scoop, a **right-click menu manager**, a one-click **Bloatware Shield**, a **System Restore manager** and a **Portable App Builder** that turns any installer into a PortableApps.com package.
 
 ## Everything Total Uninstall does, and more
 
@@ -57,7 +57,24 @@ Total Uninstall's features, as listed on its website, and where to find each one
 | Autorun manager | Startup page, with startup impact, delayed start, services, tasks and other autostarts |
 | Command line | Full command line (`expunge --help`) |
 | Portable version | Portable download, for x64 and Arm64 |
-| **Only in Expunge** | System Restore manager, Portable App Builder (with a portability check and the PortableApps.com Launcher built in), PortableApps.com Launcher export, free and open source |
+
+And what only Expunge has:
+
+| Only in Expunge | Where |
+|---|---|
+| Visual map of what an installation changed, grouped by where it went (startup, services, Explorer, Windows folders, AppData, registry…) | Install logs, Monitor and Snapshots: **Map** |
+| Confidence colours on leftovers: green (safe), yellow (review), red (careful), each with its reasons | Every removal review: **Select only green** |
+| Pre-install check for bundled adware, offer screens, coin miners, web installers and unsigned or tampered files | Monitor page, before an installer runs |
+| Test an installer in Windows Sandbox first and see everything it would change | Monitor page: **Test in Windows Sandbox first** |
+| Silent installer (`Setup.exe`) made from a recorded installation, for redeploying without the setup wizard | Install logs > Export > **Silent installer** |
+| Questions in plain language ("top 5 space-wasters I haven't opened in 6 months") | **Ask Expunge** (Ctrl+K) |
+| When each program was last used, how often, its CPU use and startup cost | Program details, **Not used for 6 months** view, Dashboard |
+| Lightweight and open-source alternatives, installed with one click through winget or Scoop | Program details and after an uninstall |
+| Right-click menu manager: turn entries off, remove broken ones, deep clean of COM classes and environment entries | **Right-click menu** page |
+| One-click removal of OEM bloatware, trials and pre-installed Store apps, also for new user accounts | **Bloatware Shield** page |
+| System Restore manager | System Restore page |
+| Portable App Builder with a portability check and the PortableApps.com Launcher built in | Portable App Builder page |
+| Free and open source (GPLv3) | |
 
 ## The tools
 
@@ -70,7 +87,8 @@ Expunge is organized into pages, each with its own job. Every page has built-in 
 Your system at a glance.
 
 - **Summary tiles:** installed programs, monitored programs, broken entries, and backups (with the space they use). Click a tile to jump straight to it.
-- **Quick actions:** install a program with monitoring, uninstall programs, speed up startup, clean junk files, System Restore, make a portable app, and find leftovers of removed programs (Advanced mode).
+- **Quick actions:** install a program with monitoring, uninstall programs, speed up startup, clean junk files, System Restore, make a portable app, remove bloatware, and find leftovers of removed programs (Advanced mode).
+- **Space-wasters you don't use:** the five largest programs that haven't been opened in six months, ready to review and uninstall.
 - **Recently monitored:** the latest install logs, one click away.
 
 ### Programs (uninstaller)
@@ -87,6 +105,9 @@ Every installed program, and the safest way to remove it.
 - **Unattended batch uninstallation:** tick any number of programs and walk away. Silent switches are detected for each installer technology (Windows Installer, Inno Setup, NSIS, WiX, and Squirrel); uninstallers run one at a time; restarts are held until the end; stalled uninstallers are skipped; and one combined leftover scan follows.
 - **Silent uninstallation** of a single program, and **forced removal** (Advanced mode) when a program's uninstaller is broken or missing.
 - **Trust information:** who digitally signed each program, with unsigned programs and broken signatures (possible tampering) flagged.
+- **Usage:** when each program was last opened and how often (from Windows' own records, kept on this PC), how much processor time it uses while running, and how long it adds to each Windows startup. The **Not used for 6 months** view lists what you could do without.
+- **Lightweight alternatives:** for heavy or ad-supported programs, free alternatives that do the same job (for example 7-Zip for WinRAR, SumatraPDF for Adobe Reader, VLC for RealPlayer or PowerDVD), installed with one click through winget or Scoop when you choose. They are suggested again right after an uninstall.
+- **Confidence colours** in every removal review: green items are safe to remove, yellow ones deserve a look, red ones touch shared parts of Windows. Each colour comes with its reasons, and **Select only green** ticks just the certain ones.
 - **Locked files** are scheduled for deletion at the next restart, and **user data is respected**: files a program created later are kept unless you choose otherwise.
 - **Transfer to another PC:** pack programs with their files, settings, and registry entries into one file and restore them on a new PC, with a compatibility check, path rewriting for different user names or drives, and one-click undo.
 - **Export the program list** as a CSV file.
@@ -96,6 +117,8 @@ Every installed program, and the safest way to remove it.
 Record an installation so it can be removed precisely later.
 
 - **Install and monitor:** choose an installer, or right-click it in File Explorer and select **Install with Expunge**. Expunge takes a snapshot, runs the installer, and records every change.
+- **Pre-install check:** before anything runs, the setup file is checked for bundled adware (OpenCandy, InstallCore and others), offer screens, coin miners, web installers that download more while they run, missing or broken digital signatures, and download-site wrappers. Each finding is explained in plain words.
+- **Test in Windows Sandbox first** (Windows 11 Pro, Enterprise and Education): the installer runs in a throwaway copy of Windows and Expunge shows everything it would change, on a map, without touching your PC.
 - **Manual monitoring** for anything else, including Microsoft Store apps, winget packages, scripts, and portable applications.
 - **Live activity:** files being added, changed, and removed stream in while the installer runs, and registry areas report when something under them changes.
 - **Restart-safe:** monitoring survives restarts, so installers that need a reboot are captured completely.
@@ -110,10 +133,15 @@ Record an installation so it can be removed precisely later.
 Everything each monitored installation changed.
 
 - **Complete records** of added, changed, and removed files, folders, registry keys and values, services, and scheduled tasks.
+- **A map of where it put things:** changes grouped by what they mean (starts with Windows, services and drivers, scheduled tasks, Explorer and file types, Windows folders, program folders, AppData, shortcuts, registry) with a proportional overview bar. Click an area to focus on it, expand folders and keys like a tree, or switch to the classic list.
+
+<img src="docs/screenshots/change-map.png" alt="Map of an installation's changes" width="720">
+
 - **Groups and tags:** organize logs into groups and label them with tags; search and filter by either.
 - **"Which program created this?":** type part of any file or registry path to find the monitored program it belongs to.
 - **Merge logs:** combine a program and its update or plugins into one log. Later changes win, and the originals are kept.
 - **Export** a log as an HTML report, XML, a `.reg` undo script, a PowerShell removal script, JSON for import on another PC, or **PortableApps.com Launcher settings**. **Print** opens a print-ready report.
+- **Silent installer:** turn a recorded installation into a `Setup.exe` that installs exactly that version again without any wizard, plus a folder with the files, `install.reg`, `install.ps1` and `uninstall.ps1`, for redeploying to other PCs.
 - **Uninstall from the log** with the same precise removal as the Programs page.
 
 ### Backups
@@ -186,19 +214,46 @@ Turn a program's installer into a PortableApps.com Format package.
 - **Nothing else to install:** Expunge compiles the launcher with the official PortableApps.com Launcher source and the NSIS compiler that comes with it, exactly as the PortableApps.com Launcher Generator does. Release downloads include it; otherwise it is downloaded once from GitHub (about 6 MB) and checked against a pinned SHA-256 fingerprint. The `.paf.exe` installer is built with Expunge's own installer script, which installs packages like PortableApps.com installers do (into the PortableApps folder, keeping your settings on upgrades, with the Platform's `/DESTINATION=` option and silent installs). If the official PortableApps.com Installer is installed, Expunge uses it instead, which is what portableapps.com expects for published apps.
 - **Compile again with one click** after editing the Launcher settings.
 
+### Bloatware Shield
+
+<img src="docs/screenshots/bloatware-shield.png" alt="Bloatware Shield" width="720">
+
+Remove what came with the PC but you never asked for.
+
+- **One scan, one click:** antivirus trials, sponsored games, VPN and storage offers, manufacturer welcome and promotion apps from Dell, HP, Lenovo, Acer, ASUS, MSI, Samsung and Dynabook, and the Store apps Windows adds for consumers, including the ones ordinary uninstallers skip.
+- **Recommended and optional:** trials, ads and promotions are ticked; maker tools some people use, such as support assistants, are listed but left unticked. Drivers, audio and hotkey tools and Windows' own parts are never listed.
+- **Also for new accounts:** stop Windows from installing the removed Store apps for user accounts created later.
+- **Reviewed and reversible:** programs are uninstalled one after another and their leftovers go through the usual review, with everything backed up.
+
+### Right-click menu
+
+<img src="docs/screenshots/right-click-menu.png" alt="Right-click menu manager" width="720">
+
+Tidy the menu that appears when you right-click files, folders, drives and the desktop.
+
+- **Every entry programs added:** shell extensions and menu commands, where each appears, and which file provides it. Windows' own entries are hidden unless you ask for them.
+- **Turn entries off** with a checkbox, the way Windows itself does, so nothing is deleted and each one can be turned back on.
+- **Broken entries** left by removed programs are flagged and can be removed in one go; they slow File Explorer down and can make it show errors.
+- **Deep clean:** also finds COM classes, "Open with" entries, and `PATH` and environment entries that removed programs left anywhere in Windows.
+
+### Ask Expunge
+
+Press **Ctrl+K** (or the **Ask Expunge** button) and ask in your own words: *"find and wipe everything related to that video converter I downloaded last week"*, *"top 5 space-wasters I haven't opened in 6 months"*, *"games installed this year bigger than 10 GB"*. Expunge shows how it understood the question, lists matching programs and install logs as you type, and sends removals through the usual review. It all runs on your PC; nothing is sent anywhere. Questions are understood in English.
+
 ### Settings and accessibility
 
 - **Simple and Advanced modes**, chosen on first launch. Simple mode uses plain language and offers only options that cannot harm Windows or slow the PC; Advanced mode shows every tool and technical detail.
 - **Safety options:** backups before removal, confirmations, restore points, and Recycle Bin copies (always on in Simple mode).
 - **Monitoring scope and profiles:** which registry keys and folders snapshots cover, with exclusions and background-noise learning, saved as named profiles.
 - **Explorer integration:** the **Install with Expunge** entry in the right-click menu of installers.
-- **Full keyboard access:** a visible focus ring, arrow-key navigation in lists, Esc to close dialogs, and shortcuts for every page (Ctrl+1 to Ctrl+9, Ctrl+Tab, Ctrl+F, F5, Delete, and F1).
+- **Full keyboard access:** a visible focus ring, arrow-key navigation in lists, Esc to close dialogs, and shortcuts for every page (Ctrl+1 to Ctrl+9, Ctrl+Tab, Ctrl+F, Ctrl+K, F5, Delete, and F1).
 - **Screen-reader support** for Narrator and NVDA, adjustable text size, and a high-contrast option.
 - **Eleven languages:** English, Español, Deutsch, Français, Português (Brasil), Italiano, Polski, Русский, 简体中文, 日本語, and 한국어. Additional languages can be added without recompiling (see [Translating](docs/TRANSLATING.md)).
 
 ### Design and distribution
 
 - **Built for Windows 11:** a dark interface with a native red Windows 11 window border, and an administrator check at every launch with a one-click relaunch as administrator.
+- **Fast and fluid:** a native GPU-rendered interface; slow work (scans, sizes, signatures, usage) runs in the background so the window never freezes. Pages fade in, and hover and selection animate softly; animations follow Windows' own *Animation effects* setting.
 - **No dependencies:** a single native executable, with no .NET, no Visual C++ runtime, and nothing else to download.
 - **Installer or portable**, for x64 and Arm64 PCs.
 - **Full command line** for scripting and automation.
@@ -233,6 +288,7 @@ expunge revert <log-id> --dry-run
 expunge revert <log-id>
 expunge export <log-id> xml changes.xml
 expunge export <log-id> portable PhotoEditorPortable.ini
+expunge repackage <log-id> D:\Deploy\PhotoEditor
 expunge merge <log-id> <log-id> --name "Photo Editor"
 expunge snapshot before.snap
 expunge diff before.snap after.snap --name "Photo Editor"

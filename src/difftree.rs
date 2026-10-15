@@ -101,10 +101,21 @@ impl Area {
 }
 
 fn env_lower(k: &str) -> String {
-    std::env::var(k)
-        .unwrap_or_default()
-        .trim_end_matches('\\')
-        .to_lowercase()
+    let v = std::env::var(k).unwrap_or_default();
+    // Windows always sets these; the defaults keep paths classified when
+    // logs are viewed elsewhere (tests, the demo).
+    let v = if v.is_empty() {
+        match k {
+            "windir" => "C:\\Windows".to_string(),
+            "ProgramFiles" | "ProgramW6432" => "C:\\Program Files".to_string(),
+            "ProgramFiles(x86)" => "C:\\Program Files (x86)".to_string(),
+            "ProgramData" => "C:\\ProgramData".to_string(),
+            _ => v,
+        }
+    } else {
+        v
+    };
+    v.trim_end_matches('\\').to_lowercase()
 }
 
 /// Folders used to classify paths, read once.
