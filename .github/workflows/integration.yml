@@ -97,9 +97,6 @@ jobs:
           if (-not $log.uninstall_key) { throw "the installation registered no uninstall entry" }
           "id=$($log.id)" >> $env:GITHUB_OUTPUT
           "name=$($log.name)" >> $env:GITHUB_OUTPUT
-      - name: Lint the installation
-        shell: pwsh
-        run: ./it/Expunge.exe lint ${{ steps.monitor.outputs.id }} | Out-Host; exit 0
       - name: Remove with Expunge
         shell: pwsh
         run: |
@@ -116,3 +113,72 @@ jobs:
           if ($p.ExitCode -ne 0) { $out | Select-Object -First 25 | ForEach-Object { Write-Output "::error::$_" }; throw "leftovers remain" }
           $still = ./it/Expunge.exe programs | Out-String -Stream | Select-String -SimpleMatch "${{ steps.monitor.outputs.name }}"
           if ($still) { throw "the program is still listed: $still" }
+
+  portable:
+    name: Portable App Builder (${{ matrix.name }})
+    runs-on: windows-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: MSI
+            url: https://www.7-zip.org/a/7z2409-x64.msi
+            file: 7z.msi
+            app: 7-Zip
+            exe: 7zFM.exe
+          - name: NSIS
+            url: https://www.7-zip.org/a/7z2409-x64.exe
+            file: 7z.exe
+            app: 7-Zip
+            exe: 7zFM.exe
+          - name: Inno Setup
+            url: https://files.jrsoftware.org/is/6/innosetup-6.4.3.exe
+            mirror: https://github.com/jrsoftware/issrc/releases/download/is-6_4_3/innosetup-6.4.3.exe
+            file: is.exe
+            app: Inno Setup
+            exe: Compil32.exe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release --locked
+      - name: Download installer
+        shell: pwsh
+        run: |
+          $out = "$env:RUNNER_TEMP\${{ matrix.file }}"
+          $urls = @("${{ matrix.url }}") + @("${{ matrix.mirror }}" | Where-Object { $_ })
+          foreach ($u in $urls) {
+            try { Invoke-WebRequest -Uri $u -OutFile $out -MaximumRedirection 10; "Downloaded $u"; exit 0 } catch { "Download failed: $u ($_)" }
+          }
+          throw "could not download the installer"
+      - name: Build a PortableApps.com package (installed on the runner)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory pkg | Out-Null
+          '' | Set-Content empty.txt
+          $all = @('portable-build', "$env:RUNNER_TEMP\${{ matrix.file }}", '--name', '"${{ matrix.app }}"', '--silent', '--here', '--no-prompt', '--out', "$PWD\pkg")
+          $p = Start-Process target/release/expunge.exe -ArgumentList $all -Wait -PassThru -NoNewWindow -RedirectStandardInput empty.txt -RedirectStandardOutput out.txt -RedirectStandardError err.txt
+          (Get-Content out.txt) + (Get-Content err.txt) | ForEach-Object { Write-Host $_ }
+          if ($p.ExitCode -ne 0) { Get-Content err.txt | Select-Object -Last 15 | ForEach-Object { Write-Output "::error::$_" }; throw "portable-build failed" }
+      - name: Check the package
+        shell: pwsh
+        run: |
+          $pkg = Get-ChildItem pkg -Directory | Select-Object -First 1
+          if (-not $pkg) { throw "no package folder" }
+          $root = $pkg.FullName
+          Write-Host "Package: $root"
+          Get-ChildItem $root -Recurse -Depth 2 | Select-Object -First 40 | ForEach-Object { Write-Host "  $($_.FullName.Substring($root.Length))" }
+          $info = Get-Content "$root\App\AppInfo\appinfo.ini" -Raw
+          Write-Host $info
+          foreach ($want in 'Type=PortableApps.comFormat', "AppID=$($pkg.Name)", 'PackageVersion=', "Start=$($pkg.Name).exe") {
+            if (-not $info.Contains($want)) { throw "appinfo.ini lacks $want" }
+          }
+          $ini = Get-Content "$root\App\AppInfo\Launcher\$($pkg.Name).ini" -Raw
+          Write-Host $ini
+          if (-not $ini.Contains('${{ matrix.exe }}')) { throw "the Launcher settings don't start ${{ matrix.exe }}" }
+          $exe = Get-ChildItem "$root\App" -Recurse -Filter '${{ matrix.exe }}' | Select-Object -First 1
+          if (-not $exe) { throw "${{ matrix.exe }} was not copied into App" }
+          if (-not (Test-Path "$root\App\AppInfo\appicon.ico")) { throw "no appicon.ico" }
+          if (-not (Test-Path "$root\help.html")) { throw "no help.html" }

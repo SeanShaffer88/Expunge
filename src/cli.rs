@@ -52,6 +52,7 @@ USAGE:
                                             for what the log recorded
   expunge portable-build <installer> --name NAME [--version V] [--publisher P]
                  [--category C] [--silent] [--out DIR] [--here] [--defaults]
+                 [--no-prompt]
                                             Capture an installation in Windows
                                             Sandbox (or on this PC with --here)
                                             and build a PortableApps.com package,
@@ -171,7 +172,11 @@ fn portable_build(args: &[String], reg: &dyn Registry) -> anyhow::Result<i32> {
             eprintln!("Windows Sandbox isn't turned on, so the installation runs on this PC.");
         }
         let report = |p: &str| eprintln!("{p}…");
+        let no_prompt = has(args, "--no-prompt");
         let ask = || {
+            if no_prompt {
+                return;
+            }
             eprintln!("When the installation has finished, start the program once, set it up, close it, then press Enter.");
             let mut s = String::new();
             let _ = std::io::stdin().read_line(&mut s);
