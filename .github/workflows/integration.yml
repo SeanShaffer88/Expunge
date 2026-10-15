@@ -85,7 +85,17 @@ jobs:
           # Expunge.exe is a GUI-subsystem program, so PowerShell would not wait
           # for it; Start-Process -Wait does.
           $all = @('monitor', '--no-prompt', '--json', '--', $exe) + $argv | ForEach-Object { if ($_ -match ' ') { '"' + $_ + '"' } else { $_ } }
-          $p = Start-Process ./it/Expunge.exe -ArgumentList $all -Wait -PassThru -NoNewWindow -RedirectStandardOutput out.json -RedirectStandardError err.txt
+          # Wait for Expunge itself, not for programs the installer leaves
+          # running (Start-Process -Wait waits for every descendant).
+          $p = Start-Process ./it/Expunge.exe -ArgumentList $all -PassThru -NoNewWindow -RedirectStandardOutput out.json -RedirectStandardError err.txt
+          $null = $p.Handle
+          if (-not $p.WaitForExit(20 * 60 * 1000)) {
+            $recent = Get-Process | Where-Object { $_.StartTime -gt (Get-Date).AddMinutes(-25) } | Sort-Object StartTime | Select-Object -Last 12 | ForEach-Object { "$($_.ProcessName)($($_.Id))" }
+            $tail = ((Get-Content err.txt -ErrorAction SilentlyContinue) | Select-Object -Last 6) -join ' | '
+            Write-Output ("::error::monitor still running after 20 minutes. Recent processes: " + ($recent -join ', ') + ". Output: " + $tail)
+            Stop-Process -Id $p.Id -Force
+            throw "monitor timed out"
+          }
           $code = $p.ExitCode
           $json = Get-Content out.json -Raw
           Get-Content err.txt | ForEach-Object { Write-Host $_ }
@@ -169,7 +179,17 @@ jobs:
           New-Item -ItemType Directory pkg | Out-Null
           '' | Set-Content empty.txt
           $all = @('portable-build', "$env:RUNNER_TEMP\${{ matrix.file }}", '--name', '"${{ matrix.app }}"', '--silent', '--here', '--no-prompt', '--out', "$PWD\pkg")
-          $p = Start-Process target/release/expunge.exe -ArgumentList $all -Wait -PassThru -NoNewWindow -RedirectStandardInput empty.txt -RedirectStandardOutput out.txt -RedirectStandardError err.txt
+          # Wait for Expunge itself, not for programs the installer leaves
+          # running (Start-Process -Wait waits for every descendant).
+          $p = Start-Process target/release/expunge.exe -ArgumentList $all -PassThru -NoNewWindow -RedirectStandardInput empty.txt -RedirectStandardOutput out.txt -RedirectStandardError err.txt
+          $null = $p.Handle
+          if (-not $p.WaitForExit(25 * 60 * 1000)) {
+            $recent = Get-Process | Where-Object { $_.StartTime -gt (Get-Date).AddMinutes(-30) } | Sort-Object StartTime | Select-Object -Last 12 | ForEach-Object { "$($_.ProcessName)($($_.Id))" }
+            $tail = ((Get-Content err.txt -ErrorAction SilentlyContinue) | Select-Object -Last 8) -join ' | '
+            Write-Output ("::error::portable-build still running after 25 minutes. Recent processes: " + ($recent -join ', ') + ". Output: " + $tail)
+            Stop-Process -Id $p.Id -Force
+            throw "portable-build timed out"
+          }
           (Get-Content out.txt) + (Get-Content err.txt) | ForEach-Object { Write-Host $_ }
           if ($p.ExitCode -ne 0) {
             $tail = ((Get-Content err.txt) | Select-Object -Last 8) -join ' | '
