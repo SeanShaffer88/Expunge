@@ -27,7 +27,6 @@ Everything planned as *Next* has been built; the items below are the next candid
 - **Reputation check** (opt-in, off by default) — look up unknown startup items and installers by file hash in public malware databases. Only hashes are sent, never files.
 
 **Disk**
-- **Browser privacy cleaning** (opt-in per item) — cookies, history, site data and sessions for every Chromium and Firefox-based browser and profile, plus font caches.
 
 **Everything else**
 - **System health dashboard** — disk space trend, memory use, and services that stopped unexpectedly.

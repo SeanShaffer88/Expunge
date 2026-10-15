@@ -97,6 +97,26 @@ fn cat_text(id: &str) -> (&'static str, &'static str) {
             "Prefetch data",
             "Start-up hints; programs open a little slower until Windows rebuilds them",
         ),
+        "browser_cookies" => (
+            "Browser cookies",
+            "Signs you out of websites. Close your browsers first. Chrome, Edge, Brave, Vivaldi, Opera and Firefox-based browsers, every profile",
+        ),
+        "browser_history" => (
+            "Browsing history",
+            "Visited pages and address-bar suggestions; for Firefox only form history, because its history shares a file with bookmarks",
+        ),
+        "browser_site_data" => (
+            "Website data",
+            "Data websites store on your PC (local storage, databases, offline data). Sites may forget settings",
+        ),
+        "browser_sessions" => (
+            "Saved browser sessions",
+            "Tabs your browsers would reopen next time",
+        ),
+        "font_cache" => (
+            "Font cache",
+            "Windows rebuilds it; fixes fonts that look wrong. Takes effect after a restart",
+        ),
         "recycle_bin" => (
             "Recycle Bin",
             "Permanently deletes what is in the Recycle Bin",

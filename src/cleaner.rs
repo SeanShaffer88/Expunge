@@ -112,8 +112,85 @@ pub fn categories() -> Vec<Category> {
             true,
         ),
         c("prefetch", vec!["%SystemRoot%\\Prefetch\\*.pf"], true, false),
+        c("browser_cookies", browser_patterns().0.clone(), false, false),
+        c("browser_history", browser_patterns().1.clone(), false, false),
+        c("browser_site_data", browser_patterns().2.clone(), false, false),
+        c("browser_sessions", browser_patterns().3.clone(), false, false),
+        c(
+            "font_cache",
+            vec![
+                "%SystemRoot%\\ServiceProfiles\\LocalService\\AppData\\Local\\FontCache\\*.dat",
+                "%SystemRoot%\\System32\\FNTCACHE.DAT",
+            ],
+            true,
+            false,
+        ),
         c("recycle_bin", vec![], false, false),
     ]
+}
+
+/// Profile folders of Chromium-based browsers (each holds `Default`,
+/// `Profile 1`, …) and Firefox-based browsers (each holds random-named
+/// profiles).
+const CHROMIUM: &[&str] = &[
+    "%LOCALAPPDATA%\\Google\\Chrome\\User Data\\*",
+    "%LOCALAPPDATA%\\Microsoft\\Edge\\User Data\\*",
+    "%LOCALAPPDATA%\\BraveSoftware\\Brave-Browser\\User Data\\*",
+    "%LOCALAPPDATA%\\Vivaldi\\User Data\\*",
+    "%LOCALAPPDATA%\\Chromium\\User Data\\*",
+    "%APPDATA%\\Opera Software\\Opera Stable",
+    "%APPDATA%\\Opera Software\\Opera GX Stable",
+];
+const FIREFOX: &[&str] = &[
+    "%APPDATA%\\Mozilla\\Firefox\\Profiles\\*",
+    "%APPDATA%\\librewolf\\Profiles\\*",
+    "%APPDATA%\\Waterfox\\Profiles\\*",
+    "%APPDATA%\\Floorp\\Profiles\\*",
+];
+
+type Patterns = Vec<&'static str>;
+
+/// Cookies, history, site data and sessions for every supported browser and
+/// profile. Firefox history lives in the same file as bookmarks, so only
+/// its form history is removed.
+fn browser_patterns() -> &'static (Patterns, Patterns, Patterns, Patterns) {
+    static P: std::sync::OnceLock<(Patterns, Patterns, Patterns, Patterns)> = std::sync::OnceLock::new();
+    P.get_or_init(|| {
+        let leak = |s: String| -> &'static str { Box::leak(s.into_boxed_str()) };
+        let mut cookies = Vec::new();
+        let mut history = Vec::new();
+        let mut site = Vec::new();
+        let mut sessions = Vec::new();
+        for base in CHROMIUM {
+            for f in ["Network\\Cookies", "Network\\Cookies-journal", "Cookies", "Cookies-journal"] {
+                cookies.push(leak(format!("{base}\\{f}")));
+            }
+            for f in ["History", "History-journal", "Visited Links", "Top Sites", "Top Sites-journal", "Shortcuts", "Shortcuts-journal"] {
+                history.push(leak(format!("{base}\\{f}")));
+            }
+            for f in ["Local Storage", "Session Storage", "IndexedDB", "Service Worker", "File System", "databases"] {
+                site.push(leak(format!("{base}\\{f}")));
+            }
+            for f in ["Sessions", "Current Session", "Current Tabs", "Last Session", "Last Tabs"] {
+                sessions.push(leak(format!("{base}\\{f}")));
+            }
+        }
+        for base in FIREFOX {
+            for f in ["cookies.sqlite", "cookies.sqlite-wal", "cookies.sqlite-shm"] {
+                cookies.push(leak(format!("{base}\\{f}")));
+            }
+            for f in ["formhistory.sqlite", "formhistory.sqlite-wal"] {
+                history.push(leak(format!("{base}\\{f}")));
+            }
+            for f in ["storage\\default", "webappsstore.sqlite", "webappsstore.sqlite-wal"] {
+                site.push(leak(format!("{base}\\{f}")));
+            }
+            for f in ["sessionstore.jsonlz4", "sessionstore-backups"] {
+                sessions.push(leak(format!("{base}\\{f}")));
+            }
+        }
+        (cookies, history, site, sessions)
+    })
 }
 
 /// Categories shown only in Advanced mode: cleaning them makes the PC slower
@@ -129,6 +206,7 @@ pub fn is_advanced(id: &str) -> bool {
             | "edge_cache"
             | "firefox_cache"
             | "prefetch"
+            | "font_cache"
     )
 }
 
@@ -297,5 +375,38 @@ mod tests {
         assert!(tmp.path().join("Default/Cache").exists());
         assert!(!tmp.path().join("Profile 1/Cache/a").exists());
         assert!(tmp.path().join("Default/Keep/f3").exists());
+    }
+}
+
+#[cfg(test)]
+mod browser_tests {
+    use super::*;
+
+    #[test]
+    fn browser_items_cover_every_profile() {
+        let d = std::env::temp_dir().join(format!("expunge-browsers-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        for prof in ["Default", "Profile 2"] {
+            let p = d.join("Chrome").join("User Data").join(prof);
+            std::fs::create_dir_all(p.join("Network")).unwrap();
+            std::fs::write(p.join("Network").join("Cookies"), b"c").unwrap();
+            std::fs::write(p.join("History"), b"h").unwrap();
+            std::fs::write(p.join("Bookmarks"), b"keep").unwrap();
+        }
+        // The pattern machinery with the temp folder in place of %LOCALAPPDATA%.
+        let (cookies, history, _, _) = browser_patterns();
+        let resolve = |pats: &Vec<&str>| -> Vec<PathBuf> {
+            pats.iter()
+                .filter(|p| p.contains("Google\\Chrome"))
+                .flat_map(|p| {
+                    let p = p.replace("%LOCALAPPDATA%\\Google", &d.to_string_lossy());
+                    resolve_pattern(&p)
+                })
+                .collect()
+        };
+        assert_eq!(resolve(cookies).len(), 2);
+        assert_eq!(resolve(history).len(), 2);
+        assert!(history.iter().all(|p| !p.contains("places.sqlite") && !p.contains("Bookmarks")));
+        let _ = std::fs::remove_dir_all(&d);
     }
 }

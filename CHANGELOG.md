@@ -7,6 +7,7 @@ All notable changes to Expunge are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Browser privacy cleaning** in the Junk cleaner, each item off until you tick it: cookies, browsing history, website data (local storage, databases, offline data) and saved sessions for Chrome, Edge, Brave, Vivaldi, Opera and Firefox, LibreWolf, Waterfox and Floorp, in every profile. Firefox history is kept because it shares a file with bookmarks (its form history is removed). Plus the Windows font cache (Advanced mode).
 - **Scheduled junk cleaning** (Cleaner page > *Clean automatically*; CLI `expunge schedule-clean daily|weekly|monthly|off`): cleans the ticked kinds of junk every day, week or month through Windows Task Scheduler, even when Expunge is closed. What each run freed is recorded in `cleaning.log` in the data folder.
 - **Complete command line** for unattended maintenance: `expunge uninstall <name>... [--silent]` uninstalls programs one after another and removes their safe leftovers (backed up); `expunge clean [--categories] [--list] [--dry-run]` cleans junk; `expunge startup [enable|disable <name>]` lists and toggles startup programs (essential entries are protected).
 - **Groups and tags for install logs**: give any log a group and tags (Install logs > Edit details). The list is arranged by group, shows tags under each name, can be limited to one group, and search also matches groups and tags. CLI: `expunge logs --group G --tag T [--json]`, `expunge tag <log-id> --group G --tags a,b`.
