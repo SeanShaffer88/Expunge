@@ -21,7 +21,7 @@ SetCompressor /SOLID lzma
 
 !define APP "Expunge"
 !define PUBLISHER "Sean Shaffer"
-!define URL "https://github.com/SeanShaffer88/ExpungeUninstaller"
+!define URL "https://github.com/SeanShaffer88/Expunge"
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\Expunge"
 
 Name "${APP} ${VERSION}"

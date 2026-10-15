@@ -8,15 +8,15 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/SeanShaffer88/ExpungeUninstaller/releases/latest"><img alt="Download" src="https://img.shields.io/github/v/release/SeanShaffer88/ExpungeUninstaller?label=download&color=e53935"></a>
-  <a href="https://github.com/SeanShaffer88/ExpungeUninstaller/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/SeanShaffer88/ExpungeUninstaller/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/SeanShaffer88/Expunge/releases/latest"><img alt="Download" src="https://img.shields.io/github/v/release/SeanShaffer88/Expunge?label=download&color=e53935"></a>
+  <a href="https://github.com/SeanShaffer88/Expunge/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/SeanShaffer88/Expunge/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: GPL v3" src="https://img.shields.io/badge/license-GPLv3-blue"></a>
   <img alt="Platform: Windows 11" src="https://img.shields.io/badge/platform-Windows%2011-0078d4">
 </p>
 
 <p align="center">
-  <a href="#showcase">Showcase</a> •
-  <a href="#features">Features</a> •
+  <a href="#overview">Overview</a> •
+  <a href="#the-tools">The tools</a> •
   <a href="#download">Download</a> •
   <a href="#getting-started">Getting started</a> •
   <a href="#command-line">Command line</a> •
@@ -29,120 +29,173 @@
 
 Most uninstallers run the vendor's own uninstaller and then *guess* at what was left behind. Snapshot tools such as Regshot can show a before-and-after comparison, but they stop there.
 
-**Expunge closes that gap.** It takes a snapshot of the system before and after an installation and records every file, folder, registry key and value, service, and scheduled task that changed. Later, it turns that record into a precise, reviewable removal plan. Everything Expunge deletes or modifies is backed up first, so every operation can be undone.
+**Expunge closes that gap.** It takes a snapshot of the system before and after an installation and records every file, folder, registry key and value, service, and scheduled task that changed. Later, it turns that record into a precise, reviewable removal plan. Everything Expunge deletes or modifies is backed up first, so its changes can be undone.
 
 Beyond uninstalling, Expunge brings together the tools needed to keep Windows 11 lean and private: a startup manager, a disk space map, a duplicate file finder, a junk cleaner, a debloater, and an Anti-Telemetry page with reversible privacy settings.
 
 Expunge is a free, GPL-licensed alternative to commercial tools such as Total Uninstall Pro. It is approachable enough for someone new to computers and thorough enough for developers testing their own installers.
 
-## Showcase
+## The tools
 
-<table>
-  <tr>
-    <td width="50%"><img src="docs/screenshots/dashboard.png" alt="Dashboard"><br><b>Dashboard</b>: an overview of installed programs, monitored installations, broken entries, and backups, with one-click access to common tasks.</td>
-    <td width="50%"><img src="docs/screenshots/programs.png" alt="Programs"><br><b>Programs</b>: every installed desktop program and Store app, with sizes, available updates, signature status, and full details for the selected program.</td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="docs/screenshots/anti-telemetry.png" alt="Anti-Telemetry"><br><b>Anti-Telemetry</b>: privacy and debloating settings grouped by category, with Minimal, Standard, and Advanced presets and exact undo.</td>
-    <td width="50%"><img src="docs/screenshots/startup.png" alt="Startup manager"><br><b>Startup manager</b>: startup programs, services, scheduled tasks, and every other autostart location in one place.</td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="docs/screenshots/disk-space.png" alt="Disk space map"><br><b>Disk space map</b>: a treemap of any drive or folder, colored by file type, showing exactly where the space goes.</td>
-    <td width="50%"><img src="docs/screenshots/cleaner.png" alt="Junk cleaner"><br><b>Junk cleaner</b>: temporary files, crash dumps, logs, and caches, with an explanation of each category.</td>
-  </tr>
-</table>
+Expunge is organized into pages, each with its own job. Every page has built-in help (the **Help** button or **F1**), and anything that could harm Windows or slow the PC appears only in **Advanced mode**.
 
-## Features
+### Dashboard
 
-### Install monitoring
+<img src="docs/screenshots/dashboard.png" alt="Dashboard" width="720">
+
+Your system at a glance.
+
+- **Summary tiles:** installed programs, monitored programs, broken entries, and backups (with the space they use). Click a tile to jump straight to it.
+- **System health:** free space on every drive with its 30-day trend and a small chart, a link to the disk space map when a drive is nearly full, memory use, and any services that stopped unexpectedly in the last week.
+- **Quick actions:** install a program with monitoring, uninstall programs, speed up startup, clean junk files, find leftovers of removed programs (Advanced mode), and manage Windows updates (Advanced mode).
+- **Recently monitored:** the latest install logs, one click away.
+
+### Programs (uninstaller)
+
+<img src="docs/screenshots/programs.png" alt="Programs" width="720">
+
+Every installed program, and the safest way to remove it.
+
+- **Complete program list:** 64-bit, 32-bit, and per-user desktop programs with their icons, plus Microsoft Store apps. Search, sort by name, publisher, version, date, or size, and filter by *Updates*, *Monitored*, *Broken*, *Unsigned*, or *Store apps*.
+- **Program details:** publisher, version, install date, size, location, digital signature, uninstaller, and registry key, with buttons to open its folder, open its registry key, search online, or visit its website.
+- **Precise uninstallation of monitored programs:** added files, folders, registry keys, and values are deleted; values the installer changed or removed are **restored**; services are stopped and deleted; scheduled tasks are removed; and only the `PATH` entries the installer added are taken out.
+- **Classic uninstallation with a deep leftover scan:** after the vendor's uninstaller finishes, Expunge looks for remaining folders, shortcuts, registry keys, autostart entries, App Paths, services, COM registrations, file types and associations, context-menu entries, shell extensions, environment variables, `PATH` entries, firewall rules, scheduled tasks, and folders left empty. Every item is labeled *Safe*, *Review*, or *Careful* before anything is removed.
+- **Unattended batch uninstallation:** tick any number of programs and walk away. Silent switches are detected for each installer technology (Windows Installer, Inno Setup, NSIS, WiX, and Squirrel); uninstallers run one at a time; restarts are held until the end; stalled uninstallers are skipped; and one combined leftover scan follows.
+- **Silent uninstallation** of a single program, and **forced removal** (Advanced mode) when a program's uninstaller is broken or missing.
+- **Find by window:** click *Find by window*, then click any window, and Expunge selects the program it belongs to. Dropping a shortcut or program file onto the page does the same.
+- **Trust information:** who digitally signed each program, with unsigned programs and broken signatures (possible tampering) flagged.
+- **Updates through winget:** see which programs have newer versions and update one or all of them silently.
+- **Pre- and post-uninstall scripts** (Advanced mode): your own commands that run before and after a specific program is removed, for example to export its settings or stop a service.
+- **Windows features and app aliases** (Advanced mode): turn optional Windows features on or off, and see which app execution aliases are active.
+- **Locked files** are scheduled for deletion at the next restart, and **user data is respected**: files a program created later are kept unless you choose otherwise.
+- **Transfer to another PC:** pack programs with their files, settings, and registry entries into one file and restore them on a new PC, with a compatibility check, path rewriting for different user names or drives, and one-click undo.
+
+### Monitor (install monitoring)
+
+Record an installation so it can be removed precisely later.
+
 - **Install and monitor:** choose an installer, or right-click it in File Explorer and select **Install with Expunge**. Expunge takes a snapshot, runs the installer, and records every change.
-- **Background auto-monitoring** (optional): records installations automatically, even the ones you forgot to monitor.
 - **Manual monitoring** for anything else, including Microsoft Store apps, winget packages, scripts, and portable applications.
-- **Live activity:** watch files being added, changed, and removed while an installer runs.
-- **Restart-safe:** monitoring continues across restarts, so installers that require a reboot are captured completely.
-- **Automatic exclusions:** temporary files, logs, and browser and application caches are ignored, so each log contains only the installer's real changes.
-- **Background-noise learning:** Expunge observes what your PC changes on its own and offers to exclude it from future captures.
-- **Groups and tags:** organize install logs into groups and label them with tags; search and filter by either.
+- **Live activity:** files being added, changed, and removed stream in while the installer runs, and registry areas report when something under them changes.
+- **Restart-safe:** monitoring survives restarts, so installers that need a reboot are captured completely.
 - **Review before saving:** inspect every captured change and discard background noise with one click.
 - **Automatic detection** of the program's name, publisher, and version.
+- **Automatic exclusions:** temporary files, logs, and browser and application caches are ignored, so each log contains only the installer's real changes. **Learn background noise** (Settings) finds what your PC changes on its own and excludes that too.
+- **Background auto-monitoring** (Advanced mode, optional): a low-priority process started at sign-in records installations automatically, even the ones you forgot to monitor.
 
-### Precise uninstallation
-- **Exact reversal** of a monitored installation: added files, folders, registry keys, and values are deleted; values the installer changed or removed are **restored**; services are stopped and deleted; and scheduled tasks are removed.
-- **Smart PATH repair:** only the entries the installer added to `PATH` are removed; changes you made afterward are preserved.
-- **User data is respected:** files the program created later, such as settings and caches, are kept unless you choose to remove them.
-- **Locked files** are scheduled for deletion at the next restart.
+### Install logs
 
-### Classic uninstaller
-For programs that were installed without monitoring:
-- **Complete program list:** 64-bit, 32-bit, and per-user desktop programs with their icons, plus Microsoft Store apps.
-- **Deep leftover scan:** after the vendor's uninstaller finishes, Expunge searches for remaining folders, shortcuts, registry keys, autostart entries, App Paths, services, COM registrations, file types and associations, context-menu entries, shell extensions, environment variables, `PATH` entries, firewall rules, scheduled tasks, and folders left empty.
-- **Unattended batch uninstallation:** queue any number of programs and walk away. Silent switches are detected for each installer technology (Windows Installer, Inno Setup, NSIS, WiX, and Squirrel); uninstallers run one at a time; restarts are deferred until the end; stalled uninstallers are skipped; and a single combined leftover scan follows.
-- **Silent uninstallation** for individual programs, and **forced removal** when a program's uninstaller is broken or missing.
-- **Find by window:** click any window (or drop a shortcut) to find which installed program it belongs to.
-- **Pre- and post-uninstall scripts** (Advanced mode): run your own commands before and after a specific program is removed.
-- **Broken-entry finder** for programs whose uninstaller or installation folder no longer exists.
-- **Orphan scan:** a system-wide search for registrations, file types, shell extensions, `PATH` entries, firewall rules, and tasks that point to files that no longer exist.
-- **Trust information:** shows who digitally signed each program, and flags unsigned programs and invalid signatures that may indicate tampering.
-- **Accurate sizes** for programs that do not report their own.
-- **Updates through winget:** see which programs have newer versions and update one or all of them silently.
+Everything each monitored installation changed.
 
-### Anti-Telemetry and debloating
-- **Telemetry and data collection:** limit diagnostic data to the minimum, turn off the advertising ID, app-launch tracking, typing and handwriting data collection, cloud search and Cortana, and the inventory and compatibility reporters.
-- **Privacy and app permissions:** deny Store apps access to the camera, microphone, location, contacts, calendar, call history, email, and messages; turn off location services; stop background apps; and remove tips, ads, and automatically installed apps.
+- **Complete records** of added, changed, and removed files, folders, registry keys and values, services, and scheduled tasks.
+- **Groups and tags:** organize logs into groups and label them with tags; search and filter by either.
+- **"Which program created this?":** type part of any file or registry path to find the monitored program it belongs to.
+- **Export** a log as an HTML report, a `.reg` undo script, a PowerShell removal script, or JSON for import on another PC.
+- **Repackaging:** turn a monitored installation into a deployable folder with a silent `install.ps1`, an `install.reg`, and an `uninstall.ps1`, or into an MSIX package (Advanced mode).
+- **Uninstall from the log** with the same precise removal as the Programs page.
+
+### Backups
+
+Undo any removal, cleanup, or startup change.
+
+- **Automatic backups** of everything Expunge removes or changes. Files go to a quarantine folder, and registry entries are also exported to a timestamped `.reg` file that can be restored with a double-click, even without Expunge.
+- **One-click restore** of any operation, putting everything back exactly where it was.
+- **Optional extras:** a System Restore point before uninstalling, and copies of removed files in the Recycle Bin.
+
+### Startup
+
+<img src="docs/screenshots/startup.png" alt="Startup manager" width="720">
+
+Choose what starts with Windows.
+
+- **Startup programs** from Run keys and Startup folders, turned on and off exactly like Task Manager does, so the change is reversible.
+- **Startup impact:** how long the last Windows startup took and how much each program slowed it down (High, Medium, or Low), measured by Windows itself.
+- **Delayed start:** start a program two minutes after you sign in instead of immediately, so Windows is ready sooner. *Start normally* undoes it exactly.
+- **Reputation check** (optional, off by default): look a startup program up online by its SHA-256 fingerprint. Only the hash is sent, never the file; an optional free VirusTotal key adds antivirus detection counts.
+- **Services and scheduled tasks** (Advanced mode), with Windows' own entries hidden unless you ask for them.
+- **Other autostarts** (Advanced mode): Winlogon, Active Setup, program replacements (IFEO), AppInit DLLs, Explorer extensions, icon overlays, browser helper objects, boot-time programs, and WMI subscriptions. Entries whose file is gone are flagged.
+- **Protection:** entries that Windows, security software, or hardware need can't be switched off in Simple mode, and deleted entries are backed up.
+
+### Cleaner (junk cleaner)
+
+<img src="docs/screenshots/cleaner.png" alt="Junk cleaner" width="720">
+
+Free the space taken by temporary files and caches.
+
+- **Junk categories:** your and Windows' temporary files, crash dumps and error reports, system memory dumps, Windows setup and update logs, Delivery Optimization files, Windows Update downloads, shader and thumbnail caches, browser caches, Prefetch data, the font cache, and the Recycle Bin. Each one is explained, and *Scan* shows how much space it uses before anything is deleted.
+- **Browser privacy cleaning** (each item off until you tick it): cookies, browsing history, website data, and saved sessions for Chrome, Edge, Brave, Vivaldi, Opera, Firefox, LibreWolf, Waterfox, and Floorp, in every profile. Bookmarks and passwords are never touched.
+- **Clean automatically** every day, week, or month through Windows Task Scheduler, even when Expunge is closed.
+- **Deep cleanup** (Advanced mode): the previous Windows installation (Windows.old), superseded Windows components, files of turned-off features, and old restore points, using Windows' own tools. Each item is analyzed first and confirmed separately.
+
+### Anti-Telemetry
+
+<img src="docs/screenshots/anti-telemetry.png" alt="Anti-Telemetry" width="720">
+
+Stop Windows collecting data, remove clutter, and tune Windows. Every switch shows whether it is on, off, or partly on.
+
+- **Telemetry and data collection:** send only the required diagnostic data; turn off the advertising ID, app-launch tracking, typing and handwriting data collection, Bing and Cortana in Windows Search, and the inventory and compatibility reporters.
+- **Privacy and app permissions:** deny Store apps access to the camera, microphone, location, contacts, calendar, call history, email, and messages; turn off location services; stop Store apps running in the background; and remove tips, ads, and automatically installed apps.
 - **Bloatware and AI features:** remove pre-installed consumer apps (optionally for new user accounts as well), and turn off Windows Copilot and Recall.
-- **Explorer and search:** restore the full context menu, open File Explorer to *This PC* with file extensions and hidden files visible, turn off transparency effects, and stop the search indexer.
-- **Services:** disable DiagTrack, dmwappushservice, Windows Error Reporting, and, optionally, SysMain.
-- **Windows Update control:** defer feature updates by 365 days and quality updates by four days, or pause updates for seven days.
-- **Network:** stop automatic connections to open hotspots, and switch to a secure DNS provider (Cloudflare, Quad9, Google, or AdGuard) with one click.
-- **Performance and repair:** enable the Ultimate Performance power plan, and run System File Checker, DISM RestoreHealth, a network reset, or winget re-registration.
-- **Built-in safeguards:** Minimal, Standard, and Advanced presets; a restore point before every change; and a record of every previous value, so each setting can be reversed exactly.
+- **Explorer and search:** the full right-click menu, File Explorer opening on *This PC* with file extensions and hidden files visible, no transparency effects, and (Advanced mode) no search indexer.
+- **Services:** turn off DiagTrack, dmwappushservice, Windows Error Reporting, and optionally SysMain.
+- **Windows Update:** delay feature updates by a year and security updates by four days, or pause updates for seven days.
+- **Network:** no automatic connections to open hotspots, and one-click secure DNS (Cloudflare, Quad9, Google, or AdGuard, or back to automatic).
+- **Performance and repair:** the Ultimate Performance power plan, plus System File Checker, DISM RestoreHealth, a network reset, and winget re-registration.
+- **Safeguards:** Minimal, Standard, and Advanced presets (Simple mode offers only Minimal, which can't break anything); a restore point before every change; and a record of every previous value, so unticking a switch and applying again restores it exactly.
 
-### System tools
-- **Reputation check** (opt-in): look up startup programs and installers online by their SHA-256 fingerprint (only the hash is sent), with optional VirusTotal detection counts.
-- **System health:** free space on every drive with its 30-day trend, memory use, and services that stopped unexpectedly, at a glance on the dashboard.
-- **Startup manager:** Run keys and Startup folders (with Task Manager–compatible enabling and disabling, the startup impact Windows measured for each program, and delayed start), services and drivers, and scheduled tasks. Advanced mode adds every other autostart location: Winlogon, Active Setup, Image File Execution Options, AppInit DLLs, Explorer extensions, icon overlays, browser helper objects, boot-time programs, and WMI subscriptions.
-- **Disk space map:** a treemap of any drive or folder in which each block's size matches the space it uses, colored by file type (videos, music, pictures, archives and disk images, programs, documents). Click any block to look inside it, or use the size-sorted list beside it with the keyboard. Read-only, so it is safe in Simple mode.
-- **Duplicate file finder:** finds files with identical contents (compared by SHA-256, not by name) in your personal folders or any folder you choose. Keep the oldest, newest or shortest-path copy automatically, or choose yourself; at least one copy is always kept, and removed copies go to the Recycle Bin. Windows, program and app-data folders are never searched, and cloud-only files are never downloaded.
-- **Junk cleaner:** temporary files, crash and memory dumps, Windows logs, Delivery Optimization and Windows Update downloads, shader and browser caches, Prefetch data, the font cache, and the Recycle Bin, on demand or automatically every day, week, or month.
-- **Browser privacy cleaning** (each item opt-in): cookies, browsing history, website data, and saved sessions for Chrome, Edge, Brave, Vivaldi, Opera, Firefox, LibreWolf, Waterfox, and Floorp, in every profile. Bookmarks and passwords are never touched.
-- **Deep cleanup** (Advanced mode): the previous Windows installation (Windows.old), superseded Windows components, files of disabled features, and old restore points. Each item is analyzed first and confirmed separately.
-- **Windows Updates manager** (Advanced mode): list installed updates and uninstall individual ones. Permanent servicing-stack updates are clearly labeled.
-- **Windows features and app aliases** (Advanced mode): turn optional Windows features on or off, and see which app execution aliases are active.
-- **Program transfer:** package programs together with their files, settings, and registry entries, then restore them on another PC. Includes a compatibility check, automatic path rewriting for different user names or drives, and one-click undo.
-- **"Which program created this?":** search for any file or registry path across all monitored installations.
-- **Repackaging:** turn a monitored installation into a deployable folder containing a silent `install.ps1`, an `install.reg`, and an `uninstall.ps1`, or into an MSIX package (Advanced mode).
-- **Export** install logs as an HTML report, a `.reg` undo script, a PowerShell removal script, or JSON for import on another PC.
+### Disk space
 
-### Safety
-- **Automatic backups** of everything removed or changed. Files are moved to a quarantine folder, and registry entries are also exported to a timestamped `.reg` file that can be restored with a double-click. Any operation can be restored from the Backups page.
-- **Optional Recycle Bin copies** of removed files.
-- **Optional System Restore point** before uninstalling.
-- **Hard-coded protection** for critical folders and registry keys: they can never be deleted, regardless of what a log contains.
-- **Safety labels** on every removal item: *Safe*, *Review*, or *Careful*.
+<img src="docs/screenshots/disk-space.png" alt="Disk space map" width="720">
 
-### Accessibility and ease of use
-- **Simple and Advanced modes**, chosen on first launch. Simple mode uses plain language and offers only options that cannot harm Windows or slow the PC; Advanced mode shows every tool and technical detail.
-- **Contextual help** on every page (the Help button or F1), explaining terms such as *snapshot* and *leftover* in everyday language.
-- **Full keyboard access:** a visible focus ring, arrow-key navigation in lists, Esc to close dialogs, and shortcuts for every page (Ctrl+1 to Ctrl+9, Ctrl+Tab, Ctrl+F, F5, Delete, and F1).
-- **Screen-reader support** for Narrator and NVDA, adjustable text size, and a high-contrast option.
+See which folders and files take up the most space.
 
-### For developers: Installer Lab
+- **Treemap of any drive or folder:** each block's size matches the space it uses, nested several levels deep and colored by file type (videos, music, pictures, archives and disk images, programs, documents).
+- **Navigate by clicking:** click a block to look inside a folder; a breadcrumb bar and Backspace take you back up.
+- **Size-sorted list** beside the map, for keyboard and screen-reader users, with *Show in File Explorer* for the selected item.
+- **Fast and light:** folders are measured in parallel, links are not followed, and memory stays small even for a whole drive.
+- **Read-only:** nothing is deleted here, so it is safe in Simple mode.
+
+### Duplicate files
+
+Find identical copies of files and free the space they waste.
+
+- **Compares contents, not names:** files are grouped by size, compared by a quick hash, and confirmed with a full SHA-256, so only truly identical files are listed.
+- **Searches your personal folders** (Desktop, Documents, Downloads, Pictures, Music, and Videos) or any folder you add, ignoring files smaller than the size you choose.
+- **Smart selection:** tick every copy except the oldest, the newest, or the one with the shortest path, or choose yourself.
+- **Safety:** Windows, program, and app-data folders are never searched; cloud-only files are never downloaded; the last copy of a file can never be ticked; every file is checked again right before removal; and removed copies go to the Recycle Bin.
+
+### Windows Updates (Advanced mode)
+
+- **Installed updates** listed with their KB numbers and names, searchable.
+- **Uninstall an update** that causes problems, using Windows' own DISM tool, with an optional restore point first. Permanent servicing-stack updates are clearly labeled.
+
+### Installer Lab (Advanced mode, for developers)
+
 - **Installer lint:** reviews a recorded installation for common packaging mistakes, such as a missing or incomplete uninstall entry, files written to System32, per-user data from per-machine installations, `PATH` edits, autostart entries, services, scheduled tasks, shell extensions, file associations, firewall rules, and changes to shared values. Each finding includes advice, and the report can be exported as Markdown.
 - **Uninstaller test:** runs your program's own uninstaller and reports exactly what it left behind or failed to restore, then optionally cleans it up.
 - **Snapshot comparison:** take named snapshots at any time and compare any two.
-- **CI-ready command line:** `lint` and `test-uninstall` commands with exit codes and `--json` output for build pipelines.
+- **CI-ready command line:** `lint`, `test-uninstall`, and `check-clean` commands with exit codes and `--json` output for build pipelines.
+
+### Settings and accessibility
+
+- **Simple and Advanced modes**, chosen on first launch. Simple mode uses plain language and offers only options that cannot harm Windows or slow the PC; Advanced mode shows every tool and technical detail.
+- **Safety options:** backups before removal, confirmations, restore points, and Recycle Bin copies (always on in Simple mode).
+- **Monitoring scope:** which registry keys and folders snapshots cover, with exclusions and background-noise learning.
+- **Explorer integration:** the **Install with Expunge** entry in the right-click menu of installers.
+- **Full keyboard access:** a visible focus ring, arrow-key navigation in lists, Esc to close dialogs, and shortcuts for every page (Ctrl+1 to Ctrl+9, Ctrl+Tab, Ctrl+F, F5, Delete, and F1).
+- **Screen-reader support** for Narrator and NVDA, adjustable text size, and a high-contrast option.
+- **Eleven languages:** English, Español, Deutsch, Français, Português (Brasil), Italiano, Polski, Русский, 简体中文, 日本語, and 한국어. Additional languages can be added without recompiling (see [Translating](docs/TRANSLATING.md)).
 
 ### Design and distribution
-- **Built for Windows 11:** a dark interface with a native red Windows 11 window border.
-- **Eleven languages:** English, Español, Deutsch, Français, Português (Brasil), Italiano, Polski, Русский, 简体中文, 日本語, and 한국어. Additional languages can be added without recompiling (see [Translating](docs/TRANSLATING.md)).
-- **Administrator check** at every launch, with a one-click relaunch as administrator.
+
+- **Built for Windows 11:** a dark interface with a native red Windows 11 window border, and an administrator check at every launch with a one-click relaunch as administrator.
 - **No dependencies:** a single native executable, with no .NET, no Visual C++ runtime, and nothing else to download.
-- **Installer or portable:** use whichever suits you.
+- **Installer or portable**, for x64 and Arm64 PCs.
 - **Full command line** for scripting and automation.
 
 ## Download
 
-Download the latest version from the [Releases page](https://github.com/SeanShaffer88/ExpungeUninstaller/releases/latest).
+Download the latest version from the [Releases page](https://github.com/SeanShaffer88/Expunge/releases/latest).
 
 | File | Description |
 |---|---|
@@ -163,7 +216,7 @@ Download the latest version from the [Releases page](https://github.com/SeanShaf
 
 ```
 expunge monitor --name "Photo Editor" -- C:\Downloads\setup.exe
-expunge logs
+expunge logs [--group G] [--tag T] [--json]
 expunge revert <log-id> --dry-run
 expunge revert <log-id>
 expunge export <log-id> reg undo.reg
@@ -177,10 +230,12 @@ expunge uninstall "Photo Editor" "Old Toolbar" --silent
 expunge clean --dry-run
 expunge schedule-clean weekly
 expunge startup disable Spotify
+expunge reputation C:\Downloads\setup.exe
 expunge updates
 expunge update --all
 expunge transfer export moved.expunge "Photo Editor"
 expunge transfer import moved.expunge
+expunge repackage <log-id> C:\Packages --msix
 expunge --help
 ```
 
@@ -195,14 +250,14 @@ expunge test-uninstall <log-id> --quiet # exits with code 2 if anything was left
 ## Building from source
 
 ```
-git clone https://github.com/SeanShaffer88/ExpungeUninstaller
-cd ExpungeUninstaller
+git clone https://github.com/SeanShaffer88/Expunge
+cd Expunge
 cargo build --release
 ```
 
 Expunge builds with stable Rust on Windows. If Visual Studio is not installed, push to GitHub and let the included Actions workflow build it, or cross-compile from Linux (see `scripts/cross-env.sh`). Releases are built automatically when a `v*` tag is pushed.
 
-The core engine (`src/`, excluding `gui/`) is fully unit-tested against an in-memory registry: `cargo test --lib`.
+The core engine (`src/`, excluding `gui/`) is fully unit-tested against an in-memory registry: `cargo test --lib`. Real installers are also installed, removed, and checked on clean Windows runners by the Integration workflow.
 
 ## How it works
 
@@ -213,6 +268,12 @@ The core engine (`src/`, excluding `gui/`) is fully unit-tested against an in-me
 | Plan | Services and tasks are handled first, then files, then folders (deepest first), then registry deletions, and finally restorations. |
 | Execution | Every step is backed up first; protected locations are refused; locked files are scheduled for deletion at restart. |
 | Undo | Backups are replayed in reverse order to restore everything. |
+
+## Use with care
+
+Expunge has been extensively tested, both with automated tests and with real installers, but like any software that changes Windows it may still contain bugs. Many safety measures are built in: Simple mode hides anything that could harm Windows or slow the PC, critical folders and registry keys are protected and can never be deleted, every removal item is labeled by risk, and you review and confirm changes before they happen. Even so, please use Expunge with caution, and stay in Simple mode unless you know what you are doing.
+
+If something does go wrong, almost anything Expunge does can be undone. Every file, folder, and registry entry it removes or changes is backed up first and can be put back with one click on the **Backups** page (registry entries are also saved as `.reg` files you can restore without Expunge); Anti-Telemetry settings record every previous value and can be reversed exactly; startup changes and delayed starts are reversible; duplicate files go to the Recycle Bin; and you can create a System Restore point before uninstalling or changing settings. The few actions that can't be undone, such as deleting temporary files in the junk cleaner or the deep cleanup of Windows itself, are clearly marked and confirmed separately before they run.
 
 ## Roadmap
 

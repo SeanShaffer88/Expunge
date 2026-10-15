@@ -52,6 +52,8 @@ All notable changes to Expunge are documented here. The format follows
 - CLI: `expunge verify <file>` and `expunge programs --trust`.
 
 ### Changed
+- The project moved to **github.com/SeanShaffer88/Expunge** (formerly ExpungeUninstaller); old links redirect.
+- The README now describes every tool in its own section.
 - **Windows 11 only.** Expunge is engineered for Windows 11 (build 22000 or later): on older Windows the app and the installer explain this and stop, instead of running with rules meant for Windows 11.
 - Darker red accent (#6B0700) across the interface and window border; red text uses a lighter shade of it for readability.
 - "Administrator" is capitalized throughout.
@@ -90,5 +92,5 @@ First public release.
 - Command-line interface (`monitor`, `snapshot`, `diff`, `logs`, `programs`, `revert`, `export`, `backups`, `restore`).
 - Installer (NSIS) and portable zip; single exe with no runtime dependencies.
 
-[Unreleased]: https://github.com/SeanShaffer88/ExpungeUninstaller/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/SeanShaffer88/ExpungeUninstaller/releases/tag/v0.1.0
+[Unreleased]: https://github.com/SeanShaffer88/Expunge/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/SeanShaffer88/Expunge/releases/tag/v0.1.0

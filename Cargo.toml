@@ -7,8 +7,8 @@ resolver = "3"
 authors = ["Sean Shaffer"]
 description = "Open Source Install Monitor & Uninstaller for Windows: snapshot, diff, revert."
 license = "GPL-3.0-or-later"
-repository = "https://github.com/SeanShaffer88/ExpungeUninstaller"
-homepage = "https://github.com/SeanShaffer88/ExpungeUninstaller"
+repository = "https://github.com/SeanShaffer88/Expunge"
+homepage = "https://github.com/SeanShaffer88/Expunge"
 readme = "README.md"
 keywords = ["uninstaller", "windows", "install-monitor", "registry", "snapshot"]
 categories = ["command-line-utilities", "os::windows-apis", "gui"]
@@ -31,7 +31,7 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
 walkdir = "2"
 sha2 = "0.10"
-notify = "6"
+notify = { version = "8", default-features = false }
 eframe = { version = "0.33", default-features = false, features = ["default_fonts", "wgpu", "accesskit"] }
 egui = { version = "0.33", default-features = false }
 egui_extras = { version = "0.33", default-features = false }
