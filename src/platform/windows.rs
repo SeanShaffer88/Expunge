@@ -824,3 +824,14 @@ pub fn quiet_critical_errors() {
         SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
     }
 }
+
+/// Lower the current thread's CPU priority a little, so background work
+/// never makes the window or other programs stutter.
+pub fn lower_thread_priority() {
+    use windows_sys::Win32::System::Threading::{
+        GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_BELOW_NORMAL,
+    };
+    unsafe {
+        SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+    }
+}

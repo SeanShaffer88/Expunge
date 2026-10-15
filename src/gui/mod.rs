@@ -76,6 +76,8 @@ impl<T: Send + 'static> Job<T> {
         let p = progress.clone();
         let ctx = ctx.clone();
         std::thread::spawn(move || {
+            #[cfg(windows)]
+            expunge_core::platform::windows::lower_thread_priority();
             let r = f(&p);
             let _ = tx.send(r);
             ctx.request_repaint();

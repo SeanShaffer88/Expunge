@@ -269,6 +269,49 @@ The core engine (`src/`, excluding `gui/`) is fully unit-tested against an in-me
 | Execution | Every step is backed up first; protected locations are refused; locked files are scheduled for deletion at restart. |
 | Undo | Backups are replayed in reverse order to restore everything. |
 
+## Why you can feel safe using Expunge
+
+A lot of work has gone into making Expunge careful, thorough, and fast. Here is what has been done.
+
+**Every change can be checked and undone**
+- Everything Expunge removes or changes is backed up first, and any operation can be restored with one click on the Backups page.
+- Registry backups are also saved as standard `.reg` files, so they can be restored by double-clicking, even without Expunge.
+- A System Restore point can be created before uninstalling, and one is always created before Anti-Telemetry changes (if System Protection is off, Expunge tells you and lets you decide).
+- Anti-Telemetry records the previous value of every setting it touches, so each switch can be reversed exactly.
+- Startup changes work the way Task Manager's do (the entry stays and can be switched back on), and delayed starts can be undone with one click.
+- Duplicate files and other removed files can go to the Recycle Bin, and Windows asks before permanently deleting anything too large for it.
+- You see a full plan before anything is removed, with every item labeled *Safe*, *Review*, or *Careful*, and you confirm it first. The command line offers `--dry-run` to preview changes.
+
+**Built-in protection**
+- Critical Windows folders and registry keys are hard-coded as protected and can never be deleted, whatever an install log or scan says.
+- Registry entries that belong to Windows itself (its security components, app packages, and Task Scheduler bookkeeping) are recognized and left alone, even if Windows changed them while an installation was being monitored.
+- Simple mode hides every option that could harm Windows or slow the PC, keeps backups and confirmations switched on, and offers only the safest privacy settings.
+- Startup entries that Windows, security software, or hardware need can't be switched off in Simple mode.
+- The duplicate finder always keeps at least one copy of every file, checks each file again right before removing it, and never searches Windows, program, or app-data folders.
+- The junk cleaner only touches well-known temporary and cache locations, never their parent folders, and skips files that are in use.
+- Expunge checks at every launch that it is running on Windows 11, and tells you when it needs administrator rights instead of failing silently.
+
+**Private by design**
+- Expunge has no telemetry, no accounts, and no ads, and it never sends information about you or your PC anywhere.
+- It only goes online when you use a feature that needs to: winget updates, and the optional reputation check, which is off by default and sends only a file's fingerprint (hash), never the file itself.
+- It is open source under the GPLv3, so anyone can read exactly what it does.
+
+**Tested at every step**
+- Around 90 automated tests run on every change, on both Windows and Linux, together with static code analysis (Clippy).
+- Integration tests install real installers (Windows Installer, NSIS, and Inno Setup) on clean Windows machines, remove them with Expunge, and verify that nothing is left behind. These tests have already found and fixed real problems before release.
+- Performance is measured automatically: snapshot speed and memory, time to open the window, and CPU and memory use while idle, each against a fixed budget; a check fails if any budget is exceeded.
+- The Arm64 version is built and checked on every change, and translations are checked automatically for missing placeholders.
+- Releases are built by GitHub Actions directly from the public source code, and every download is published with a SHA-256 checksum so you can verify it.
+
+**Fast and light**
+- Expunge is a single native program written in Rust, with no runtime to install and no just-in-time compilation, built with full link-time optimization.
+- Heavy work (snapshots, scans, signature checks, measurements) runs in the background, so the window never freezes, and folders are scanned in parallel.
+- Results that are expensive to compute are cached, and the window is only redrawn when something changes, so Expunge uses no CPU while it sits idle.
+- Background monitoring, when you turn it on, runs at low priority so it never competes with your work.
+
+**Made for everyone**
+- Plain-language help on every page, full keyboard access, screen-reader support for Narrator and NVDA, adjustable text size, high contrast, and eleven languages.
+
 ## Use with care
 
 Expunge has been extensively tested, both with automated tests and with real installers, but like any software that changes Windows it may still contain bugs. Many safety measures are built in: Simple mode hides anything that could harm Windows or slow the PC, critical folders and registry keys are protected and can never be deleted, every removal item is labeled by risk, and you review and confirm changes before they happen. Even so, please use Expunge with caution, and stay in Simple mode unless you know what you are doing.
