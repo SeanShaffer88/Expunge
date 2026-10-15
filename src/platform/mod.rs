@@ -660,6 +660,18 @@ pub fn is_elevated() -> bool {
     }
 }
 
+/// True while a Windows Installer operation is running (always false off Windows).
+pub fn installer_busy() -> bool {
+    #[cfg(windows)]
+    {
+        windows::installer_busy()
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -700,17 +712,5 @@ mod tests {
         assert_eq!(expand_env("%EXPUNGE_TEST_VAR%\\y"), "C:\\X\\y");
         assert_eq!(expand_env("%NOPE_NOT_SET%\\y"), "%NOPE_NOT_SET%\\y");
         assert_eq!(expand_env("100%"), "100%");
-    }
-}
-
-/// True while a Windows Installer operation is running (always false off Windows).
-pub fn installer_busy() -> bool {
-    #[cfg(windows)]
-    {
-        windows::installer_busy()
-    }
-    #[cfg(not(windows))]
-    {
-        false
     }
 }

@@ -366,9 +366,30 @@ fn worst_ratio(row: &[f64], short: f64) -> f64 {
 pub fn drives() -> Vec<PathBuf> {
     #[cfg(windows)]
     {
-        (b'A'..=b'Z')
-            .map(|c| PathBuf::from(format!("{}:\\", c as char)))
-            .filter(|p| p.exists())
+        // Fixed drives, and removable ones with media in them. Asking the
+        // drive type first avoids touching empty card readers and
+        // disconnected network drives, which can stall.
+        use windows_sys::Win32::Storage::FileSystem::{GetDiskFreeSpaceExW, GetDriveTypeW, GetLogicalDrives};
+        const DRIVE_REMOVABLE: u32 = 2;
+        const DRIVE_FIXED: u32 = 3;
+        let mask = unsafe { GetLogicalDrives() };
+        (0..26u8)
+            .filter(|i| mask & (1 << i) != 0)
+            .map(|i| format!("{}:\\", (b'A' + i) as char))
+            .filter(|root| {
+                let w = crate::platform::windows::wide(root);
+                unsafe {
+                    match GetDriveTypeW(w.as_ptr()) {
+                        DRIVE_FIXED => true,
+                        DRIVE_REMOVABLE => {
+                            let (mut a, mut t, mut f) = (0u64, 0u64, 0u64);
+                            GetDiskFreeSpaceExW(w.as_ptr(), &mut a, &mut t, &mut f) != 0
+                        }
+                        _ => false,
+                    }
+                }
+            })
+            .map(PathBuf::from)
             .collect()
     }
     #[cfg(not(windows))]

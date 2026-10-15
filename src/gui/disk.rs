@@ -387,7 +387,7 @@ impl App {
                 painter.rect_stroke(
                     r,
                     CornerRadius::same(2),
-                    Stroke::new(2.0, theme::ACCENT_TEXT),
+                    Stroke::new(2.0_f32, theme::ACCENT_TEXT),
                     StrokeKind::Inside,
                 );
             }

@@ -24,6 +24,7 @@ pub struct CleanerState {
     /// Scheduled cleaning, read from Task Scheduler on first view.
     pub schedule: Option<Option<(expunge_core::schedule::Frequency, Vec<String>)>>,
     pub schedule_error: Option<String>,
+    pub schedule_job: Option<Job<Option<(expunge_core::schedule::Frequency, Vec<String>)>>>,
 }
 
 impl Default for CleanerState {
@@ -45,6 +46,7 @@ impl Default for CleanerState {
             freed: None,
             schedule: None,
             schedule_error: None,
+            schedule_job: None,
         }
     }
 }
@@ -404,8 +406,13 @@ impl App {
 
     fn ui_schedule(&mut self, ui: &mut egui::Ui) {
         use expunge_core::schedule::{self, Frequency};
-        if self.cleaner.schedule.is_none() {
-            self.cleaner.schedule = Some(schedule::current());
+        // Task Scheduler is asked in the background (it takes a moment).
+        if let Some(r) = self.cleaner.schedule_job.as_ref().and_then(|j| j.poll()) {
+            self.cleaner.schedule_job = None;
+            self.cleaner.schedule = Some(r);
+        }
+        if self.cleaner.schedule.is_none() && self.cleaner.schedule_job.is_none() {
+            self.cleaner.schedule_job = Some(Job::spawn(ui.ctx(), |_| schedule::current()));
         }
         let current = self.cleaner.schedule.clone().flatten();
         theme::card(ui, |ui| {

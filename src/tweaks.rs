@@ -948,7 +948,7 @@ pub fn run_repair(r: &Repair, progress: &dyn Fn(String)) -> anyhow::Result<Strin
                             || c == ']'
                     })
             })
-            .last()
+            .next_back()
             .unwrap_or("")
             .to_string();
         if !out.status.success() && r.id != "sfc" {

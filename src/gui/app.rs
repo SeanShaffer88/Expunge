@@ -80,6 +80,7 @@ pub struct App {
     pub live: Option<expunge_core::live::LiveWatcher>,
     /// Whether background monitoring is on (read from Task Scheduler once).
     pub auto_watch: Option<bool>,
+    pub auto_watch_job: Option<super::Job<bool>>,
     pub health: Option<(expunge_core::health::Health, expunge_core::health::History)>,
     pub health_job: Option<super::Job<(expunge_core::health::Health, expunge_core::health::History)>>,
     /// Transfer export or restore window.
@@ -161,6 +162,7 @@ impl App {
             dups: Default::default(),
             live: None,
             auto_watch: None,
+            auto_watch_job: None,
             health: None,
             health_job: None,
             transfer: None,
@@ -260,6 +262,7 @@ impl App {
 
     fn poll_lists(&mut self) {
         if let Some((list, again)) = self.logs.loader.poll() {
+            self.logs.stats = list.iter().map(|l| (l.id.clone(), l.changes.stats())).collect();
             self.logs.logs = list;
             if again {
                 self.reload_logs();

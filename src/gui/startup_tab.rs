@@ -502,7 +502,7 @@ impl App {
                 let r = expunge_core::reputation::sha256_file(std::path::Path::new(&path))
                     .map_err(|err| format!("{path}: {err}"))
                     .and_then(|h| expunge_core::reputation::check(&h, Some(&key)));
-                (e.name.clone(), r)
+                (e.name, r)
             }));
         }
         if let Some((i, on)) = delay_op {

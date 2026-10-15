@@ -20,6 +20,11 @@ pub struct LogsState {
     /// "Which program created this?" search.
     pub path_search: String,
     pub editing: bool,
+    /// "Which program created this?" results for the last query:
+    /// (query, logs fingerprint, [(log id, name, match count, first match)]).
+    pub search_cache: Option<(String, usize, Vec<(String, String, usize, String)>)>,
+    /// Change statistics per log id, computed once when logs load.
+    pub stats: std::collections::HashMap<String, expunge_core::model::ChangeStats>,
     /// Tags being edited, as typed.
     pub tags_text: String,
     /// Show only this group ("" = all).
@@ -466,7 +471,7 @@ impl App {
                                         format!(
                                             "{}  ·  {}",
                                             log.created,
-                                            human_size(log.changes.stats().bytes_added)
+                                            human_size(self.logs.stats.get(&log.id).map(|s| s.bytes_added).unwrap_or(0))
                                         ),
                                     );
                                 })
@@ -490,14 +495,24 @@ impl App {
                 ui.label(RichText::new(t("Which program created this?")).strong());
                 small_muted(ui, t("Type part of a file path or registry key to find the monitored program it belongs to."));
                 search_box(ui, &mut self.logs.path_search, "e.g. AppData\\Roaming\\Acme or HKCU\\Software\\Acme", 420.0);
-                let hits = report::search_logs(&self.logs.logs, &self.logs.path_search);
+                let fp = self.logs.logs.as_ptr() as usize ^ self.logs.logs.len();
+                let fresh = matches!(&self.logs.search_cache, Some((q, f, _)) if *q == self.logs.path_search && *f == fp);
+                if !fresh {
+                    let hits: Vec<(String, String, usize, String)> = report::search_logs(&self.logs.logs, &self.logs.path_search)
+                        .into_iter()
+                        .take(10)
+                        .map(|(log, paths)| (log.id.clone(), log.name.clone(), paths.len(), paths[0].clone()))
+                        .collect();
+                    self.logs.search_cache = Some((self.logs.path_search.clone(), fp, hits));
+                }
+                let hits = self.logs.search_cache.as_ref().map(|c| c.2.clone()).unwrap_or_default();
                 let mut jump = None;
-                for (log, paths) in hits.iter().take(10) {
+                for (id, name, n, first) in &hits {
                     ui.horizontal(|ui| {
-                        if ui.link(RichText::new(&log.name).strong()).clicked() {
-                            jump = Some(log.id.clone());
+                        if ui.link(RichText::new(name).strong()).clicked() {
+                            jump = Some(id.clone());
                         }
-                        small_muted(ui, tf("{n} matches, e.g. {path}", &[("n", paths.len().to_string()), ("path", paths[0].clone())]));
+                        small_muted(ui, tf("{n} matches, e.g. {path}", &[("n", n.to_string()), ("path", first.clone())]));
                     });
                 }
                 if !self.logs.path_search.trim().is_empty() && hits.is_empty() {
@@ -519,7 +534,7 @@ impl App {
                 let l = &self.logs.logs[idx];
                 clone_meta(l)
             };
-            let st = self.logs.logs[idx].changes.stats();
+            let st = self.logs.stats.get(&self.logs.logs[idx].id).cloned().unwrap_or_default();
             theme::card(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.heading(RichText::new(&log.name).strong());
@@ -638,6 +653,9 @@ impl App {
                     self.logs.logs[idx].tags = tags;
                     self.logs.logs[idx].group = group;
                     let l = self.logs.logs[idx].clone();
+                    // Names and groups feed the cached program views.
+                    self.programs.visible_cache = None;
+                    self.programs.monitored_cache = None;
                     if let Err(e) = self.store.save_log(&l) {
                         self.set_status(e.to_string());
                     }

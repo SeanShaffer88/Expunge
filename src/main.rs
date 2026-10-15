@@ -14,6 +14,8 @@ mod cli;
 mod gui;
 
 fn main() {
+    #[cfg(windows)]
+    expunge_core::platform::windows::quiet_critical_errors();
     let args: Vec<String> = std::env::args().skip(1).collect();
     // "Install with Expunge" from Explorer opens the window, not the CLI.
     let install_target = expunge_core::shell::monitor_target(&args);

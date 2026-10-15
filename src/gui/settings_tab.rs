@@ -371,10 +371,16 @@ impl App {
                     theme::card(ui, |ui| {
                         ui.label(RichText::new(t("Background monitoring")).heading());
                         ui.add_space(4.0);
-                        let state = *self.auto_watch.get_or_insert_with(expunge_core::autowatch::is_enabled);
-                        let mut on = state;
+                        if let Some(v) = self.auto_watch_job.as_ref().and_then(|j| j.poll()) {
+                            self.auto_watch_job = None;
+                            self.auto_watch = Some(v);
+                        }
+                        if self.auto_watch.is_none() && self.auto_watch_job.is_none() {
+                            self.auto_watch_job = Some(super::Job::spawn(ui.ctx(), |_| expunge_core::autowatch::is_enabled()));
+                        }
+                        let mut on = self.auto_watch.unwrap_or(false);
                         let r = ui.add_enabled(
-                            self.elevated,
+                            self.elevated && self.auto_watch.is_some(),
                             egui::Checkbox::new(&mut on, t("Record installations automatically, even ones I forget to monitor")),
                         );
                         if r.changed() {

@@ -89,7 +89,7 @@ impl App {
                 }
 
                 let programs = self.programs.list.len();
-                let monitored = self.programs.list.iter().filter(|p| super::programs::log_for(&self.logs.logs, p).is_some()).count();
+                let monitored = self.monitored_keys().len();
                 let broken = self.programs.broken.len();
                 let backup_bytes: u64 = self.backups.list.iter().map(|b| b.bytes()).sum();
                 let mut go: Option<(Tab, Option<super::programs::View>)> = None;
@@ -279,7 +279,7 @@ fn sparkline(ui: &mut egui::Ui, series: &[(String, u64)]) {
             )
         })
         .collect();
-    ui.painter().add(egui::Shape::line(pts, egui::Stroke::new(1.5, theme::ACCENT_TEXT)));
+    ui.painter().add(egui::Shape::line(pts, egui::Stroke::new(1.5_f32, theme::ACCENT_TEXT)));
     resp.on_hover_text(format!(
         "{}: {}\n{}: {}",
         series[0].0,

@@ -405,7 +405,7 @@ mod tests {
         assert_eq!(r.wasted(), 800_000 + 4);
 
         // Minimum size filters out the small pair.
-        let r = find_with(&[d.clone()], 1000, &excluded, &p);
+        let r = find_with(std::slice::from_ref(&d), 1000, &excluded, &p);
         assert_eq!(r.groups.len(), 1);
 
         // Keeping one copy is enforced.

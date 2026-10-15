@@ -46,6 +46,10 @@ pub enum SortCol {
 
 #[derive(Default)]
 pub struct ProgramsState {
+    /// The filtered, sorted list and the monitored-program set, recomputed
+    /// only when their inputs change (not on every frame).
+    pub visible_cache: Option<(u64, std::rc::Rc<Vec<InstalledProgram>>)>,
+    pub monitored_cache: Option<(u64, std::rc::Rc<HashSet<String>>)>,
     /// "Find a program by its window": when the search started.
     pub hunt_since: Option<std::time::Instant>,
     /// Uninstall scripts being edited: program name and its scripts.
@@ -128,6 +132,8 @@ pub struct Wizard {
     child: Option<ChildProcess>,
     started: Option<Instant>,
     notes: Vec<String>,
+    /// Uninstall scripts for the queued programs, read once.
+    scripts: Option<Vec<(String, expunge_core::scripts::ProgramScripts, String)>>,
     /// Restore point and pre-uninstall scripts; returns notes.
     rp_job: Option<Job<Vec<String>>>,
     store_job: Option<Job<Result<String, String>>>,
@@ -155,6 +161,7 @@ impl Wizard {
             started: None,
             notes: Vec::new(),
             rp_job: None,
+            scripts: None,
             store_job: None,
             scan_job: None,
         }
@@ -456,7 +463,61 @@ impl App {
         }
     }
 
-    fn visible_programs(&self) -> Vec<InstalledProgram> {
+    /// Cheap fingerprint of the data the program views are built from.
+    fn data_sig(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let st = &self.programs;
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        (st.list.as_ptr() as usize, st.list.len()).hash(&mut h);
+        (st.store_apps.as_ptr() as usize, st.store_apps.len()).hash(&mut h);
+        (st.sizes.len(), st.trust.len(), st.broken.len()).hash(&mut h);
+        (self.logs.logs.as_ptr() as usize, self.logs.logs.len()).hash(&mut h);
+        (self.extras.upgrades.as_ptr() as usize, self.extras.upgrades.len()).hash(&mut h);
+        h.finish()
+    }
+
+    /// Keys of installed programs that have an install log.
+    pub fn monitored_keys(&mut self) -> std::rc::Rc<HashSet<String>> {
+        let sig = self.data_sig();
+        if let Some((s, m)) = &self.programs.monitored_cache {
+            if *s == sig {
+                return m.clone();
+            }
+        }
+        use expunge_core::model::fold;
+        let by_key: HashSet<String> = self
+            .logs
+            .logs
+            .iter()
+            .filter(|l| !l.uninstall_key.is_empty())
+            .map(|l| fold(&l.uninstall_key))
+            .collect();
+        let by_name: HashSet<String> = self.logs.logs.iter().map(|l| fold(&l.name)).collect();
+        let m: HashSet<String> = self
+            .programs
+            .list
+            .iter()
+            .filter(|p| by_key.contains(&fold(&p.key)) || by_name.contains(&fold(&p.name)))
+            .map(|p| p.key.clone())
+            .collect();
+        let m = std::rc::Rc::new(m);
+        self.programs.monitored_cache = Some((sig, m.clone()));
+        m
+    }
+
+    fn visible_programs(&mut self) -> std::rc::Rc<Vec<InstalledProgram>> {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.data_sig().hash(&mut h);
+        let st = &self.programs;
+        (&st.filter, st.view as u8, st.sort as u8, st.ascending).hash(&mut h);
+        let sig = h.finish();
+        if let Some((s, v)) = &self.programs.visible_cache {
+            if *s == sig {
+                return v.clone();
+            }
+        }
+        let monitored = self.monitored_keys();
         let st = &self.programs;
         let f = st.filter.to_lowercase();
         let source: Vec<&InstalledProgram> = match st.view {
@@ -466,7 +527,7 @@ impl App {
         let mut v: Vec<InstalledProgram> = source
             .into_iter()
             .filter(|p| match st.view {
-                View::Monitored => log_for(&self.logs.logs, p).is_some(),
+                View::Monitored => monitored.contains(&p.key),
                 View::Broken => st.broken.contains(&p.key),
                 View::Unsigned => matches!(
                     st.trust.get(&p.key),
@@ -484,15 +545,17 @@ impl App {
             .cloned()
             .collect();
         match st.sort {
-            SortCol::Name => v.sort_by_key(|p| p.name.to_lowercase()),
-            SortCol::Publisher => v.sort_by_key(|p| p.publisher.to_lowercase()),
+            SortCol::Name => v.sort_by_cached_key(|p| p.name.to_lowercase()),
+            SortCol::Publisher => v.sort_by_cached_key(|p| p.publisher.to_lowercase()),
             SortCol::Version => v.sort_by(|a, b| a.version.cmp(&b.version)),
             SortCol::Date => v.sort_by(|a, b| a.install_date.cmp(&b.install_date)),
             SortCol::Size => v.sort_by_key(|p| self.size_of(p)),
         }
-        if !st.ascending {
+        if !self.programs.ascending {
             v.reverse();
         }
+        let v = std::rc::Rc::new(v);
+        self.programs.visible_cache = Some((sig, v.clone()));
         v
     }
 
@@ -724,7 +787,7 @@ impl App {
         let mut clicked: Option<String> = None;
         let mut double: Option<InstalledProgram> = None;
         let mut sort_click: Option<SortCol> = None;
-        let logs = &self.logs.logs;
+        let monitored = self.monitored_keys();
         let st = &mut self.programs;
         let sizes = &st.sizes;
         let size_of = |p: &InstalledProgram| {
@@ -827,7 +890,7 @@ impl App {
                         }
                     });
                     row.col(|ui| {
-                        if log_for(logs, p).is_some() {
+                        if monitored.contains(&p.key) {
                             ui.label(RichText::new("⏺").color(theme::ACCENT_TEXT))
                                 .on_hover_text(t("Monitored: precise uninstall available"));
                         }
@@ -1147,9 +1210,17 @@ impl App {
 
     pub fn ui_wizard(&mut self, ctx: &egui::Context) {
         let advanced_scripts = match &self.wizard {
-            Some(w) => scripts_for(&self.store, self.settings.advanced_mode, &w.programs),
+            Some(w) => match &w.scripts {
+                Some(s) => s.clone(),
+                None => scripts_for(&self.store, self.settings.advanced_mode, &w.programs),
+            },
             None => return,
         };
+        if let Some(w) = &mut self.wizard {
+            if w.scripts.is_none() {
+                w.scripts = Some(advanced_scripts.clone());
+            }
+        }
         let Some(w) = &mut self.wizard else { return };
         let reg = self.reg.clone();
         let mut close = false;
@@ -1215,7 +1286,7 @@ impl App {
                         None
                     };
                     if p.source == Source::Store {
-                        let key = p.key.clone();
+                        let key = p.key;
                         w.store_job = Some(Job::spawn(ctx, move |_| {
                             programs::remove_store_app(&key).map_err(|e| e.to_string())
                         }));
@@ -1232,7 +1303,7 @@ impl App {
                     } else {
                         w.notes.push(tf(
                             "{name} has no uninstaller; cleaning up directly.",
-                            &[("name", p.name.clone())],
+                            &[("name", p.name)],
                         ));
                         w.advance();
                     }
@@ -1306,7 +1377,7 @@ impl App {
                 self.settings.remove_unlogged_enabled(),
             );
             flow.logs_to_delete = logs;
-            flow.names = names.clone();
+            flow.names = names;
             flow.plan.info.extend(w.notes.clone());
             self.removal = Some(flow);
             self.wizard = None;

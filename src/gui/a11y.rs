@@ -61,7 +61,7 @@ pub fn focus_ring(ctx: &Context, color: egui::Color32) {
     painter.rect_stroke(
         resp.rect.expand(2.0),
         egui::CornerRadius::same(6),
-        egui::Stroke::new(2.0, color),
+        egui::Stroke::new(2.0_f32, color),
         egui::StrokeKind::Outside,
     );
 }

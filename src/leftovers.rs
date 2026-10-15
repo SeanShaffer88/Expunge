@@ -631,7 +631,7 @@ fn deep_scan(
                 part.strip_prefix("App=")
                     .or_else(|| part.strip_prefix("app="))
             });
-            if app.is_some_and(|a| points_in(a)) {
+            if app.is_some_and(&points_in) {
                 out.push((
                     Action::DeleteValue {
                         key: fw.into(),

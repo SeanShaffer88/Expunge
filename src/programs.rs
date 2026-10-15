@@ -71,7 +71,7 @@ impl InstalledProgram {
         let is_msi = k.get_u32("WindowsInstaller") == Some(1)
             || uninstall.to_lowercase().contains("msiexec");
         let product_code = if key_leaf.starts_with('{') && key_leaf.ends_with('}') {
-            key_leaf.clone()
+            key_leaf
         } else {
             extract_guid(&uninstall).unwrap_or_default()
         };
@@ -204,7 +204,6 @@ pub fn log_for<'a>(
         .or_else(|| logs.iter().find(|l| fold(&l.name) == fold(&p.name)))
 }
 
-/// Total size of the files under a folder, in bytes.
 /// Which installed program a file belongs to (for finding a program by its
 /// window or shortcut). Checks, in order: the folder the program was
 /// installed to, the folder of its icon or uninstaller, and the folder name
@@ -265,6 +264,7 @@ pub fn program_for_path(programs: &[InstalledProgram], path: &str) -> Option<(us
     None
 }
 
+/// Total size of the files under a folder, in bytes.
 pub fn dir_size(path: &str) -> u64 {
     walkdir::WalkDir::new(path)
         .follow_links(false)

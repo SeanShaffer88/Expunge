@@ -165,7 +165,7 @@ pub fn repackage_with(
     vars: &Vars,
 ) -> Result<Summary> {
     let dir = out.join(crate::util::safe_file_name(
-        &format!("{} {}", log.name, log.version).trim().to_string(),
+        format!("{} {}", log.name, log.version).trim(),
     ));
     std::fs::create_dir_all(dir.join("files"))
         .with_context(|| format!("can't create {}", dir.display()))?;

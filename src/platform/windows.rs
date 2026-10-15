@@ -808,3 +808,17 @@ pub fn watch_registry(
     drop(key);
     Ok(())
 }
+
+/// Stop Windows showing "There is no disk in the drive" and similar
+/// dialogs when Expunge touches an empty card reader or removed drive.
+pub fn quiet_critical_errors() {
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn SetErrorMode(mode: u32) -> u32;
+    }
+    const SEM_FAILCRITICALERRORS: u32 = 0x0001;
+    const SEM_NOOPENFILEERRORBOX: u32 = 0x8000;
+    unsafe {
+        SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
+    }
+}
