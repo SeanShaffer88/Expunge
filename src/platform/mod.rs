@@ -335,19 +335,6 @@ pub fn unsupported_windows() -> Option<u32> {
     None
 }
 
-/// The program behind the window in front (path, window title), when it
-/// belongs to another process.
-pub fn foreground_program() -> Option<(String, String)> {
-    #[cfg(windows)]
-    {
-        windows::foreground_program()
-    }
-    #[cfg(not(windows))]
-    {
-        None
-    }
-}
-
 /// Where a shortcut (.lnk) points; other paths are returned unchanged.
 pub fn resolve_shortcut(path: &str) -> String {
     if !path.to_lowercase().ends_with(".lnk") {

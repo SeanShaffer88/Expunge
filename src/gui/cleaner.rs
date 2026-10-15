@@ -184,7 +184,7 @@ impl App {
         let job = Job::spawn(&self.ctx, move |pr| {
             if rp {
                 pr.set_phase(t("Creating a restore point…"));
-                let _ = expunge_core::updates::create_restore_point("Before Expunge deep cleanup");
+                let _ = expunge_core::restore::create_restore_point("Before Expunge deep cleanup");
             }
             slimmer::clean(item, &|s| pr.set_phase(s)).map_err(|e| e.to_string())
         });

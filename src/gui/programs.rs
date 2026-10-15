@@ -26,12 +26,6 @@ pub enum View {
     Broken,
     Unsigned,
     Store,
-    /// Programs with a winget update.
-    Updates,
-    /// Optional Windows features (Advanced mode).
-    Features,
-    /// App Execution Aliases (Advanced mode).
-    Aliases,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
@@ -50,10 +44,6 @@ pub struct ProgramsState {
     /// only when their inputs change (not on every frame).
     pub visible_cache: Option<(u64, std::rc::Rc<Vec<InstalledProgram>>)>,
     pub monitored_cache: Option<(u64, std::rc::Rc<HashSet<String>>)>,
-    /// "Find a program by its window": when the search started.
-    pub hunt_since: Option<std::time::Instant>,
-    /// Uninstall scripts being edited: program name and its scripts.
-    pub scripts_edit: Option<(String, expunge_core::scripts::ProgramScripts)>,
     pub list: Vec<InstalledProgram>,
     pub store_apps: Vec<InstalledProgram>,
     pub broken: HashSet<String>,
@@ -132,9 +122,7 @@ pub struct Wizard {
     child: Option<ChildProcess>,
     started: Option<Instant>,
     notes: Vec<String>,
-    /// Uninstall scripts for the queued programs, read once.
-    scripts: Option<Vec<(String, expunge_core::scripts::ProgramScripts, String)>>,
-    /// Restore point and pre-uninstall scripts; returns notes.
+    /// Restore point; returns notes.
     rp_job: Option<Job<Vec<String>>>,
     store_job: Option<Job<Result<String, String>>>,
     scan_job: Option<Job<(Plan, Vec<String>, bool)>>,
@@ -161,7 +149,6 @@ impl Wizard {
             started: None,
             notes: Vec::new(),
             rp_job: None,
-            scripts: None,
             store_job: None,
             scan_job: None,
         }
@@ -295,7 +282,6 @@ impl App {
             self.set_status(tf("{n} programs installed", &[("n", n.to_string())]));
             self.load_icons(ctx);
             self.check_trust(ctx);
-            self.check_upgrades(ctx);
             // Measure folders for programs that don't report their size.
             let todo: Vec<(String, String)> = self
                 .programs
@@ -472,11 +458,6 @@ impl App {
         (st.store_apps.as_ptr() as usize, st.store_apps.len()).hash(&mut h);
         (st.sizes.len(), st.trust.len(), st.broken.len()).hash(&mut h);
         (self.logs.logs.as_ptr() as usize, self.logs.logs.len()).hash(&mut h);
-        (
-            self.extras.upgrades.as_ptr() as usize,
-            self.extras.upgrades.len(),
-        )
-            .hash(&mut h);
         h.finish()
     }
 
@@ -537,8 +518,6 @@ impl App {
                     st.trust.get(&p.key),
                     Some(Trust::Unsigned | Trust::Invalid { .. })
                 ),
-                View::Updates => self.upgrade_for(p).is_some(),
-                View::Features | View::Aliases => false,
                 _ => true,
             })
             .filter(|p| {
@@ -606,17 +585,9 @@ impl App {
                 });
             });
 
-        self.hunt(ctx);
         egui::CentralPanel::default()
             .frame(theme::content_frame())
             .show(ctx, |ui| {
-                if let Some(since) = self.programs.hunt_since {
-                    theme::warning_banner(ui, tf(
-                        "Click the window of the program you want to find… ({n} s)",
-                        &[("n", (15u64.saturating_sub(since.elapsed().as_secs())).to_string())],
-                    ));
-                    ui.add_space(4.0);
-                }
                 ui.horizontal(|ui| {
                     let r = search_box(ui, &mut self.programs.filter, "Search programs", 260.0);
                     if self.focus_search {
@@ -626,14 +597,6 @@ impl App {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui.button(format!("⟳ {}", t("Refresh"))).clicked() {
                             self.refresh_programs(ctx);
-                        }
-                        if cfg!(windows)
-                            && ui
-                                .button(format!("🎯 {}", t("Find by window")))
-                                .on_hover_text(t("Click this, then click the window of the program you want to find. You can also drop a shortcut or program file here."))
-                                .clicked()
-                        {
-                            self.programs.hunt_since = Some(std::time::Instant::now());
                         }
                         let n = self.programs.checked.len();
                         if n > 0 {
@@ -702,25 +665,7 @@ impl App {
                         ),
                         (View::Store, t("Store apps")),
                     ];
-                    let mut views = views.to_vec();
-                    if self.extras.winget == Some(true) {
-                        let n = self
-                            .programs
-                            .list
-                            .iter()
-                            .filter(|p| self.upgrade_for(p).is_some())
-                            .count();
-                        views.insert(
-                            1,
-                            (View::Updates, tf("Updates ({n})", &[("n", n.to_string())])),
-                        );
-                    }
-                    if self.settings.advanced_mode {
-                        views.push((View::Features, t("Windows features")));
-                        views.push((View::Aliases, t("App aliases")));
-                    } else if matches!(self.programs.view, View::Features | View::Aliases) {
-                        self.programs.view = View::All;
-                    }
+                    let views = views.to_vec();
                     for (v, label) in views {
                         if ui
                             .selectable_label(self.programs.view == v, label)
@@ -738,12 +683,6 @@ impl App {
                     }
                 });
                 ui.add_space(4.0);
-                match self.programs.view {
-                    View::Features => return self.ui_features(ui),
-                    View::Aliases => return self.ui_aliases(ui),
-                    View::Updates => self.ui_updates_bar(ui, &visible),
-                    _ => {}
-                }
                 if self.programs.job.is_some()
                     || (self.programs.view == View::Store && self.programs.store_job.is_some())
                 {
@@ -761,14 +700,6 @@ impl App {
 
     fn programs_table(&mut self, ui: &mut egui::Ui, visible: &[InstalledProgram]) {
         let row_h = 24.0;
-        // Newer versions available through winget, by registry key.
-        let updates: HashMap<String, String> = visible
-            .iter()
-            .filter_map(|p| {
-                self.upgrade_for(p)
-                    .map(|u| (p.key.clone(), u.available.clone()))
-            })
-            .collect();
         // Keyboard: arrows/Home/End/Page keys move the selection, Space ticks it.
         let blocked = self.wizard.is_some() || self.removal.is_some() || self.confirm.is_some();
         let cur = self
@@ -928,24 +859,7 @@ impl App {
                         );
                     });
                     row.col(|ui| {
-                        if let Some(new) = updates.get(&p.key) {
-                            // Version and an arrow in one label, so the column keeps its width.
-                            let mut job = egui::text::LayoutJob::default();
-                            let font = egui::TextStyle::Body.resolve(ui.style());
-                            job.append(
-                                &p.version,
-                                0.0,
-                                egui::TextFormat::simple(font.clone(), theme::TEXT),
-                            );
-                            job.append(" ⬆", 0.0, egui::TextFormat::simple(font, theme::OK));
-                            ui.add(egui::Label::new(job).truncate().selectable(false))
-                                .on_hover_text(tf(
-                                    "Version {v} is available",
-                                    &[("v", new.clone())],
-                                ));
-                        } else {
-                            ui.add(egui::Label::new(&p.version).truncate().selectable(false));
-                        }
+                        ui.add(egui::Label::new(&p.version).truncate().selectable(false));
                     });
                     row.col(|ui| {
                         ui.add(egui::Label::new(&p.install_date).selectable(false));
@@ -1036,9 +950,6 @@ impl App {
                     };
                     field(ui, "Digital signature", &text);
                 }
-                if let Some(u) = self.upgrade_for(p) {
-                    field(ui, "Update available", &u.available);
-                }
                 if p.source != Source::Store && self.settings.advanced_mode {
                     field(ui, "Uninstaller", &p.uninstall_string);
                     field(ui, "Registry key", &p.key);
@@ -1057,24 +968,6 @@ impl App {
             );
         }
         ui.add_space(12.0);
-        if let Some(u) = self.upgrade_for(p).cloned() {
-            let busy = self.extras.update_job.is_some();
-            if ui
-                .add_enabled(
-                    !busy,
-                    egui::Button::new(format!(
-                        "⬆ {}",
-                        tf("Update to {v}", &[("v", u.available.clone())])
-                    )),
-                )
-                .on_hover_text(t("Installs the new version silently with winget."))
-                .clicked()
-            {
-                let ctx = ui.ctx().clone();
-                self.start_updates(&ctx, vec![u]);
-            }
-            ui.add_space(4.0);
-        }
         ui.horizontal_wrapped(|ui| {
             if theme::primary_button(ui, format!("🗑 {}", t("Uninstall"))).clicked() {
                 self.start_uninstall(vec![p.clone()], false);
@@ -1130,31 +1023,6 @@ impl App {
                 platform::shell_open(&p.url);
             }
         });
-        if self.settings.advanced_mode && p.source != Source::Store {
-            ui.add_space(6.0);
-            egui::CollapsingHeader::new(t("Uninstall scripts"))
-                .id_salt(("scripts", &p.key))
-                .show(ui, |ui| {
-                    if self.programs.scripts_edit.as_ref().map(|(n, _)| n != &p.name).unwrap_or(true) {
-                        let all = expunge_core::scripts::Scripts::load(&self.store.root);
-                        self.programs.scripts_edit = Some((p.name.clone(), all.get(&p.name)));
-                    }
-                    let Some((_, sc)) = &mut self.programs.scripts_edit else { return };
-                    small_muted(ui, t("Commands run with cmd /C. %EXPUNGE_PROGRAM% and %EXPUNGE_INSTALL_DIR% hold the program's name and folder."));
-                    ui.label(t("Before uninstalling (for example, export settings or stop a service)"));
-                    ui.add(egui::TextEdit::multiline(&mut sc.pre).code_editor().desired_rows(2).desired_width(f32::INFINITY));
-                    ui.label(t("After uninstalling"));
-                    ui.add(egui::TextEdit::multiline(&mut sc.post).code_editor().desired_rows(2).desired_width(f32::INFINITY));
-                    if ui.button(t("Save scripts")).clicked() {
-                        let mut all = expunge_core::scripts::Scripts::load(&self.store.root);
-                        all.set(&p.name, sc.clone());
-                        match all.save(&self.store.root) {
-                            Ok(()) => self.status = t("Scripts saved."),
-                            Err(e) => self.status = e.to_string(),
-                        }
-                    }
-                });
-        }
         if let Some(log) = log_for(&self.logs.logs, p) {
             ui.add_space(10.0);
             let id = log.id.clone();
@@ -1169,69 +1037,7 @@ impl App {
         }
     }
 
-    /// Find a program by the window in front, or by a dropped file or
-    /// shortcut, and select it.
-    fn hunt(&mut self, ctx: &egui::Context) {
-        let dropped: Vec<String> = ctx.input(|i| {
-            i.raw
-                .dropped_files
-                .iter()
-                .filter_map(|f| f.path.as_ref().map(|p| p.to_string_lossy().to_string()))
-                .collect()
-        });
-        let mut target: Option<(String, String)> = dropped
-            .first()
-            .map(|p| (platform::resolve_shortcut(p), String::new()));
-        if let Some(since) = self.programs.hunt_since {
-            if since.elapsed().as_secs() >= 15 {
-                self.programs.hunt_since = None;
-                self.status = t("No window was clicked.");
-            } else if let Some(found) = platform::foreground_program() {
-                self.programs.hunt_since = None;
-                target = Some(found);
-            } else {
-                ctx.request_repaint_after(std::time::Duration::from_millis(250));
-            }
-        }
-        let Some((path, title)) = target else { return };
-        let label = if title.is_empty() {
-            path.clone()
-        } else {
-            format!("{title} ({path})")
-        };
-        match programs::program_for_path(&self.programs.list, &path) {
-            Some((i, _how)) => {
-                let p = self.programs.list[i].clone();
-                self.programs.selected = Some(p.key.clone());
-                self.programs.filter.clear();
-                self.status = tf(
-                    "{window} belongs to {name}.",
-                    &[("window", label), ("name", p.name)],
-                );
-            }
-            None => {
-                self.status = tf(
-                    "{window} doesn't belong to an installed program (it may be part of Windows or a portable program).",
-                    &[("window", label)],
-                );
-            }
-        }
-        ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
-    }
-
     pub fn ui_wizard(&mut self, ctx: &egui::Context) {
-        let advanced_scripts = match &self.wizard {
-            Some(w) => match &w.scripts {
-                Some(s) => s.clone(),
-                None => scripts_for(&self.store, self.settings.advanced_mode, &w.programs),
-            },
-            None => return,
-        };
-        if let Some(w) = &mut self.wizard {
-            if w.scripts.is_none() {
-                w.scripts = Some(advanced_scripts.clone());
-            }
-        }
         let Some(w) = &mut self.wizard else { return };
         let reg = self.reg.clone();
         let mut close = false;
@@ -1402,26 +1208,8 @@ impl App {
         if start_scan {
             let progs = w.programs.clone();
             let logs = self.logs.logs.clone();
-            let post = advanced_scripts.clone();
             w.scan_job = Some(Job::spawn(ctx, move |pr| {
                 let mut plan = Plan::default();
-                for (name, s, dir) in &post {
-                    if s.post.trim().is_empty() {
-                        continue;
-                    }
-                    pr.set_phase(name.clone());
-                    plan.info
-                        .push(match expunge_core::scripts::run(&s.post, name, dir) {
-                            Ok(_) => tf(
-                                "Ran the after-uninstall script for {name}.",
-                                &[("name", name.clone())],
-                            ),
-                            Err(e) => tf(
-                                "The after-uninstall script for {name} failed: {error}",
-                                &[("name", name.clone()), ("error", e)],
-                            ),
-                        });
-                }
                 let mut used_logs = Vec::new();
                 let scope = LeftoverScope::default();
                 for p in &progs {
@@ -1526,27 +1314,12 @@ impl App {
                         ui.add_space(8.0);
                         ui.horizontal(|ui| {
                             if theme::primary_button(ui, t("Start")).clicked() {
-                                let has_pre = advanced_scripts.iter().any(|(_, s, _)| !s.pre.trim().is_empty());
-                                if (w.restore_point && elevated) || has_pre {
+                                if w.restore_point && elevated {
                                     w.stage = Stage::RestorePoint;
-                                    let rp = w.restore_point && elevated;
-                                    let pre = advanced_scripts.clone();
-                                    w.rp_job = Some(Job::spawn(ui.ctx(), move |pr| {
+                                    w.rp_job = Some(Job::spawn(ui.ctx(), move |_| {
                                         let mut notes = Vec::new();
-                                        if rp {
-                                            if let Err(e) = expunge_core::updates::create_restore_point("Before Expunge uninstall") {
-                                                notes.push(tf("Restore point not created: {error}", &[("error", e.to_string())]));
-                                            }
-                                        }
-                                        for (name, s, dir) in &pre {
-                                            if s.pre.trim().is_empty() {
-                                                continue;
-                                            }
-                                            pr.set_phase(name.clone());
-                                            notes.push(match expunge_core::scripts::run(&s.pre, name, dir) {
-                                                Ok(_) => tf("Ran the before-uninstall script for {name}.", &[("name", name.clone())]),
-                                                Err(e) => tf("The before-uninstall script for {name} failed: {error}", &[("name", name.clone()), ("error", e)]),
-                                            });
+                                        if let Err(e) = expunge_core::restore::create_restore_point("Before Expunge uninstall") {
+                                            notes.push(tf("Restore point not created: {error}", &[("error", e.to_string())]));
                                         }
                                         notes
                                     }));
@@ -1642,22 +1415,4 @@ impl App {
 /// that need `self`), so just make sure that frame happens.
 fn start_scan_later(ctx: &egui::Context) {
     ctx.request_repaint();
-}
-
-/// The uninstall scripts set for these programs (Advanced mode only), with
-/// each program's name and folder.
-fn scripts_for(
-    store: &expunge_core::store::Store,
-    advanced: bool,
-    programs: &[InstalledProgram],
-) -> Vec<(String, expunge_core::scripts::ProgramScripts, String)> {
-    if !advanced {
-        return Vec::new();
-    }
-    let all = expunge_core::scripts::Scripts::load(&store.root);
-    programs
-        .iter()
-        .map(|p| (p.name.clone(), all.get(&p.name), p.install_location.clone()))
-        .filter(|(_, s, _)| !s.is_empty())
-        .collect()
 }

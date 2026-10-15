@@ -5,7 +5,6 @@ use super::app::{App, Confirm};
 use super::plan::RemovalFlow;
 use super::theme;
 use super::widgets::*;
-use super::Job;
 use egui::RichText;
 use expunge_core::i18n::{t, tf};
 use expunge_core::model::{human_size, ChangeSet, InstallLog};
@@ -30,17 +29,6 @@ pub struct LogsState {
     /// Show only this group ("" = all).
     pub group_filter: String,
     pub loader: super::Reload<Vec<InstallLog>>,
-    pub repackage_job: Option<
-        Job<
-            Result<
-                (
-                    expunge_core::repackage::Summary,
-                    Option<expunge_core::msix::MsixResult>,
-                ),
-                String,
-            >,
-        >,
-    >,
 }
 
 /// Collapsible lists of every change. With `editable`, each entry gets a ✖
@@ -256,67 +244,6 @@ impl App {
         flow.logs_to_delete = vec![log.id.clone()];
         flow.names = vec![log.name.clone()];
         self.open_removal(flow);
-    }
-
-    /// Repackage a log as a deployable folder, in the background.
-    fn start_repackage(&mut self, log: InstallLog, msix: bool) {
-        if self.logs.repackage_job.is_some() {
-            return;
-        }
-        let Some(dir) = pick_folder(&t("Choose where to save the package")) else {
-            return;
-        };
-        let reg = self.reg.clone();
-        self.set_status(tf("Repackaging {name}…", &[("name", log.name.clone())]));
-        self.logs.repackage_job = Some(Job::spawn(&self.ctx, move |pr| {
-            let s =
-                expunge_core::repackage::repackage(&log, reg.as_ref(), &dir, &|s| pr.set_phase(s))
-                    .map_err(|e| e.to_string())?;
-            let m = if msix {
-                pr.set_phase("MSIX".to_string());
-                Some(expunge_core::msix::build(&s.folder, &log).map_err(|e| e.to_string())?)
-            } else {
-                None
-            };
-            Ok((s, m))
-        }));
-    }
-
-    pub fn poll_repackage(&mut self) {
-        let Some(r) = self.logs.repackage_job.as_ref().and_then(|j| j.poll()) else {
-            return;
-        };
-        self.logs.repackage_job = None;
-        match r {
-            Ok((s, m)) => {
-                let mut msg = tf(
-                    "Package ready: {files} files ({size}), {keys} registry keys.",
-                    &[
-                        ("files", s.files.to_string()),
-                        ("size", expunge_core::model::human_size(s.bytes)),
-                        ("keys", s.keys.to_string()),
-                    ],
-                );
-                if s.missing > 0 {
-                    msg.push(' ');
-                    msg.push_str(&tf(
-                        "{n} recorded files no longer exist and were left out.",
-                        &[("n", s.missing.to_string())],
-                    ));
-                }
-                if let Some(m) = m {
-                    msg.push(' ');
-                    msg.push_str(&if m.package.is_some() {
-                        t("The MSIX package is ready; sign it before installing (see MSIX-README.txt).")
-                    } else {
-                        t("The MSIX layout is ready; pack and sign it with the Windows SDK (see MSIX-README.txt).")
-                    });
-                }
-                self.set_status(msg);
-                expunge_core::platform::shell_open(&s.folder.to_string_lossy());
-            }
-            Err(e) => self.set_status(e),
-        }
     }
 
     fn export_log(&mut self, log: &InstallLog, ext: &str) {
@@ -608,26 +535,6 @@ impl App {
                                 let full = self.logs.logs[idx].clone();
                                 self.export_log(&full, ext);
                             }
-                        }
-                        ui.separator();
-                        if ui
-                            .button(t("Repackage as a silent installer…"))
-                            .on_hover_text(t("A folder with the installed files, a registry file and install/uninstall scripts, for deploying to other PCs."))
-                            .clicked()
-                        {
-                            ui.close();
-                            let full = self.logs.logs[idx].clone();
-                            self.start_repackage(full, false);
-                        }
-                        if self.settings.advanced_mode
-                            && ui
-                                .button(t("Repackage as MSIX…"))
-                                .on_hover_text(t("The same folder plus an MSIX package layout (and an .msix file when the Windows SDK is installed), for modern deployment."))
-                                .clicked()
-                        {
-                            ui.close();
-                            let full = self.logs.logs[idx].clone();
-                            self.start_repackage(full, true);
                         }
                     });
                     if ui.button(t("Edit details")).clicked() {

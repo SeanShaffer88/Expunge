@@ -41,10 +41,6 @@ pub struct StartupState {
     /// Boot diagnostics (None inside = not readable) and delayed programs.
     pub boot: Option<Option<expunge_core::boot::BootInfo>>,
     pub delayed: Vec<String>,
-    /// Online reputation results by startup entry name.
-    pub reputation:
-        std::collections::HashMap<String, Result<expunge_core::reputation::Verdict, String>>,
-    pub reputation_job: Option<Job<(String, Result<expunge_core::reputation::Verdict, String>)>>,
     pub boot_job: Option<Job<(Option<expunge_core::boot::BootInfo>, Vec<String>)>>,
 }
 
@@ -70,10 +66,6 @@ impl App {
             self.startup.entries = e;
             self.startup.services = s;
             self.startup.tasks = tk;
-        }
-        if let Some((name, r)) = self.startup.reputation_job.as_ref().and_then(|j| j.poll()) {
-            self.startup.reputation_job = None;
-            self.startup.reputation.insert(name, r);
         }
         if let Some((b, d)) = self.startup.boot_job.as_ref().and_then(|j| j.poll()) {
             self.startup.boot_job = None;
@@ -369,9 +361,6 @@ impl App {
         let mut delay_op: Option<(usize, bool)> = None;
         let boot = self.startup.boot.clone().flatten();
         let delayed = self.startup.delayed.clone();
-        let rep_on = self.settings.reputation_online;
-        let rep_busy = self.startup.reputation_job.is_some();
-        let mut check: Option<usize> = None;
         TableBuilder::new(ui)
             .striped(true)
             .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
@@ -420,9 +409,6 @@ impl App {
                         if delayed.iter().any(|d| d == &e.name) {
                             theme::badge(ui, t("Delayed"), theme::OK);
                         }
-                        if let Some(r) = self.startup.reputation.get(&e.name) {
-                            reputation_badge(ui, r);
-                        }
                     });
                     row.col(|ui| {
                         ui.add(
@@ -459,15 +445,6 @@ impl App {
                         });
                     });
                     row.col(|ui| {
-                        if rep_on
-                            && !e.missing
-                            && ui
-                                .add_enabled(!rep_busy, egui::Button::new(t("Check")).small())
-                                .on_hover_text(t("Look this program up online by its fingerprint (hash)."))
-                                .clicked()
-                        {
-                            check = Some(i);
-                        }
                         let is_delayed = delayed.iter().any(|d| d == &e.name);
                         if is_delayed {
                             if ui.small_button(t("Start normally")).clicked() {
@@ -496,18 +473,6 @@ impl App {
                 tf("Disable {name}", &[("name", e.name.clone())])
             };
             self.with_backup(&title, |reg, b| startup::set_enabled(reg, &e, on, b));
-        }
-        if let Some(i) = check {
-            let e = self.startup.entries[i].clone();
-            let key = self.settings.virustotal_key.clone();
-            self.startup.reputation_job = Some(Job::spawn(ui.ctx(), move |_| {
-                let (prog, _) = expunge_core::util::split_command_line(&e.command);
-                let path = expunge_core::platform::expand_env(&prog);
-                let r = expunge_core::reputation::sha256_file(std::path::Path::new(&path))
-                    .map_err(|err| format!("{path}: {err}"))
-                    .and_then(|h| expunge_core::reputation::check(&h, Some(&key)));
-                (e.name, r)
-            }));
         }
         if let Some((i, on)) = delay_op {
             let e = self.startup.entries[i].clone();
@@ -720,50 +685,6 @@ impl App {
                 "Delete",
                 Confirm::DeleteTask(i),
             );
-        }
-    }
-}
-
-/// Short coloured result of an online reputation check.
-fn reputation_badge(ui: &mut egui::Ui, r: &Result<expunge_core::reputation::Verdict, String>) {
-    use expunge_core::reputation::Verdict;
-    match r {
-        Ok(Verdict::Malicious {
-            detections,
-            engines,
-        }) => {
-            theme::badge(
-                ui,
-                tf(
-                    "Flagged by {n}/{total}",
-                    &[
-                        ("n", detections.to_string()),
-                        ("total", engines.to_string()),
-                    ],
-                ),
-                theme::BAD,
-            );
-        }
-        Ok(Verdict::Clean { engines }) => {
-            theme::badge(
-                ui,
-                tf("Clean ({n} engines)", &[("n", engines.to_string())]),
-                theme::OK,
-            );
-        }
-        Ok(Verdict::Known { source }) => {
-            ui.add(egui::Label::new(
-                RichText::new(t("Known software")).small().color(theme::OK),
-            ))
-            .on_hover_text(source);
-        }
-        Ok(Verdict::Unknown) => {
-            ui.label(RichText::new(t("Not found online")).small().color(theme::MUTED))
-                .on_hover_text(t("Unknown files aren't necessarily harmful; many small programs are simply not catalogued."));
-        }
-        Err(e) => {
-            ui.label(RichText::new(t("Check failed")).small().color(theme::WARN))
-                .on_hover_text(e);
         }
     }
 }

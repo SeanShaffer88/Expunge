@@ -19,9 +19,7 @@ pub enum Tab {
     Backups,
     Startup,
     Cleaner,
-    Privacy,
-    Disk,
-    Dups,
+    Restore,
     Lab,
     Settings,
 }
@@ -38,14 +36,13 @@ pub enum Confirm {
     ResetSettings,
     CancelMonitoring,
     /// Turn an optional Windows feature on (true) or off.
-    SetFeature(String, bool),
     /// Run one deep (Windows) cleanup.
     DeepClean(expunge_core::slimmer::DeepItem),
     /// Apply the ticked Anti-Telemetry changes.
-    ApplyTweaks,
     /// Remove the ticked pre-installed apps.
-    RemoveBloat,
-    RemoveDuplicates,
+    SetProtection(bool),
+    RestoreTo(u32),
+    DeleteRestorePoint(u32),
 }
 
 pub struct ConfirmDialog {
@@ -72,18 +69,12 @@ pub struct App {
     pub confirm: Option<ConfirmDialog>,
     pub languages: Vec<(String, String)>,
     pub programs: programs::ProgramsState,
-    pub extras: super::extras::ExtrasState,
-    pub privacy: super::privacy::PrivacyState,
-    pub disk: super::disk::DiskState,
-    pub dups: super::dups::DupState,
+    pub restore: super::restore_ui::RestoreState,
     /// Live activity while monitoring an installation.
     pub live: Option<expunge_core::live::LiveWatcher>,
     /// Whether background monitoring is on (read from Task Scheduler once).
     pub auto_watch: Option<bool>,
     pub auto_watch_job: Option<super::Job<bool>>,
-    pub health: Option<(expunge_core::health::Health, expunge_core::health::History)>,
-    pub health_job:
-        Option<super::Job<(expunge_core::health::Health, expunge_core::health::History)>>,
     /// Transfer export or restore window.
     pub transfer: Option<super::transfer_ui::TransferUi>,
     pub monitor: monitor::MonitorState,
@@ -96,7 +87,6 @@ pub struct App {
     pub startup: startup_tab::StartupState,
     pub cleaner: cleaner::CleanerState,
     pub settings_ui: settings_tab::SettingsState,
-    pub updates: updates::UpdatesState,
     pub lab: lab::LabState,
     pub help_open: bool,
     /// F10 was pressed: move keyboard focus to the menu bar.
@@ -157,15 +147,10 @@ impl App {
             confirm: None,
             languages,
             programs: Default::default(),
-            extras: Default::default(),
-            privacy: Default::default(),
-            disk: Default::default(),
-            dups: Default::default(),
+            restore: Default::default(),
             live: None,
             auto_watch: None,
             auto_watch_job: None,
-            health: None,
-            health_job: None,
             transfer: None,
             monitor: Default::default(),
             logs: Default::default(),
@@ -175,7 +160,6 @@ impl App {
             startup: Default::default(),
             cleaner: Default::default(),
             settings_ui: Default::default(),
-            updates: Default::default(),
             lab: Default::default(),
             help_open: false,
             focus_menu: false,
@@ -307,14 +291,10 @@ impl App {
             Confirm::RestoreBackup(id) => self.restore_backup(&id),
             Confirm::DeleteBackup(id) => self.delete_backup(&id),
             Confirm::CleanJunk => self.start_clean(),
-            Confirm::SetFeature(name, enable) => self.set_feature(name, enable),
             Confirm::DeepClean(item) => self.start_deep(item),
-            Confirm::ApplyTweaks => self.start_apply_tweaks(false),
-            Confirm::RemoveBloat => self.start_remove_bloat(),
-            Confirm::RemoveDuplicates => {
-                let ctx = self.ctx.clone();
-                self.start_remove_duplicates(&ctx)
-            }
+            Confirm::SetProtection(on) => self.set_protection(on),
+            Confirm::RestoreTo(seq) => self.restore_to_point(seq),
+            Confirm::DeleteRestorePoint(seq) => self.delete_restore_point(seq),
             Confirm::DeleteStartup(i) => self.delete_startup(i),
             Confirm::DeleteTask(i) => self.delete_task(i),
             Confirm::ResetSettings => {
@@ -376,11 +356,9 @@ impl App {
                             self.tab = Tab::Monitor;
                             self.start_install_and_monitor(ctx);
                         }
-                        if self.settings.advanced_mode && ui.button(t("Windows Updates…")).clicked()
-                        {
+                        if ui.button(t("System Restore")).clicked() {
                             ui.close();
-                            self.updates.open(ctx);
-                            self.style_frames = 30;
+                            self.tab = Tab::Restore;
                         }
                         if ui.button(t("Junk cleaner")).clicked() {
                             ui.close();
@@ -397,7 +375,7 @@ impl App {
                         if ui.button(t("Create restore point")).clicked() {
                             ui.close();
                             self.programs.restore_job = Some(Job::spawn(ctx, |_| {
-                                expunge_core::updates::create_restore_point(
+                                expunge_core::restore::create_restore_point(
                                     "Expunge manual restore point",
                                 )
                                 .map_err(|e| e.to_string())
@@ -526,7 +504,7 @@ impl App {
                 ui.add_space(14.0);
                 let monitoring = self.monitor.is_active();
                 let broken = self.programs.broken.len();
-                let items: [(Tab, &str, &str, Option<String>); 8] = [
+                let items: [(Tab, &str, &str, Option<String>); 7] = [
                     (Tab::Dashboard, "🏠", "Dashboard", None),
                     (
                         Tab::Programs,
@@ -544,7 +522,6 @@ impl App {
                     (Tab::Backups, "💾", "Backups", None),
                     (Tab::Startup, "🚀", "Startup", None),
                     (Tab::Cleaner, "🗑", "Cleaner", None),
-                    (Tab::Privacy, "🔒", "Anti-Telemetry", None),
                 ];
                 for (tab, icon, label, badge) in items {
                     if theme::nav_item(ui, icon, &t(label), self.tab == tab, badge).clicked() {
@@ -555,25 +532,12 @@ impl App {
                 ui.add_space(14.0);
                 ui.label(RichText::new(t("TOOLS")).small().color(theme::MUTED));
                 ui.add_space(2.0);
-                if theme::nav_item(ui, "📊", &t("Disk space"), self.tab == Tab::Disk, None)
+                if theme::nav_item(ui, "⏪", &t("System Restore"), self.tab == Tab::Restore, None)
                     .clicked()
                 {
-                    self.tab = Tab::Disk;
+                    self.tab = Tab::Restore;
                 }
-                if theme::nav_item(ui, "📑", &t("Duplicate files"), self.tab == Tab::Dups, None)
-                    .clicked()
-                {
-                    self.tab = Tab::Dups;
-                }
-                if self.settings.advanced_mode
-                    && theme::nav_item(ui, "🔁", &t("Windows Updates"), false, None).clicked()
-                {
-                    self.updates.open(ctx);
-                    self.style_frames = 30;
-                }
-                if self.settings.advanced_mode
-                    && theme::nav_item(ui, "🛠", &t("Installer Lab"), self.tab == Tab::Lab, None)
-                        .clicked()
+                if theme::nav_item(ui, "📸", &t("Snapshots"), self.tab == Tab::Lab, None).clicked()
                 {
                     self.tab = Tab::Lab;
                     self.reload_logs();
@@ -617,18 +581,13 @@ impl App {
                 "Programs, services and tasks that start with Windows",
             ),
             Tab::Cleaner => ("Cleaner", "Free space taken by temporary files and caches"),
-            Tab::Privacy => ("Anti-Telemetry", "Stop Windows collecting data, remove clutter, and tune Windows — every change can be undone"),
-            Tab::Disk => (
-                "Disk space",
-                "See which folders and files take up the most space",
-            ),
-            Tab::Dups => (
-                "Duplicate files",
-                "Find identical copies of files and free the space they waste",
+            Tab::Restore => (
+                "System Restore",
+                "Create, delete and roll back to restore points",
             ),
             Tab::Lab => (
-                "Installer Lab",
-                "Tools for developers: lint installers, test uninstallers, compare snapshots",
+                "Snapshots",
+                "Capture the system at any moment and compare any two captures",
             ),
             Tab::Settings => ("Settings", ""),
         };
@@ -823,8 +782,6 @@ impl App {
     fn poll_jobs(&mut self, ctx: &egui::Context) {
         self.poll_lists();
         self.poll_orphans();
-        self.poll_repackage();
-        self.poll_extras(ctx);
         self.poll_programs(ctx);
         self.poll_monitor(ctx);
         self.poll_startup();
@@ -832,7 +789,6 @@ impl App {
         self.poll_learning();
         self.poll_backups();
         self.poll_removal();
-        self.updates.poll();
         self.poll_lab();
         if let Some(job) = &self.programs.restore_job {
             if let Some(r) = job.poll() {
@@ -929,28 +885,17 @@ fn page_help(tab: Tab) -> &'static [&'static str] {
             "Programs and Windows leave temporary files behind. They are safe to delete and are recreated when needed.",
             "Click Scan to see how much space each kind uses, choose what to clean, then click Clean.",
         ],
-        Tab::Privacy => &[
-            "Windows sends data about how you use your PC to Microsoft and shows ads and suggestions. These switches turn that off.",
-            "Pick a preset (Minimal is safe for everyone) or tick individual items, then click Apply. A restore point is created first.",
-            "Every change is recorded: untick an item and apply again to undo it exactly.",
-        ],
-        Tab::Disk => &[
-            "The map shows a drive or folder as blocks: the bigger the block, the more space it uses. Colors show the kind of file.",
-            "Click a block or double-click a list entry to look inside a folder. Use the arrow button or Backspace to go back up.",
-            "Nothing is deleted here. Use Show in File Explorer to deal with large files yourself, or the Programs and Cleaner pages to remove programs and junk safely.",
-        ],
-        Tab::Dups => &[
-            "Expunge compares the contents of files, not just their names, so only truly identical files are listed.",
-            "Tick the copies you don't need, or let Expunge tick all but one copy of each. They go to the Recycle Bin, so you can restore them.",
-            "Windows, program and app-data folders are never searched, so nothing a program needs can be removed.",
+        Tab::Restore => &[
+            "A restore point is a saved state of Windows' system files, settings and installed programs. Restoring one undoes system changes made since, without touching your documents.",
+            "Create a restore point before risky changes, or use Restore to roll Windows back. Windows restarts to do this.",
+            "Advanced mode can also delete restore points, turn System Protection on or off, and set how much disk space restore points may use.",
         ],
         Tab::Lab => &[
-            "Installer lint reviews a recorded installation and points out packaging problems, with advice on fixing them.",
-            "Uninstaller test runs a program's own uninstaller and reports exactly what it left behind — useful for testing your own installers.",
-            "Snapshot compare lets you capture the system at any moment and compare any two captures. Everything is also available from the command line (expunge --help).",
+            "A snapshot records the registry and files at one moment. Take one, make changes (install something, change settings), take another and compare the two to see exactly what changed.",
+            "The differences can be saved as an install log, so they can be undone like a monitored installation. Everything is also available from the command line (expunge --help).",
         ],
         Tab::Settings => &[
-            "Simple mode keeps the interface focused and plain. Advanced mode shows technical details, services, tasks and the Installer Lab.",
+            "Simple mode keeps the interface focused and plain. Advanced mode shows technical details, services and scheduled tasks.",
             "The monitoring scope decides which parts of the system snapshots look at. The defaults suit almost everyone.",
         ],
     }
@@ -1011,7 +956,7 @@ impl App {
             ui.columns(2, |cols| {
                 for (i, (adv, title, body)) in [
                     (false, "Simple", "Plain language, fewer technical details. Recommended if you're not sure."),
-                    (true, "Advanced", "All details: registry keys, services, scheduled tasks and the Installer Lab for developers."),
+                    (true, "Advanced", "All details: registry keys, services, scheduled tasks and every tool."),
                 ]
                 .into_iter()
                 .enumerate()
@@ -1087,7 +1032,7 @@ impl App {
             Tab::Backups,
             Tab::Startup,
             Tab::Cleaner,
-            Tab::Privacy,
+            Tab::Restore,
             Tab::Settings,
         ];
         let mut go: Option<Tab> = None;
@@ -1122,11 +1067,7 @@ impl App {
             let ctrl_tab = self.ctrl_tab.take();
             if let Some(back) = ctrl_tab {
                 let mut order = tabs.to_vec();
-                order.insert(8, Tab::Disk);
-                order.insert(9, Tab::Dups);
-                if self.settings.advanced_mode {
-                    order.insert(10, Tab::Lab);
-                }
+                order.insert(8, Tab::Lab);
                 let pos = order.iter().position(|t| *t == self.tab).unwrap_or(0);
                 let n = order.len();
                 let next = if back {
@@ -1242,19 +1183,13 @@ impl eframe::App for App {
             Tab::Backups => self.ui_backups(ctx),
             Tab::Startup => self.ui_startup(ctx),
             Tab::Cleaner => self.ui_cleaner(ctx),
-            Tab::Privacy => self.ui_privacy(ctx),
-            Tab::Disk => self.ui_disk(ctx),
-            Tab::Dups => self.ui_dups(ctx),
+            Tab::Restore => self.ui_restore(ctx),
             Tab::Lab => self.ui_lab(ctx),
             Tab::Settings => self.ui_settings(ctx),
         }
         self.ui_wizard(ctx);
         self.ui_removal(ctx);
         self.ui_transfer(ctx);
-        let elevated = self.elevated;
-        if self.updates.show(ctx, elevated) {
-            self.style_frames = self.style_frames.max(5);
-        }
         self.dialogs(ctx);
         self.welcome(ctx);
         self.shortcuts(ctx);

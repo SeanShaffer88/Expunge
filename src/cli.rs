@@ -1,7 +1,6 @@
 //! Command-line interface for scripting and IT use.
 
 use expunge_core::backup::{list_backups, restore_backup, BackupWriter};
-use expunge_core::lint;
 use expunge_core::model::{human_size, InstallLog};
 use expunge_core::platform::{self, Registry};
 use expunge_core::revert::{build_plan, execute_plan, ExecOptions};
@@ -34,13 +33,6 @@ USAGE:
                                             each program's digital signature)
   expunge verify <file>                     Check a file's digital signature
                                             (exit 2 if unsigned or invalid)
-  expunge lint <log-id> [--json] [--strict] Check an installation for packaging
-                                            problems (exit 2 on errors, or on
-                                            warnings with --strict)
-  expunge test-uninstall <log-id> [--quiet] [--no-run] [--timeout SECS] [--json]
-                                            Run the program's own uninstaller and
-                                            report what it left behind (exit 2
-                                            if anything remains)
   expunge revert <log-id> [--dry-run] [--remove-unlogged] [--no-backup] [--recycle] [--keep-log]
                                             Undo an installation precisely
   expunge export <log-id> <html|json|reg|ps1> <output-file>
@@ -49,25 +41,14 @@ USAGE:
                                             (default 60) and list what changed
                                             on its own; --apply adds it to the
                                             exclusions
-  expunge updates [--json]                  Programs with updates (needs winget)
-  expunge update <winget-id> | --all        Install updates silently with winget
   expunge transfer export <out.expunge> <program>...
                                             Pack programs (by name) with their files
                                             and settings to move to another PC
   expunge transfer check <package>          Check a package against this PC
   expunge transfer import <package> [--overwrite]
                                             Restore a package (undo from backups)
-  expunge repackage <log-id> <folder> [--msix]
-                                            Turn a monitored installation into a
-                                            folder with files, install.reg and
-                                            silent install/uninstall scripts
   expunge orphans [--json]                  List registrations left by removed
                                             programs (pointing to missing files)
-  expunge disk [folder] [--top N] [--json]  Largest folders and files under a
-                                            folder or drive (default: C:\\)
-  expunge duplicates <folder>... [--min-size MB] [--json]
-                                            List identical files (compared by
-                                            content); nothing is deleted
   expunge uninstall <name>... [--silent] [--leftovers safe|none] [--dry-run]
                                             Uninstall programs one after another,
                                             then remove safe leftovers (backed up)
@@ -77,9 +58,6 @@ USAGE:
                                             Clean junk automatically
   expunge startup [--json]                  List startup programs
   expunge startup enable|disable <name>     Turn a startup program on or off
-  expunge reputation <file>... [--vt-key KEY]
-                                            Look files up online by their hash
-                                            (only the hash is sent)
   expunge watch                             Background auto-monitoring (started
                                             at sign-in when turned on in Settings)
   expunge check-clean <log-id>              Check that nothing recorded in a log
@@ -94,8 +72,8 @@ Exit codes: 0 success, 1 error, 2 finished with failures / findings.
 
 Typical CI use (installer QA):
   expunge monitor --name MyApp --no-prompt --json -- dist\\MyApp-Setup.exe /S
-  expunge lint <log-id> --strict
-  expunge test-uninstall <log-id> --quiet";
+  expunge revert <log-id> --keep-log
+  expunge check-clean <log-id>";
 
 fn arg_value(args: &[String], flag: &str) -> Option<String> {
     args.iter()
@@ -367,87 +345,6 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                 log.tags.join(", ")
             );
         }
-        "updates" => {
-            let list = expunge_core::winget::list_upgrades()?;
-            if has(&args, "--json") {
-                println!("{}", serde_json::to_string_pretty(&list)?);
-            } else if list.is_empty() {
-                println!("Everything is up to date.");
-            } else {
-                for u in &list {
-                    println!("{}  {} → {}  ({})", u.name, u.version, u.available, u.id);
-                }
-            }
-        }
-        "update" => {
-            let ids: Vec<String> = if has(&args, "--all") {
-                expunge_core::winget::list_upgrades()?
-                    .into_iter()
-                    .map(|u| u.id)
-                    .collect()
-            } else {
-                args.iter()
-                    .skip(1)
-                    .filter(|a| !a.starts_with("--"))
-                    .cloned()
-                    .collect()
-            };
-            if ids.is_empty() {
-                anyhow::bail!("usage: expunge update <winget-id>... | --all");
-            }
-            let mut failed = 0;
-            for id in &ids {
-                eprint!("Updating {id}… ");
-                match expunge_core::winget::upgrade(id) {
-                    Ok(()) => eprintln!("done"),
-                    Err(e) => {
-                        failed += 1;
-                        eprintln!("{e}");
-                    }
-                }
-            }
-            return Ok(if failed == 0 { 0 } else { 2 });
-        }
-        "repackage" => {
-            let (Some(id), Some(dir)) = (args.get(1), args.get(2)) else {
-                anyhow::bail!("usage: expunge repackage <log-id> <folder> [--msix]")
-            };
-            let st = store()?;
-            let log = st.load_log(id)?;
-            let s = expunge_core::repackage::repackage(
-                &log,
-                reg.as_ref(),
-                &PathBuf::from(dir),
-                &|_| {},
-            )?;
-            println!(
-                "Saved {}: {} files ({}), {} keys, {} values",
-                s.folder.display(),
-                s.files,
-                human_size(s.bytes),
-                s.keys,
-                s.values
-            );
-            if has(&args, "--msix") {
-                let m = expunge_core::msix::build(&s.folder, &log)?;
-                match &m.package {
-                    Some(p) => println!(
-                        "MSIX package: {} (unsigned; see MSIX-README.txt)",
-                        p.display()
-                    ),
-                    None => println!(
-                        "MSIX layout: {} (pack with MakeAppx; see MSIX-README.txt)",
-                        m.layout.display()
-                    ),
-                }
-            }
-            if s.missing > 0 {
-                eprintln!(
-                    "{} recorded files no longer exist and were left out.",
-                    s.missing
-                );
-            }
-        }
         "transfer" => {
             let sub = args.get(1).map(String::as_str).unwrap_or("");
             let st = store()?;
@@ -550,125 +447,6 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                     return Ok(if failed == 0 { 0 } else { 2 });
                 }
                 _ => anyhow::bail!("usage: expunge transfer export|check|import …"),
-            }
-        }
-        "disk" => {
-            let folder = args
-                .get(1)
-                .filter(|a| !a.starts_with("--"))
-                .cloned()
-                .unwrap_or_else(|| {
-                    if cfg!(windows) {
-                        "C:\\".into()
-                    } else {
-                        "/".into()
-                    }
-                });
-            let top: usize = arg_value(&args, "--top")
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(20);
-            let progress = expunge_core::snapshot::Progress::default();
-            let map = expunge_core::diskmap::scan(std::path::Path::new(&folder), &progress);
-            let entries = expunge_core::diskmap::largest(&map, top);
-            if has(&args, "--json") {
-                let items: Vec<_> = entries
-                    .iter()
-                    .map(|(path, size, dir)| {
-                        serde_json::json!({ "path": path, "bytes": size, "folder": dir })
-                    })
-                    .collect();
-                println!(
-                    "{}",
-                    serde_json::json!({
-                        "root": folder,
-                        "bytes": map.root.size,
-                        "files": map.root.files,
-                        "unreadable_folders": map.unreadable,
-                        "largest": items,
-                    })
-                );
-            } else {
-                println!(
-                    "{}: {} in {} files",
-                    folder,
-                    expunge_core::model::human_size(map.root.size),
-                    map.root.files
-                );
-                for (path, size, dir) in &entries {
-                    println!(
-                        "{:>10}  {}{}",
-                        expunge_core::model::human_size(*size),
-                        path,
-                        if *dir {
-                            std::path::MAIN_SEPARATOR_STR
-                        } else {
-                            ""
-                        }
-                    );
-                }
-                if map.unreadable > 0 {
-                    eprintln!("{} folders could not be read.", map.unreadable);
-                }
-            }
-        }
-        "duplicates" => {
-            let mut roots = Vec::new();
-            let mut i = 1;
-            while i < args.len() {
-                if args[i] == "--min-size" {
-                    i += 2;
-                    continue;
-                }
-                if !args[i].starts_with("--") {
-                    roots.push(std::path::PathBuf::from(&args[i]));
-                }
-                i += 1;
-            }
-            if roots.is_empty() {
-                anyhow::bail!("name at least one folder to search");
-            }
-            let min_mb: f64 = arg_value(&args, "--min-size")
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(1.0);
-            let progress = expunge_core::snapshot::Progress::default();
-            let r = expunge_core::duplicates::find(&roots, (min_mb * 1048576.0) as u64, &progress);
-            if has(&args, "--json") {
-                let groups: Vec<_> = r
-                    .groups
-                    .iter()
-                    .map(|g| {
-                        serde_json::json!({
-                            "bytes": g.size,
-                            "sha256": g.hash,
-                            "files": g.files.iter().map(|f| f.path.to_string_lossy().to_string()).collect::<Vec<_>>(),
-                        })
-                    })
-                    .collect();
-                println!(
-                    "{}",
-                    serde_json::json!({ "files_checked": r.files_scanned, "wasted_bytes": r.wasted(), "groups": groups })
-                );
-            } else if r.groups.is_empty() {
-                println!(
-                    "No duplicate files found ({} files checked).",
-                    r.files_scanned
-                );
-            } else {
-                for g in &r.groups {
-                    println!(
-                        "{} copies of {}:",
-                        g.files.len(),
-                        expunge_core::model::human_size(g.size)
-                    );
-                    for f in &g.files {
-                        println!("  {}", f.path.display());
-                    }
-                }
-                eprintln!(
-                    "{} sets; keeping one copy of each would free {}. Remove copies from the app (Tools > Duplicate files), which keeps one copy and uses the Recycle Bin.",
-                    r.groups.len(),
-                    expunge_core::model::human_size(r.wasted())
-                );
             }
         }
         "uninstall" => {
@@ -959,47 +737,6 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                 }
             }
         }
-        "reputation" => {
-            let files: Vec<&String> = {
-                let mut v = Vec::new();
-                let mut skip = false;
-                for a in &args[1..] {
-                    if skip {
-                        skip = false;
-                        continue;
-                    }
-                    if a == "--vt-key" {
-                        skip = true;
-                        continue;
-                    }
-                    v.push(a);
-                }
-                v
-            };
-            if files.is_empty() {
-                anyhow::bail!("name at least one file");
-            }
-            let key = arg_value(&args, "--vt-key").unwrap_or_else(|| {
-                store()
-                    .map(|s| s.load_settings().virustotal_key)
-                    .unwrap_or_default()
-            });
-            let mut bad = false;
-            for f in files {
-                let hash = expunge_core::reputation::sha256_file(std::path::Path::new(f))?;
-                match expunge_core::reputation::check(&hash, Some(&key)) {
-                    Ok(v) => {
-                        bad |= v.is_bad();
-                        println!(
-                            "{f}\n  sha256 {hash}\n  {v:?}\n  {}",
-                            expunge_core::reputation::virustotal_url(&hash)
-                        );
-                    }
-                    Err(e) => println!("{f}\n  sha256 {hash}\n  lookup failed: {e}"),
-                }
-            }
-            return Ok(if bad { 2 } else { 0 });
-        }
         "watch" => {
             #[cfg(windows)]
             platform::windows::background_priority();
@@ -1190,78 +927,6 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
             } else {
                 println!("{}", serde_json::to_string_pretty(&list)?);
             }
-        }
-        "lint" => {
-            let id = args
-                .get(1)
-                .ok_or_else(|| anyhow::anyhow!("missing log id"))?;
-            let log = store()?.load_log(id)?;
-            let findings = lint::lint(&log);
-            let (e, w, i) = lint::counts(&findings);
-            if has(&args, "--json") {
-                println!("{}", serde_json::to_string_pretty(&findings)?);
-            } else {
-                for f in &findings {
-                    println!(
-                        "{} {} {}",
-                        f.code,
-                        f.severity.label().to_uppercase(),
-                        f.title
-                    );
-                    for it in f.items.iter().take(20) {
-                        println!("    {it}");
-                    }
-                }
-                println!("{e} errors, {w} warnings, {i} notes");
-            }
-            let fail = e > 0 || (has(&args, "--strict") && w > 0);
-            return Ok(if fail { 2 } else { 0 });
-        }
-        "test-uninstall" => {
-            let id = args
-                .get(1)
-                .ok_or_else(|| anyhow::anyhow!("missing log id"))?;
-            let log = store()?.load_log(id)?;
-            if !has(&args, "--no-run") {
-                let key = reg.read_key(&log.uninstall_key).ok_or_else(|| {
-                    anyhow::anyhow!("no uninstall entry registered for this program (use --no-run to only check)")
-                })?;
-                let quiet = key.get_string("QuietUninstallString");
-                let cmd = if has(&args, "--quiet") && quiet.is_some() {
-                    quiet
-                } else {
-                    key.get_string("UninstallString")
-                }
-                .ok_or_else(|| anyhow::anyhow!("the uninstall entry has no UninstallString"))?;
-                eprintln!("Running {cmd}");
-                let child = platform::spawn_command_line(&platform::expand_env(&cmd))?;
-                let code = child.wait();
-                eprintln!("Uninstaller exited with code {code}; waiting for it to finish…");
-                let timeout: u64 = arg_value(&args, "--timeout")
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(600);
-                let start = std::time::Instant::now();
-                while reg.exists(&log.uninstall_key) && start.elapsed().as_secs() < timeout {
-                    std::thread::sleep(std::time::Duration::from_secs(1));
-                }
-            }
-            let left = residue(&log.changes, reg.as_ref());
-            if has(&args, "--json") {
-                let items: Vec<serde_json::Value> = left
-                    .items
-                    .iter()
-                    .map(|i| serde_json::json!({ "category": i.action.category(), "item": i.action.describe(), "action": i.action }))
-                    .collect();
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(
-                        &serde_json::json!({ "program": log.name, "clean": left.items.is_empty(), "left_behind": items })
-                    )?
-                );
-            } else {
-                print!("{}", residue_markdown(&log.name, &left));
-            }
-            return Ok(if left.items.is_empty() { 0 } else { 2 });
         }
         "programs" => {
             let with_trust = has(&args, "--trust");

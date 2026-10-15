@@ -713,45 +713,6 @@ pub fn installer_busy() -> bool {
     }
 }
 
-/// The window in front, if it belongs to another process: its program's
-/// full path and its title. Used by the "find a program by its window" tool.
-pub fn foreground_program() -> Option<(String, String)> {
-    use windows_sys::Win32::Foundation::CloseHandle;
-    use windows_sys::Win32::System::Threading::{
-        GetCurrentProcessId, OpenProcess, QueryFullProcessImageNameW,
-        PROCESS_QUERY_LIMITED_INFORMATION,
-    };
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
-        GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId,
-    };
-    unsafe {
-        let hwnd = GetForegroundWindow();
-        if hwnd.is_null() {
-            return None;
-        }
-        let mut pid = 0u32;
-        GetWindowThreadProcessId(hwnd, &mut pid);
-        if pid == 0 || pid == GetCurrentProcessId() {
-            return None;
-        }
-        let mut title = [0u16; 256];
-        let n = GetWindowTextW(hwnd, title.as_mut_ptr(), title.len() as i32);
-        let title = String::from_utf16_lossy(&title[..n.max(0) as usize]);
-        let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
-        if h.is_null() {
-            return None;
-        }
-        let mut buf = [0u16; 1024];
-        let mut len = buf.len() as u32;
-        let ok = QueryFullProcessImageNameW(h, 0, buf.as_mut_ptr(), &mut len);
-        CloseHandle(h);
-        if ok == 0 {
-            return None;
-        }
-        Some((String::from_utf16_lossy(&buf[..len as usize]), title))
-    }
-}
-
 /// Run this process at background priority (low CPU and disk priority).
 pub fn background_priority() {
     use windows_sys::Win32::System::Threading::{
@@ -834,4 +795,32 @@ pub fn lower_thread_priority() {
     unsafe {
         SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
     }
+}
+
+/// Delete one System Restore point (srclient.dll's SRRemoveRestorePoint).
+pub fn remove_restore_point(sequence: u32) -> Result<()> {
+    use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
+    let name = wide("srclient.dll");
+    unsafe {
+        let lib = LoadLibraryW(name.as_ptr());
+        if lib.is_null() {
+            return Err(anyhow!("System Restore is not available"));
+        }
+        let Some(f) = GetProcAddress(lib, b"SRRemoveRestorePoint\0".as_ptr()) else {
+            return Err(anyhow!("System Restore is not available"));
+        };
+        let remove: unsafe extern "system" fn(u32) -> u32 = std::mem::transmute(f);
+        match remove(sequence) {
+            0 => Ok(()),
+            code => Err(anyhow!("Windows could not delete the restore point (error {code})")),
+        }
+    }
+}
+
+/// Total size of a drive in bytes.
+pub fn drive_size(root: &str) -> Option<u64> {
+    use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
+    let w = wide(root);
+    let (mut a, mut t, mut f) = (0u64, 0u64, 0u64);
+    unsafe { (GetDiskFreeSpaceExW(w.as_ptr(), &mut a, &mut t, &mut f) != 0).then_some(t) }
 }
