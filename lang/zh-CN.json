@@ -785,7 +785,6 @@
   "Stops dmwappushservice, which routes device-management and telemetry messages.": "停止 dmwappushservice，该服务负责转发设备管理和遥测消息。",
   "Stops the Windows Search indexer (WSearch) to save disk and processor time. Searching files, Start and Outlook becomes slower.": "停止 Windows 搜索索引器（WSearch）以节省磁盘和处理器时间。搜索文件、“开始”和 Outlook 中的搜索会变慢。",
   "Store apps can no longer use the camera, microphone, location, contacts, calendar, call history, email or messages. Desktop programs aren't affected. Video-call Store apps stop working.": "应用商店应用不能再使用摄像头、麦克风、位置、联系人、日历、通话记录、电子邮件或消息。桌面程序不受影响。应用商店中的视频通话应用将无法使用。",
-  "Store apps only run while open. Their live tiles and notifications may stop updating.": "应用商店应用只在打开时运行。其动态磁贴和通知可能不再更新。",
   "Telemetry and data collection": "遥测和数据收集",
   "The selected apps are removed for your account. They can be reinstalled from the Microsoft Store.": "所选应用将从你的帐户中删除。它们可以从 Microsoft Store 重新安装。",
   "The taskbar, Start menu and windows become solid, which saves a little graphics work.": "任务栏、“开始”菜单和窗口变为不透明，可节省少量图形资源。",
@@ -824,5 +823,7 @@
   "Windows sends data about how you use your PC to Microsoft and shows ads and suggestions. These switches turn that off.": "Windows 会把你使用电脑的数据发送给 Microsoft，并显示广告和建议。这些开关可将其关闭。",
   "Minimal": "最小",
   "Standard": "标准",
-  "Keyboard: Ctrl+1–9 switch pages · Ctrl+F search · F5 refresh · Delete uninstalls the selected program · F1 help.": "键盘：Ctrl+1–9 切换页面 · Ctrl+F 搜索 · F5 刷新 · Delete 卸载所选程序 · F1 帮助。"
+  "Keyboard: Ctrl+1–9 switch pages · Ctrl+F search · F5 refresh · Delete uninstalls the selected program · F1 help.": "键盘：Ctrl+1–9 切换页面 · Ctrl+F 搜索 · F5 刷新 · Delete 卸载所选程序 · F1 帮助。",
+  "Expunge requires Windows 11. This PC runs an older Windows (build {build}).": "Expunge 需要 Windows 11。此电脑运行的是较旧的 Windows（版本 {build}）。",
+  "Store apps only run while open. Their notifications and widgets may stop updating.": "应用商店应用只在打开时运行。其通知和小组件可能不再更新。"
 }

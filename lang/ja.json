@@ -785,7 +785,6 @@
   "Stops dmwappushservice, which routes device-management and telemetry messages.": "デバイス管理とテレメトリのメッセージを中継する dmwappushservice を停止します。",
   "Stops the Windows Search indexer (WSearch) to save disk and processor time. Searching files, Start and Outlook becomes slower.": "Windows Search のインデクサー（WSearch）を停止し、ディスクとプロセッサの負荷を減らします。ファイル、スタート、Outlook の検索が遅くなります。",
   "Store apps can no longer use the camera, microphone, location, contacts, calendar, call history, email or messages. Desktop programs aren't affected. Video-call Store apps stop working.": "Store アプリがカメラ、マイク、位置情報、連絡先、カレンダー、通話履歴、メール、メッセージを使えなくなります。デスクトップアプリには影響しません。Store のビデオ通話アプリは使えなくなります。",
-  "Store apps only run while open. Their live tiles and notifications may stop updating.": "Store アプリは開いている間だけ動作します。ライブタイルや通知が更新されなくなる場合があります。",
   "Telemetry and data collection": "テレメトリとデータ収集",
   "The selected apps are removed for your account. They can be reinstalled from the Microsoft Store.": "選択したアプリをあなたのアカウントから削除します。Microsoft Store から再インストールできます。",
   "The taskbar, Start menu and windows become solid, which saves a little graphics work.": "タスクバー、スタートメニュー、ウィンドウが不透明になり、グラフィックの負荷が少し減ります。",
@@ -824,5 +823,7 @@
   "Windows sends data about how you use your PC to Microsoft and shows ads and suggestions. These switches turn that off.": "Windows は PC の使い方に関するデータを Microsoft に送信し、広告や提案を表示します。これらのスイッチでそれをオフにします。",
   "Minimal": "最小",
   "Standard": "標準",
-  "Keyboard: Ctrl+1–9 switch pages · Ctrl+F search · F5 refresh · Delete uninstalls the selected program · F1 help.": "キーボード：Ctrl+1～8 でページ切り替え · Ctrl+F で検索 · F5 で更新 · Delete で選択したプログラムをアンインストール · F1 でヘルプ。"
+  "Keyboard: Ctrl+1–9 switch pages · Ctrl+F search · F5 refresh · Delete uninstalls the selected program · F1 help.": "キーボード：Ctrl+1～8 でページ切り替え · Ctrl+F で検索 · F5 で更新 · Delete で選択したプログラムをアンインストール · F1 でヘルプ。",
+  "Expunge requires Windows 11. This PC runs an older Windows (build {build}).": "Expunge には Windows 11 が必要です。この PC では古い Windows（ビルド {build}）が動作しています。",
+  "Store apps only run while open. Their notifications and widgets may stop updating.": "Store アプリは開いている間だけ動作します。通知やウィジェットが更新されなくなる場合があります。"
 }

@@ -311,6 +311,30 @@ pub fn run_hidden(program: &str, args: &[&str]) -> Result<(i32, String)> {
     Ok((out.status.code().unwrap_or(-1), text.trim().to_string()))
 }
 
+/// First Windows 11 build. Expunge is built for Windows 11 only.
+pub const MIN_WINDOWS_BUILD: u32 = 22000;
+
+/// Windows build number (for example 26100), or 0 if unknown.
+pub fn windows_build(reg: &dyn Registry) -> u32 {
+    reg.read_key("HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion")
+        .and_then(|k| k.get_string("CurrentBuild"))
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0)
+}
+
+/// The build number when this PC runs a Windows older than Windows 11.
+/// (Non-Windows builds exist only as a developer test harness.)
+pub fn unsupported_windows() -> Option<u32> {
+    #[cfg(windows)]
+    {
+        let build = windows_build(&*system_registry());
+        if build > 0 && build < MIN_WINDOWS_BUILD {
+            return Some(build);
+        }
+    }
+    None
+}
+
 pub fn computer_name() -> String {
     std::env::var("COMPUTERNAME")
         .or_else(|_| std::env::var("HOSTNAME"))

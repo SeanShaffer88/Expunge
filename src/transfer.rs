@@ -363,13 +363,6 @@ pub fn collect(
     c
 }
 
-fn windows_build(reg: &dyn Registry) -> u32 {
-    reg.read_key("HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion")
-        .and_then(|k| k.get_string("CurrentBuild"))
-        .and_then(|s| s.trim().parse().ok())
-        .unwrap_or(0)
-}
-
 /// Write the package.
 pub fn export(
     c: &Collected,
@@ -393,7 +386,7 @@ pub fn export_with(
         created: crate::util::now_string(),
         computer: platform::computer_name(),
         user: platform::user_name(),
-        windows_build: windows_build(reg),
+        windows_build: crate::platform::windows_build(reg),
         arch: std::env::consts::ARCH.into(),
         vars: vars.clone(),
         programs: c.programs.clone(),
@@ -505,7 +498,7 @@ pub fn check(m: &Manifest, reg: &dyn Registry, vars: &Vars) -> Check {
             m.arch
         ));
     }
-    let build = windows_build(reg);
+    let build = crate::platform::windows_build(reg);
     if m.windows_build > 0 && build > 0 && build < m.windows_build {
         c.warnings.push(format!(
             "This PC runs an older Windows build ({build}) than the source ({}).",

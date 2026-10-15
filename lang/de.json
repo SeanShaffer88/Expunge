@@ -790,7 +790,6 @@
   "Stops dmwappushservice, which routes device-management and telemetry messages.": "Stoppt dmwappushservice, der Geräteverwaltungs- und Telemetrienachrichten weiterleitet.",
   "Stops the Windows Search indexer (WSearch) to save disk and processor time. Searching files, Start and Outlook becomes slower.": "Stoppt den Windows-Suchindexer (WSearch), um Datenträger- und Prozessorzeit zu sparen. Die Suche nach Dateien, in Start und Outlook wird langsamer.",
   "Store apps can no longer use the camera, microphone, location, contacts, calendar, call history, email or messages. Desktop programs aren't affected. Video-call Store apps stop working.": "Store-Apps können Kamera, Mikrofon, Standort, Kontakte, Kalender, Anrufliste, E-Mail und Nachrichten nicht mehr nutzen. Desktop-Programme sind nicht betroffen. Videoanruf-Apps aus dem Store funktionieren nicht mehr.",
-  "Store apps only run while open. Their live tiles and notifications may stop updating.": "Store-Apps laufen nur noch, solange sie geöffnet sind. Ihre Live-Kacheln und Benachrichtigungen werden eventuell nicht mehr aktualisiert.",
   "Telemetry and data collection": "Telemetrie und Datensammlung",
   "The selected apps are removed for your account. They can be reinstalled from the Microsoft Store.": "Die ausgewählten Apps werden für Ihr Konto entfernt. Sie lassen sich aus dem Microsoft Store neu installieren.",
   "The taskbar, Start menu and windows become solid, which saves a little graphics work.": "Taskleiste, Startmenü und Fenster werden undurchsichtig, was etwas Grafikleistung spart.",
@@ -829,5 +828,7 @@
   "Windows sends data about how you use your PC to Microsoft and shows ads and suggestions. These switches turn that off.": "Windows sendet Daten über Ihre PC-Nutzung an Microsoft und zeigt Werbung und Vorschläge. Diese Schalter stellen das ab.",
   "Minimal": "Minimal",
   "Standard": "Standard",
-  "Keyboard: Ctrl+1–9 switch pages · Ctrl+F search · F5 refresh · Delete uninstalls the selected program · F1 help.": "Tastatur: Strg+1–9 Seiten wechseln · Strg+F Suchen · F5 Aktualisieren · Entf deinstalliert das ausgewählte Programm · F1 Hilfe."
+  "Keyboard: Ctrl+1–9 switch pages · Ctrl+F search · F5 refresh · Delete uninstalls the selected program · F1 help.": "Tastatur: Strg+1–9 Seiten wechseln · Strg+F Suchen · F5 Aktualisieren · Entf deinstalliert das ausgewählte Programm · F1 Hilfe.",
+  "Expunge requires Windows 11. This PC runs an older Windows (build {build}).": "Expunge erfordert Windows 11. Auf diesem PC läuft ein älteres Windows (Build {build}).",
+  "Store apps only run while open. Their notifications and widgets may stop updating.": "Store-Apps laufen nur noch, solange sie geöffnet sind. Ihre Benachrichtigungen und Widgets werden eventuell nicht mehr aktualisiert."
 }

@@ -785,7 +785,6 @@
   "Stops dmwappushservice, which routes device-management and telemetry messages.": "Останавливает dmwappushservice, который передаёт сообщения управления устройствами и телеметрии.",
   "Stops the Windows Search indexer (WSearch) to save disk and processor time. Searching files, Start and Outlook becomes slower.": "Останавливает индексатор поиска Windows (WSearch), экономя диск и процессор. Поиск файлов, в «Пуске» и в Outlook станет медленнее.",
   "Store apps can no longer use the camera, microphone, location, contacts, calendar, call history, email or messages. Desktop programs aren't affected. Video-call Store apps stop working.": "Приложения Store больше не могут использовать камеру, микрофон, местоположение, контакты, календарь, журнал звонков, почту и сообщения. Классические программы не затрагиваются. Приложения видеозвонков из Store перестанут работать.",
-  "Store apps only run while open. Their live tiles and notifications may stop updating.": "Приложения Store работают только пока открыты. Живые плитки и уведомления могут перестать обновляться.",
   "Telemetry and data collection": "Телеметрия и сбор данных",
   "The selected apps are removed for your account. They can be reinstalled from the Microsoft Store.": "Выбранные приложения удаляются для вашей учётной записи. Их можно переустановить из Microsoft Store.",
   "The taskbar, Start menu and windows become solid, which saves a little graphics work.": "Панель задач, меню «Пуск» и окна становятся непрозрачными, что немного экономит графические ресурсы.",
@@ -824,5 +823,7 @@
   "Windows sends data about how you use your PC to Microsoft and shows ads and suggestions. These switches turn that off.": "Windows отправляет в Microsoft данные об использовании ПК и показывает рекламу и советы. Эти переключатели это отключают.",
   "Minimal": "Минимальный",
   "Standard": "Стандартный",
-  "Keyboard: Ctrl+1–9 switch pages · Ctrl+F search · F5 refresh · Delete uninstalls the selected program · F1 help.": "Клавиатура: Ctrl+1–9 — переключение страниц · Ctrl+F — поиск · F5 — обновить · Delete — удалить выбранную программу · F1 — справка."
+  "Keyboard: Ctrl+1–9 switch pages · Ctrl+F search · F5 refresh · Delete uninstalls the selected program · F1 help.": "Клавиатура: Ctrl+1–9 — переключение страниц · Ctrl+F — поиск · F5 — обновить · Delete — удалить выбранную программу · F1 — справка.",
+  "Expunge requires Windows 11. This PC runs an older Windows (build {build}).": "Для Expunge требуется Windows 11. На этом ПК установлена более старая Windows (сборка {build}).",
+  "Store apps only run while open. Their notifications and widgets may stop updating.": "Приложения Store работают только пока открыты. Уведомления и виджеты могут перестать обновляться."
 }

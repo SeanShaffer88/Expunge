@@ -42,6 +42,7 @@ VIAddVersionKey /LANG=1033 "ProductVersion" "${VERSION}"
 !include "x64.nsh"
 !include "LogicLib.nsh"
 !include "FileFunc.nsh"
+!include "WinVer.nsh"
 
 !macro AddShellVerb EXT
   WriteRegStr HKLM "Software\Classes\SystemFileAssociations\${EXT}\shell\ExpungeInstall" "MUIVerb" "Install with Expunge"
@@ -78,8 +79,10 @@ VIAddVersionKey /LANG=1033 "ProductVersion" "${VERSION}"
 !insertmacro MUI_RESERVEFILE_LANGDLL
 
 Function .onInit
+  ; Expunge is built for Windows 11 only (build 22000 or later, 64-bit).
   ${IfNot} ${RunningX64}
-    MessageBox MB_ICONSTOP "Expunge requires 64-bit Windows 10 or 11."
+  ${OrIfNot} ${AtLeastBuild} 22000
+    MessageBox MB_ICONSTOP "Expunge requires 64-bit Windows 11."
     Abort
   ${EndIf}
   SetRegView 64

@@ -66,6 +66,7 @@ jobs:
           | Expunge.exe size | $exeMb MB | |
           "@ | Out-File -Append $env:GITHUB_STEP_SUMMARY
           Write-Host "snapshot ${secs}s, peak ${mb}MB, signatures ${trustSecs}s, exe ${exeMb}MB"
+          Write-Host "::notice title=Performance::snapshot $secs s, peak $mb MB, file $snapMb MB, signatures $trustSecs s, exe $exeMb MB"
           if ($secs -gt 600 -or $mb -gt 1500 -or $trustSecs -gt 120) { throw "Performance budget exceeded" }
       - uses: actions/upload-artifact@v4
         with:

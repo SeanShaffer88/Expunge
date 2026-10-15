@@ -232,7 +232,7 @@ pub static TWEAKS: &[Tweak] = &[
         id: "background_apps",
         category: "Privacy and app permissions",
         title: "Stop Store apps running in the background",
-        description: "Store apps only run while open. Their live tiles and notifications may stop updating.",
+        description: "Store apps only run while open. Their notifications and widgets may stop updating.",
         tier: Tier::Standard,
         ops: &[reg(APP_PRIVACY, "LetAppsRunInBackground", D(2), None)],
     },

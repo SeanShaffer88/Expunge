@@ -17,6 +17,25 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     // "Install with Expunge" from Explorer opens the window, not the CLI.
     let install_target = expunge_core::shell::monitor_target(&args);
+    // Expunge is engineered for Windows 11 only: its tweaks, cleanup and
+    // removal rules assume Windows 11 locations and behaviour.
+    if let Some(build) = expunge_core::platform::unsupported_windows() {
+        expunge_core::i18n::set_language("");
+        let msg = expunge_core::i18n::tf(
+            "Expunge requires Windows 11. This PC runs an older Windows (build {build}).",
+            &[("build", build.to_string())],
+        );
+        #[cfg(windows)]
+        {
+            if args.is_empty() || install_target.is_some() {
+                let _ = expunge_core::platform::windows::message_box("Expunge", &msg);
+            } else {
+                expunge_core::platform::windows::attach_parent_console();
+            }
+        }
+        eprintln!("{msg}");
+        std::process::exit(1);
+    }
     if !args.is_empty() && install_target.is_none() {
         #[cfg(windows)]
         expunge_core::platform::windows::attach_parent_console();

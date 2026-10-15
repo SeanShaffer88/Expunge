@@ -33,6 +33,7 @@ All notable changes to Expunge are documented here. The format follows
 - CLI: `expunge verify <file>` and `expunge programs --trust`.
 
 ### Changed
+- **Windows 11 only.** Expunge is engineered for Windows 11 (build 22000 or later): on older Windows the app and the installer explain this and stop, instead of running with rules meant for Windows 11.
 - Darker red accent (#6B0700) across the interface and window border; red text uses a lighter shade of it for readability.
 - "Administrator" is capitalized throughout.
 - New icon in #6B0700: dark card with a red E at large sizes, and an inverted red card with a black E at taskbar sizes (16–48 px), for the window and sidebar.

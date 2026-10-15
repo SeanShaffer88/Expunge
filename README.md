@@ -101,7 +101,7 @@ Get the latest version from the [Releases page](https://github.com/SeanShaffer88
 | `Expunge-Setup-x.y.z.exe` | Installer: Program Files, Start menu, Apps & features entry |
 | `Expunge-x.y.z-portable.zip` | Portable: unzip anywhere; data stays next to the exe |
 
-Requirements: Windows 11 (or Windows 10), 64-bit. Run as Administrator for full functionality — Expunge offers to relaunch itself elevated.
+Requirements: Windows 11 (build 22000 or later), 64-bit. Expunge is built for Windows 11 only and will not start on older Windows. Run as Administrator for full functionality — Expunge offers to relaunch itself elevated.
 
 ## How to use it
 
