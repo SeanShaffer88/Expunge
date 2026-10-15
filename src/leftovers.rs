@@ -799,9 +799,11 @@ mod tests {
         assert!(!has("Shared"));
         assert!(!has("Unrelated"));
         // Install location found once even though it also matches by name.
+        // (Match the full folder path: the random temp name may contain "pf".)
+        let pf_s = pf.to_string_lossy().to_string();
         assert_eq!(
             d.iter()
-                .filter(|x| x.contains("Foo Editor") && x.contains("pf") && !x.contains("Pro"))
+                .filter(|x| x.contains("Foo Editor") && x.contains(&pf_s) && !x.contains("Pro"))
                 .count(),
             1,
             "{d:#?}"
