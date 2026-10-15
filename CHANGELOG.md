@@ -7,6 +7,13 @@ All notable changes to Expunge are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Crash-safe removals**: every change is recorded in its backup, flushed to disk and written atomically, before it is made. A removal cut off by a crash or power loss is reported on the dashboard and the Backups page the next time Expunge starts, with *Undo what was done* or *Keep as it is*; `expunge backups` marks it as interrupted.
+- **Stronger protection of critical locations**: paths are compared the way Windows resolves them (`..`, trailing dots and spaces, `\\?\` prefixes, forward slashes), and where a folder really leads (junctions, symbolic links, short names) is checked before it is deleted with its contents; links are removed on their own, never their targets. More folders (everything directly inside Windows, System32 and SysWOW64, every user profile, Windows' folders at the top of the drive) and keys (SAM, SECURITY, HARDWARE, BCD, numbered control sets, Winlogon, IFEO, Policies, per-user class hives) are protected, and the registry layer itself refuses to delete them.
+- **Stress tests**: very deep and wide registry trees, thousands of files, paths over 260 characters, links inside removed folders and files held open by another program.
+- A note about Windows SmartScreen and checksums in the download instructions.
+
+### Fixed
+- Waiting for an installer or for registry changes could loop forever if Windows reported the wait itself failed; such failures are now reported. Kernel handles are always closed, the running-process list is no longer cut off at 4,096 processes, and the System Restore library is released after use.
 - **Map of where an installation put things** (Install logs, Monitor and Snapshots: *Map*): changes are grouped by what they mean (starts with Windows, services and drivers, scheduled tasks, Explorer and file types, Windows folders, program folders, AppData, ProgramData, shortcuts, your folders, temporary files, registry) with a proportional overview bar, area filters, search, and folders and keys that expand like a tree. *List* keeps the classic table.
 - **Confidence colours on leftovers**: every item in a removal review is green (safe), yellow (review) or red (careful), with the reasons on hover; *Select only green* ticks just the certain ones.
 - **Pre-install check** (Monitor page): before an installer runs, Expunge checks it for bundled adware (OpenCandy, InstallCore and others), offer screens, coin miners, web installers that download more while they run, missing or broken signatures and download-site wrappers.

@@ -270,6 +270,8 @@ Download the latest version from the [Releases page](https://github.com/SeanShaf
 
 **System requirements:** 64-bit Windows 11 (build 22000 or later), on x64 or Arm64. Expunge is designed exclusively for Windows 11 and will not start on earlier versions of Windows. Administrator rights are required for full functionality; Expunge offers to relaunch itself with elevated rights. The Portable App Builder's sandbox needs the *Windows Sandbox* feature, which is part of Windows 11 Pro, Enterprise, and Education.
 
+**"Windows protected your PC":** Expunge's downloads are not yet code-signed, and new programs have no download history with Microsoft, so Windows SmartScreen may show this warning the first time you run it. Click **More info**, check that the file name is right, then **Run anyway**. To be sure the file is the one GitHub Actions built from the public source, compare its SHA-256 checksum with the one published next to the download (in PowerShell: `Get-FileHash .\Expunge-Setup-x.y.z.exe`). Some antivirus programs are wary of any tool that watches system files and stops programs; if yours flags Expunge, please [open an issue](https://github.com/SeanShaffer88/Expunge/issues) so it can be reported as a false positive.
+
 ## Getting started
 
 1. Select **Monitor → Choose installer…** and pick a setup file. Wait for the "before" snapshot to finish.
@@ -355,7 +357,9 @@ A lot of work has gone into making Expunge careful, thorough, and fast. Here is 
 - The Portable App Builder can install programs inside Windows Sandbox, so nothing on your PC changes at all.
 
 **Built-in protection**
-- Critical Windows folders and registry keys are hard-coded as protected and can never be deleted, whatever an install log or scan says.
+- Critical Windows folders and registry keys are hard-coded as protected and can never be deleted, whatever an install log or scan says. Paths are compared the way Windows resolves them, so tricks such as `..`, trailing dots, `\\?\` prefixes, short names and junctions can't get around the protection, and the registry layer itself refuses to delete protected keys whoever asks. Tests try every critical location in many spellings.
+- A link (junction or symbolic link) inside a folder being removed is removed on its own; what it points to is never touched.
+- Removals are crash-safe: each change is recorded in its backup, flushed to disk, before it is made. If a removal is cut off by a crash or power cut, Expunge says so the next time it starts and offers to undo what was done.
 - Registry entries that belong to Windows itself (its security components, app packages, and Task Scheduler bookkeeping) are recognized and left alone, even if Windows changed them while an installation was being monitored.
 - Simple mode hides every option that could harm Windows or slow the PC, and keeps backups and confirmations switched on.
 - Startup entries that Windows, security software, or hardware need can't be switched off in Simple mode.
@@ -367,7 +371,7 @@ A lot of work has gone into making Expunge careful, thorough, and fast. Here is 
 - It is open source under the GPLv3, so anyone can read exactly what it does.
 
 **Tested at every step**
-- Around 85 automated tests run on every change, on both Windows and Linux, together with static code analysis (Clippy).
+- Over 120 automated tests run on every change, including stress tests with very deep registry trees, thousands of files, paths over 260 characters and files held open by other programs, on both Windows and Linux, together with static code analysis (Clippy).
 - Integration tests install real installers (Windows Installer, NSIS, and Inno Setup) on clean Windows machines, remove them with Expunge, and verify that nothing is left behind; the same installers are also turned into PortableApps.com packages and checked. These tests have already found and fixed real problems before release.
 - Performance is measured automatically: snapshot speed and memory, time to open the window, and CPU and memory use while idle, each against a fixed budget; a check fails if any budget is exceeded.
 - The Arm64 version is built and checked on every change, and translations are checked automatically for missing placeholders.
