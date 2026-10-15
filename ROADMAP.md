@@ -22,8 +22,6 @@ Everything planned as *Next* has been built; the items below are the next candid
 - **"Hunter" mode** — drag a crosshair onto a window, tray icon or shortcut to identify and remove its program.
 
 **Startup**
-- **Startup impact** — how much each startup item delays boot, measured from Windows' own boot-performance diagnostics.
-- **Delayed start** — launch non-essential startup programs a set time after sign-in to shorten boot.
 - **Reputation check** (opt-in, off by default) — look up unknown startup items and installers by file hash in public malware databases. Only hashes are sent, never files.
 
 **Disk**

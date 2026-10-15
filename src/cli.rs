@@ -844,9 +844,18 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                             .collect();
                         println!("{}", serde_json::to_string_pretty(&items)?);
                     } else {
+                        let boot = expunge_core::boot::read();
+                        if let Some(ms) = boot.as_ref().and_then(|b| b.last_boot_ms) {
+                            println!("Last startup took {:.0} s.", ms as f64 / 1000.0);
+                        }
                         for e in &entries {
+                            let impact = boot
+                                .as_ref()
+                                .and_then(|b| b.impact_of(&e.command))
+                                .map(|i| format!("  [impact: {}, {} ms]", i.level().label(), i.avg_ms))
+                                .unwrap_or_default();
                             println!(
-                                "[{}] {}{}  {}",
+                                "[{}] {}{}{impact}  {}",
                                 if e.enabled { "on " } else { "off" },
                                 e.name,
                                 if e.missing { " (missing)" } else { "" },

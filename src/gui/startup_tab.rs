@@ -38,6 +38,10 @@ pub struct StartupState {
     pub other_job: Option<Job<Vec<(expunge_core::autoruns::AutoEntry, bool)>>>,
     pub other_checked: std::collections::BTreeSet<usize>,
     pub show_windows_other: bool,
+    /// Boot diagnostics (None inside = not readable) and delayed programs.
+    pub boot: Option<Option<expunge_core::boot::BootInfo>>,
+    pub delayed: Vec<String>,
+    pub boot_job: Option<Job<(Option<expunge_core::boot::BootInfo>, Vec<String>)>>,
 }
 
 impl App {
@@ -51,6 +55,9 @@ impl App {
                 startup::list_tasks(),
             )
         }));
+        self.startup.boot_job = Some(Job::spawn(ctx, |_| {
+            (expunge_core::boot::read(), expunge_core::boot::delayed())
+        }));
     }
 
     pub fn poll_startup(&mut self) {
@@ -59,6 +66,11 @@ impl App {
             self.startup.entries = e;
             self.startup.services = s;
             self.startup.tasks = tk;
+        }
+        if let Some((b, d)) = self.startup.boot_job.as_ref().and_then(|j| j.poll()) {
+            self.startup.boot_job = None;
+            self.startup.boot = Some(b);
+            self.startup.delayed = d;
         }
     }
 
@@ -326,9 +338,26 @@ impl App {
                     || e.command.to_lowercase().contains(&f)
             })
             .collect();
+        match &self.startup.boot {
+            Some(Some(b)) if b.last_boot_ms.is_some() => {
+                let secs = |ms: u64| format!("{:.0}", ms as f64 / 1000.0);
+                small_muted(ui, tf(
+                    "The last Windows startup took {last} s (average {avg} s). Impact shows how much each program slowed it down, measured by Windows.",
+                    &[("last", secs(b.last_boot_ms.unwrap_or(0))), ("avg", secs(b.avg_boot_ms.unwrap_or(0)))],
+                ));
+            }
+            Some(_) if !self.elevated => {
+                small_muted(ui, t("Run as Administrator to see how much each program slows down startup."));
+            }
+            _ => {}
+        }
+        ui.add_space(4.0);
         let advanced = self.settings.advanced_mode;
         let mut toggle: Option<(usize, bool)> = None;
         let mut delete: Option<usize> = None;
+        let mut delay_op: Option<(usize, bool)> = None;
+        let boot = self.startup.boot.clone().flatten();
+        let delayed = self.startup.delayed.clone();
         TableBuilder::new(ui)
             .striped(true)
             .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
@@ -340,10 +369,11 @@ impl App {
                     .resizable(true),
             )
             .column(Column::remainder().at_least(200.0).clip(true))
+            .column(Column::initial(80.0))
             .column(Column::initial(110.0))
-            .column(Column::exact(80.0))
+            .column(Column::exact(170.0))
             .header(24.0, |mut h| {
-                for l in ["Enabled", "Name", "Command", "Scope", ""] {
+                for l in ["Enabled", "Name", "Command", "Impact", "Scope", ""] {
                     h.col(|ui| {
                         ui.strong(t(l));
                     });
@@ -373,6 +403,9 @@ impl App {
                                 .on_hover_text(t("The program this entry starts no longer exists"));
                         }
                         ui.add(egui::Label::new(&e.name).truncate());
+                        if delayed.iter().any(|d| d == &e.name) {
+                            theme::badge(ui, t("Delayed"), theme::OK);
+                        }
                     });
                     row.col(|ui| {
                         ui.add(
@@ -383,6 +416,24 @@ impl App {
                         )
                         .on_hover_text(&e.location);
                     });
+                    row.col(|ui| match boot.as_ref().and_then(|b| b.impact_of(&e.command)) {
+                        Some(imp) => {
+                            let color = match imp.level() {
+                                expunge_core::boot::Level::High => theme::BAD,
+                                expunge_core::boot::Level::Medium => theme::WARN,
+                                expunge_core::boot::Level::Low => theme::MUTED,
+                            };
+                            ui.label(RichText::new(t(imp.level().label())).color(color))
+                                .on_hover_text(tf(
+                                    "Slowed startup by {ms} ms on average ({n} recorded startups).",
+                                    &[("ms", imp.avg_ms.to_string()), ("n", imp.boots.to_string())],
+                                ));
+                        }
+                        None => {
+                            ui.label(RichText::new("—").color(theme::MUTED))
+                                .on_hover_text(t("Windows hasn't recorded this program slowing down startup."));
+                        }
+                    });
                     row.col(|ui| {
                         ui.label(if e.all_users {
                             t("All users")
@@ -391,6 +442,19 @@ impl App {
                         });
                     });
                     row.col(|ui| {
+                        let is_delayed = delayed.iter().any(|d| d == &e.name);
+                        if is_delayed {
+                            if ui.small_button(t("Start normally")).clicked() {
+                                delay_op = Some((i, false));
+                            }
+                        } else if e.enabled && !e.all_users && e.approved.is_some() && !locked && !e.missing
+                            && ui
+                                .small_button(t("Delay"))
+                                .on_hover_text(t("Start this program 2 minutes after you sign in, so Windows is ready sooner."))
+                                .clicked()
+                        {
+                            delay_op = Some((i, true));
+                        }
                         // Simple mode only deletes broken entries; others can be disabled instead.
                         if (advanced || (e.missing && !locked)) && ui.small_button(t("Delete")).clicked() {
                             delete = Some(i);
@@ -406,6 +470,16 @@ impl App {
                 tf("Disable {name}", &[("name", e.name.clone())])
             };
             self.with_backup(&title, |reg, b| startup::set_enabled(reg, &e, on, b));
+        }
+        if let Some((i, on)) = delay_op {
+            let e = self.startup.entries[i].clone();
+            if on {
+                let title = tf("Delay {name}", &[("name", e.name.clone())]);
+                self.with_backup(&title, |reg, b| expunge_core::boot::delay(reg, &e, 120, b));
+            } else {
+                let title = tf("Start {name} normally", &[("name", e.name.clone())]);
+                self.with_backup(&title, |reg, _| expunge_core::boot::undelay(reg, &e));
+            }
         }
         if let Some(i) = delete {
             let name = self.startup.entries[i].name.clone();

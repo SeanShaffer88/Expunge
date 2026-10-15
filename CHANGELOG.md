@@ -7,6 +7,8 @@ All notable changes to Expunge are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Startup impact**: the Startup page shows how long the last Windows startup took and how much each startup program slowed it down (High, Medium or Low), measured by Windows' own boot diagnostics (needs Administrator rights). Also in `expunge startup`.
+- **Delayed start**: *Delay* starts a startup program 2 minutes after you sign in instead of immediately, so Windows is ready sooner. It uses a Task Scheduler task and switches the original entry off without deleting it; *Start normally* undoes it exactly.
 - **Browser privacy cleaning** in the Junk cleaner, each item off until you tick it: cookies, browsing history, website data (local storage, databases, offline data) and saved sessions for Chrome, Edge, Brave, Vivaldi, Opera and Firefox, LibreWolf, Waterfox and Floorp, in every profile. Firefox history is kept because it shares a file with bookmarks (its form history is removed). Plus the Windows font cache (Advanced mode).
 - **Scheduled junk cleaning** (Cleaner page > *Clean automatically*; CLI `expunge schedule-clean daily|weekly|monthly|off`): cleans the ticked kinds of junk every day, week or month through Windows Task Scheduler, even when Expunge is closed. What each run freed is recorded in `cleaning.log` in the data folder.
 - **Complete command line** for unattended maintenance: `expunge uninstall <name>... [--silent]` uninstalls programs one after another and removes their safe leftovers (backed up); `expunge clean [--categories] [--list] [--dry-run]` cleans junk; `expunge startup [enable|disable <name>]` lists and toggles startup programs (essential entries are protected).

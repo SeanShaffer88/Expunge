@@ -14,6 +14,7 @@ pub mod cache;
 pub mod cleaner;
 pub mod diskmap;
 pub mod duplicates;
+pub mod boot;
 pub mod schedule;
 pub mod features;
 pub mod i18n;
