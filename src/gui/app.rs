@@ -69,6 +69,10 @@ pub struct App {
     pub about_open: bool,
     pub style_frames: u32,
     pub frame: u64,
+    /// The page shown last frame and when the current one appeared, for
+    /// the short fade between pages.
+    pub shown_tab: Option<Tab>,
+    pub tab_since: f64,
     pub confirm: Option<ConfirmDialog>,
     pub languages: Vec<(String, String)>,
     pub programs: programs::ProgramsState,
@@ -160,6 +164,8 @@ impl App {
             builder: Default::default(),
             shell: Default::default(),
             debloat: Default::default(),
+            shown_tab: None,
+            tab_since: 0.0,
             alt: Default::default(),
             ask_ui: Default::default(),
             live: None,
@@ -1182,6 +1188,46 @@ impl App {
         self.precheck_installer(ctx, path);
     }
 
+    /// A quick fade-in when the page changes (120 ms; skipped when the
+    /// person has asked Windows for fewer animations).
+    fn page_transition(&mut self, ctx: &egui::Context) {
+        let now = ctx.input(|i| i.time);
+        if self.shown_tab != Some(self.tab) {
+            let first = self.shown_tab.is_none();
+            self.shown_tab = Some(self.tab);
+            self.tab_since = if first || !theme::animations_enabled() {
+                -1.0
+            } else {
+                now
+            };
+        }
+        let t = ((now - self.tab_since) / 0.12) as f32;
+        if (0.0..1.0).contains(&t) {
+            let screen = ctx.content_rect();
+            let area = egui::Rect::from_min_max(
+                egui::pos2(screen.left() + 214.0, screen.top() + 24.0),
+                egui::pos2(screen.right(), screen.bottom() - 26.0),
+            );
+            let eased = 1.0 - (1.0 - t) * (1.0 - t);
+            let alpha = ((1.0 - eased) * 200.0) as u8;
+            ctx.layer_painter(egui::LayerId::new(
+                egui::Order::Middle,
+                egui::Id::new("page_fade"),
+            ))
+            .rect_filled(
+                area,
+                0.0,
+                egui::Color32::from_rgba_unmultiplied(
+                    theme::BG.r(),
+                    theme::BG.g(),
+                    theme::BG.b(),
+                    alpha,
+                ),
+            );
+            ctx.request_repaint();
+        }
+    }
+
     /// Keyboard shortcuts.
     fn shortcuts(&mut self, ctx: &egui::Context) {
         use egui::{Key, Modifiers};
@@ -1365,6 +1411,7 @@ impl eframe::App for App {
             Tab::Debloat => self.ui_debloat(ctx),
             Tab::Settings => self.ui_settings(ctx),
         }
+        self.page_transition(ctx);
         self.ui_wizard(ctx);
         self.ui_removal(ctx);
         self.ui_transfer(ctx);

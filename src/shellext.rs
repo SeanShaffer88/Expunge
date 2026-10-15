@@ -186,7 +186,9 @@ pub fn scan_with(reg: &dyn Registry, exists: &dyn Fn(&str) -> bool) -> Vec<MenuE
 }
 
 pub fn scan(reg: &dyn Registry) -> Vec<MenuEntry> {
-    scan_with(reg, &|p| std::path::Path::new(p).exists())
+    // Demo builds (screenshots on Linux) pretend the demo programs' files exist.
+    let demo = !cfg!(windows) && std::env::var_os("EXPUNGE_DEMO").is_some();
+    scan_with(reg, &|p| demo || std::path::Path::new(p).exists())
 }
 
 /// Turn an entry on or off, reversibly: handlers through Windows' list of

@@ -47,7 +47,20 @@ pub fn apply(ctx: &egui::Context, high_contrast: bool) {
     v.warn_fg_color = WARN;
     v.error_fg_color = BAD;
 
-    let r = CornerRadius::same(3);
+    // Soft shadows under windows and menus, and rounder controls.
+    v.window_shadow = egui::epaint::Shadow {
+        offset: [0, 10],
+        blur: 28,
+        spread: 0,
+        color: Color32::from_black_alpha(140),
+    };
+    v.popup_shadow = egui::epaint::Shadow {
+        offset: [0, 6],
+        blur: 18,
+        spread: 0,
+        color: Color32::from_black_alpha(120),
+    };
+    let r = CornerRadius::same(6);
     v.widgets.noninteractive.bg_fill = PANEL;
     v.widgets.noninteractive.weak_bg_fill = PANEL;
     v.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, LINE);
@@ -57,7 +70,7 @@ pub fn apply(ctx: &egui::Context, high_contrast: bool) {
     v.widgets.inactive.corner_radius = r;
     v.widgets.hovered.bg_fill = HOVER;
     v.widgets.hovered.weak_bg_fill = HOVER;
-    v.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, ACCENT_TEXT);
+    v.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, ACCENT_TEXT.gamma_multiply(0.7));
     v.widgets.hovered.corner_radius = r;
     v.widgets.active.bg_fill = ACCENT_DIM;
     v.widgets.active.weak_bg_fill = ACCENT_DIM;
@@ -80,8 +93,11 @@ pub fn apply(ctx: &egui::Context, high_contrast: bool) {
 
     ctx.style_mut_of(egui::Theme::Dark, |s| {
         s.spacing.item_spacing = egui::vec2(8.0, 6.0);
-        s.spacing.button_padding = egui::vec2(10.0, 4.0);
-        s.spacing.interact_size.y = 24.0;
+        s.spacing.interact_size.y = 26.0;
+        s.spacing.button_padding = egui::vec2(12.0, 5.0);
+        // Short, smooth transitions (collapsing sections, hover fades).
+        s.animation_time = if animations_enabled() { 0.12 } else { 0.0 };
+        s.scroll_animation = egui::style::ScrollAnimation::duration(0.15);
         s.text_styles
             .insert(egui::TextStyle::Body, egui::FontId::proportional(14.0));
         s.text_styles
@@ -175,6 +191,13 @@ pub fn page_title(ui: &mut egui::Ui, title: &str, subtitle: &str) {
 }
 
 /// One entry in the left navigation column.
+/// Windows' "Animation effects" setting (Settings > Accessibility > Visual
+/// effects); animations are skipped when it is off.
+pub fn animations_enabled() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(expunge_core::platform::animations_enabled)
+}
+
 pub fn nav_item(
     ui: &mut egui::Ui,
     icon: &str,
@@ -187,10 +210,28 @@ pub fn nav_item(
     super::a11y::selectable(&resp, label, selected);
     let painter = ui.painter_at(rect);
     let pill = rect.shrink2(egui::vec2(2.0, 2.0));
-    if selected {
-        painter.rect_filled(pill, CornerRadius::same(18), NAV_SELECTED);
-    } else if resp.hovered() {
-        painter.rect_filled(pill, CornerRadius::same(18), Color32::from_rgb(40, 34, 37));
+    // Hover and selection fade in and out instead of switching abruptly.
+    let hover =
+        ui.ctx()
+            .animate_bool_with_time(resp.id.with("hover"), resp.hovered() && !selected, 0.10);
+    let sel = ui
+        .ctx()
+        .animate_bool_with_time(resp.id.with("sel"), selected, 0.14);
+    if hover > 0.0 {
+        painter.rect_filled(
+            pill,
+            CornerRadius::same(18),
+            Color32::from_rgb(44, 37, 40).gamma_multiply(hover),
+        );
+    }
+    if sel > 0.0 {
+        let w = pill.width() * (0.85 + 0.15 * sel);
+        let grown = egui::Rect::from_min_size(pill.min, egui::vec2(w, pill.height()));
+        painter.rect_filled(
+            grown,
+            CornerRadius::same(18),
+            NAV_SELECTED.gamma_multiply(sel),
+        );
     }
     let icon_color = if selected { Color32::WHITE } else { TEXT };
     painter.text(

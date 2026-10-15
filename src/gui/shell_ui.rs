@@ -147,7 +147,10 @@ impl App {
                         self.shell.view = v;
                     }
                 }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            });
+            ui.add_space(4.0);
+            ui.horizontal_wrapped(|ui| {
+                {
                     if ui.add_enabled(self.shell.job.is_none(), egui::Button::new(format!("⟳ {}", t("Refresh")))).clicked() {
                         self.refresh_shell(ctx);
                     }
@@ -166,7 +169,7 @@ impl App {
                         self.open_removal(flow);
                         self.shell.loaded = false;
                     }
-                });
+                }
             });
             if self.shell.deep_job.is_some() {
                 job_progress(ui, &t("Looking for leftovers of removed programs…"), 0);

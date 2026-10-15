@@ -359,6 +359,18 @@ pub fn resolve_shortcut(path: &str) -> String {
     path.to_string()
 }
 
+/// Whether Windows' animation effects are on (SPI_GETCLIENTAREAANIMATION).
+pub fn animations_enabled() -> bool {
+    #[cfg(windows)]
+    {
+        windows::client_area_animation()
+    }
+    #[cfg(not(windows))]
+    {
+        true
+    }
+}
+
 /// Show a message and wait until the user clicks OK.
 pub fn ask_ok(title: &str, text: &str) {
     #[cfg(windows)]
@@ -404,6 +416,58 @@ pub fn system_registry() -> Box<dyn Registry> {
 /// Sample programs for UI development on non-Windows machines.
 #[cfg(not(windows))]
 fn demo_programs(r: &MemRegistry) {
+    // Right-click menu entries, one of them left behind by a removed program.
+    for (key, value) in [
+        (
+            "HKLM\\SOFTWARE\\Classes\\*\\shellex\\ContextMenuHandlers\\7-Zip",
+            "{23170F69-40C1-278A-1000-000100020000}",
+        ),
+        (
+            "HKLM\\SOFTWARE\\Classes\\Directory\\shellex\\ContextMenuHandlers\\WinRAR",
+            "{B41DB860-64E4-11D2-9906-E49FADC173CA}",
+        ),
+        (
+            "HKLM\\SOFTWARE\\Classes\\*\\shellex\\ContextMenuHandlers\\OldToolbarShell",
+            "{0F1E2D3C-4B5A-6978-8796-A5B4C3D2E1F0}",
+        ),
+    ] {
+        r.put(KeyData::new(key).with(RegValue::string("", value)));
+    }
+    for (clsid, name, dll) in [
+        (
+            "{23170F69-40C1-278A-1000-000100020000}",
+            "7-Zip Shell Extension",
+            "C:\\Program Files\\7-Zip\\7-zip.dll",
+        ),
+        (
+            "{B41DB860-64E4-11D2-9906-E49FADC173CA}",
+            "WinRAR shell extension",
+            "C:\\Program Files\\WinRAR\\rarext.dll",
+        ),
+    ] {
+        r.put(
+            KeyData::new(&format!("HKLM\\SOFTWARE\\Classes\\CLSID\\{clsid}"))
+                .with(RegValue::string("", name)),
+        );
+        r.put(
+            KeyData::new(&format!(
+                "HKLM\\SOFTWARE\\Classes\\CLSID\\{clsid}\\InprocServer32"
+            ))
+            .with(RegValue::string("", dll)),
+        );
+    }
+    r.put(
+        KeyData::new("HKCU\\Software\\Classes\\Directory\\Background\\shell\\VSCode")
+            .with(RegValue::string("", "Open with Code")),
+    );
+    r.put(
+        KeyData::new("HKCU\\Software\\Classes\\Directory\\Background\\shell\\VSCode\\command")
+            .with(RegValue::string(
+                "",
+                "\"C:\\Users\\demo\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe\" \"%V\"",
+            )),
+    );
+
     let root = "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall";
     let apps = [
         (
@@ -472,6 +536,27 @@ fn demo_programs(r: &MemRegistry) {
             "1.94.2",
             "20261010",
             380_000,
+        ),
+        (
+            "McAfee LiveSafe",
+            "McAfee, LLC",
+            "16.0",
+            "20260301",
+            310_000,
+        ),
+        (
+            "Dell SupportAssist",
+            "Dell Inc.",
+            "4.4.2",
+            "20260301",
+            190_000,
+        ),
+        (
+            "WinRAR 7.01 (64-bit)",
+            "win.rar GmbH",
+            "7.01.0",
+            "20250412",
+            9_000,
         ),
     ];
     for (i, (name, publisher, ver, date, kb)) in apps.iter().enumerate() {

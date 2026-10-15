@@ -453,6 +453,23 @@ pub fn message_box(title: &str, text: &str) -> i32 {
     }
 }
 
+/// Windows' "Animation effects" accessibility setting.
+pub fn client_area_animation() -> bool {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        SystemParametersInfoW, SPI_GETCLIENTAREAANIMATION,
+    };
+    let mut on: i32 = 1;
+    let ok = unsafe {
+        SystemParametersInfoW(
+            SPI_GETCLIENTAREAANIMATION,
+            0,
+            &mut on as *mut i32 as *mut _,
+            0,
+        )
+    };
+    ok == 0 || on != 0
+}
+
 /// An information message box that stays on top until OK is clicked.
 pub fn info_box(title: &str, text: &str) -> i32 {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
