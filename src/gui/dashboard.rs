@@ -155,6 +155,9 @@ impl App {
                 if action_row(ui, "🎒", "Make a portable app", "Turn a program's installer into a PortableApps.com package") {
                     self.tab = Tab::Builder;
                 }
+                if action_row(ui, "🛡", "Remove bloatware", "Trials, promotions and pre-installed apps that came with this PC") {
+                    self.tab = Tab::Debloat;
+                }
 
                 // "What are the top 5 space-wasters I haven't opened in 6 months?"
                 if !self.programs.usage.is_empty() {

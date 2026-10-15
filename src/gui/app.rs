@@ -22,6 +22,8 @@ pub enum Tab {
     Restore,
     Lab,
     Builder,
+    Shell,
+    Debloat,
     Settings,
 }
 
@@ -72,6 +74,8 @@ pub struct App {
     pub programs: programs::ProgramsState,
     pub restore: super::restore_ui::RestoreState,
     pub builder: super::builder::BuilderState,
+    pub shell: super::shell_ui::ShellState,
+    pub debloat: super::debloat_ui::DebloatState,
     /// "Ask Expunge" plain-language search (Ctrl+K).
     pub ask_ui: super::ask::AskState,
     /// Live activity while monitoring an installation.
@@ -153,6 +157,8 @@ impl App {
             programs: Default::default(),
             restore: Default::default(),
             builder: Default::default(),
+            shell: Default::default(),
+            debloat: Default::default(),
             ask_ui: Default::default(),
             live: None,
             auto_watch: None,
@@ -370,6 +376,14 @@ impl App {
                             ui.close();
                             self.tab = Tab::Builder;
                         }
+                        if ui.button(t("Right-click menu")).clicked() {
+                            ui.close();
+                            self.tab = Tab::Shell;
+                        }
+                        if ui.button(t("Bloatware Shield")).clicked() {
+                            ui.close();
+                            self.tab = Tab::Debloat;
+                        }
                         if ui.button(t("Junk cleaner")).clicked() {
                             ui.close();
                             self.tab = Tab::Cleaner;
@@ -570,6 +584,28 @@ impl App {
                 {
                     self.tab = Tab::Builder;
                 }
+                if theme::nav_item(
+                    ui,
+                    "🛡",
+                    &t("Bloatware Shield"),
+                    self.tab == Tab::Debloat,
+                    None,
+                )
+                .clicked()
+                {
+                    self.tab = Tab::Debloat;
+                }
+                if theme::nav_item(
+                    ui,
+                    "☰",
+                    &t("Right-click menu"),
+                    self.tab == Tab::Shell,
+                    None,
+                )
+                .clicked()
+                {
+                    self.tab = Tab::Shell;
+                }
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
                     if !self.elevated
                         && theme::nav_item(ui, "🛡", &t("Run as Administrator"), false, None)
@@ -619,6 +655,14 @@ impl App {
             Tab::Builder => (
                 "Portable App Builder",
                 "Capture an installation and turn it into a PortableApps.com package",
+            ),
+            Tab::Shell => (
+                "Right-click menu",
+                "Every shell extension and menu command, with broken ones left by removed programs",
+            ),
+            Tab::Debloat => (
+                "Bloatware Shield",
+                "Remove the trials, promotions and pre-installed apps that came with this PC",
             ),
             Tab::Settings => ("Settings", ""),
         };
@@ -832,6 +876,8 @@ impl App {
         self.poll_removal();
         self.poll_lab();
         self.poll_builder(ctx);
+        self.poll_shell();
+        self.poll_debloat();
         self.poll_silent_package();
         self.poll_precheck(ctx);
         // Resource-use history: a quick sample of running programs every
@@ -954,6 +1000,15 @@ fn page_help(tab: Tab) -> &'static [&'static str] {
         Tab::Lab => &[
             "A snapshot records the registry and files at one moment. Take one, make changes (install something, change settings), take another and compare the two to see exactly what changed.",
             "The differences can be saved as an install log, so they can be undone like a monitored installation. Everything is also available from the command line (expunge --help).",
+        ],
+        Tab::Shell => &[
+            "Programs add commands and shell extensions to the right-click menu of files, folders, drives and the desktop. Many stay behind after the program is gone, which clutters the menu and can slow down File Explorer.",
+            "Untick an entry to turn it off; nothing is deleted and you can turn it back on. Broken entries belong to programs that are no longer installed and can be removed with the usual review and backup.",
+            "Deep clean looks further: COM classes, \"Open with\" entries, and PATH or environment entries left by removed programs anywhere in Windows.",
+        ],
+        Tab::Debloat => &[
+            "New PCs come with antivirus trials, sponsored games, promotions and maker apps. The Bloatware Shield finds them, including the Store apps that ordinary uninstallers skip.",
+            "Recommended items are ticked; optional maker tools are not. Drivers, audio and hotkey tools and Windows' own parts are never listed. Removal goes through the usual review, and everything is backed up.",
         ],
         Tab::Builder => &[
             "Choose a program's installer and describe the program. Expunge snapshots Windows, runs the installer, lets you start the program once, snapshots again and builds a PortableApps.com Format package from the difference.",
@@ -1176,6 +1231,8 @@ impl App {
                 let mut order = tabs.to_vec();
                 order.insert(8, Tab::Lab);
                 order.insert(9, Tab::Builder);
+                order.insert(10, Tab::Debloat);
+                order.insert(11, Tab::Shell);
                 let pos = order.iter().position(|t| *t == self.tab).unwrap_or(0);
                 let n = order.len();
                 let next = if back {
@@ -1301,6 +1358,8 @@ impl eframe::App for App {
             Tab::Restore => self.ui_restore(ctx),
             Tab::Lab => self.ui_lab(ctx),
             Tab::Builder => self.ui_builder(ctx),
+            Tab::Shell => self.ui_shell(ctx),
+            Tab::Debloat => self.ui_debloat(ctx),
             Tab::Settings => self.ui_settings(ctx),
         }
         self.ui_wizard(ctx);
