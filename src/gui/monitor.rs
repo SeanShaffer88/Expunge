@@ -257,7 +257,7 @@ impl App {
                         let running = self.monitor.child.as_ref().is_some_and(|c| c.try_wait().is_none());
                         if running {
                             ui.horizontal(|ui| {
-                                ui.spinner();
+                                super::widgets::spinner(ui);
                                 ui.label(t("The installer is running."));
                             });
                         }
@@ -299,14 +299,25 @@ impl App {
                 .settings
                 .file_roots
                 .iter()
-                .map(|r| (std::path::PathBuf::from(expunge_core::platform::expand_env(&r.path)), r.recursive))
+                .map(|r| {
+                    (
+                        std::path::PathBuf::from(expunge_core::platform::expand_env(&r.path)),
+                        r.recursive,
+                    )
+                })
                 .filter(|(p, _)| p.is_dir())
                 .collect();
-            let excl = expunge_core::util::Exclusions::new(&self.settings.effective_file_exclusions());
-            self.live = Some(LiveWatcher::start(&folders, &self.settings.registry_roots, excl));
+            let excl =
+                expunge_core::util::Exclusions::new(&self.settings.effective_file_exclusions());
+            self.live = Some(LiveWatcher::start(
+                &folders,
+                &self.settings.registry_roots,
+                excl,
+            ));
         }
         let Some(live) = &self.live else { return };
-        ui.ctx().request_repaint_after(std::time::Duration::from_millis(500));
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(500));
         egui::CollapsingHeader::new(RichText::new(t("Live activity")).strong())
             .default_open(self.settings.advanced_mode)
             .show(ui, |ui| {

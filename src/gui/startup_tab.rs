@@ -42,7 +42,8 @@ pub struct StartupState {
     pub boot: Option<Option<expunge_core::boot::BootInfo>>,
     pub delayed: Vec<String>,
     /// Online reputation results by startup entry name.
-    pub reputation: std::collections::HashMap<String, Result<expunge_core::reputation::Verdict, String>>,
+    pub reputation:
+        std::collections::HashMap<String, Result<expunge_core::reputation::Verdict, String>>,
     pub reputation_job: Option<Job<(String, Result<expunge_core::reputation::Verdict, String>)>>,
     pub boot_job: Option<Job<(Option<expunge_core::boot::BootInfo>, Vec<String>)>>,
 }
@@ -354,7 +355,10 @@ impl App {
                 ));
             }
             Some(_) if !self.elevated => {
-                small_muted(ui, t("Run as Administrator to see how much each program slows down startup."));
+                small_muted(
+                    ui,
+                    t("Run as Administrator to see how much each program slows down startup."),
+                );
             }
             _ => {}
         }
@@ -724,22 +728,42 @@ impl App {
 fn reputation_badge(ui: &mut egui::Ui, r: &Result<expunge_core::reputation::Verdict, String>) {
     use expunge_core::reputation::Verdict;
     match r {
-        Ok(Verdict::Malicious { detections, engines }) => {
-            theme::badge(ui, tf("Flagged by {n}/{total}", &[("n", detections.to_string()), ("total", engines.to_string())]), theme::BAD);
+        Ok(Verdict::Malicious {
+            detections,
+            engines,
+        }) => {
+            theme::badge(
+                ui,
+                tf(
+                    "Flagged by {n}/{total}",
+                    &[
+                        ("n", detections.to_string()),
+                        ("total", engines.to_string()),
+                    ],
+                ),
+                theme::BAD,
+            );
         }
         Ok(Verdict::Clean { engines }) => {
-            theme::badge(ui, tf("Clean ({n} engines)", &[("n", engines.to_string())]), theme::OK);
+            theme::badge(
+                ui,
+                tf("Clean ({n} engines)", &[("n", engines.to_string())]),
+                theme::OK,
+            );
         }
         Ok(Verdict::Known { source }) => {
-            ui.add(egui::Label::new(RichText::new(t("Known software")).small().color(theme::OK)))
-                .on_hover_text(source);
+            ui.add(egui::Label::new(
+                RichText::new(t("Known software")).small().color(theme::OK),
+            ))
+            .on_hover_text(source);
         }
         Ok(Verdict::Unknown) => {
             ui.label(RichText::new(t("Not found online")).small().color(theme::MUTED))
                 .on_hover_text(t("Unknown files aren't necessarily harmful; many small programs are simply not catalogued."));
         }
         Err(e) => {
-            ui.label(RichText::new(t("Check failed")).small().color(theme::WARN)).on_hover_text(e);
+            ui.label(RichText::new(t("Check failed")).small().color(theme::WARN))
+                .on_hover_text(e);
         }
     }
 }

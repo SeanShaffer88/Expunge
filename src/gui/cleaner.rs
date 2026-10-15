@@ -419,7 +419,10 @@ impl App {
             let mut choice: Option<Option<Frequency>> = None;
             ui.horizontal(|ui| {
                 ui.label(RichText::new(t("Clean automatically")).strong());
-                let label = current.as_ref().map(|c| t(c.0.label())).unwrap_or_else(|| t("Off"));
+                let label = current
+                    .as_ref()
+                    .map(|c| t(c.0.label()))
+                    .unwrap_or_else(|| t("Off"));
                 egui::ComboBox::from_id_salt("clean_schedule")
                     .selected_text(label)
                     .show_ui(ui, |ui| {
@@ -437,7 +440,10 @@ impl App {
             small_muted(ui, t("Cleans the kinds of junk ticked above through Windows Task Scheduler, even when Expunge is closed."));
             if let Some((_, cats)) = &current {
                 let names: Vec<String> = cats.iter().map(|id| t(cat_text(id).0)).collect();
-                small_muted(ui, tf("Currently cleans: {list}", &[("list", names.join(", "))]));
+                small_muted(
+                    ui,
+                    tf("Currently cleans: {list}", &[("list", names.join(", "))]),
+                );
             }
             if let Some(e) = &self.cleaner.schedule_error {
                 ui.label(RichText::new(e).small().color(theme::BAD));

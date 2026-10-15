@@ -791,7 +791,9 @@ pub fn watch_registry(
             );
             if rc != 0 {
                 CloseHandle(event);
-                return Err(anyhow!("registry notifications unavailable for {path} ({rc})"));
+                return Err(anyhow!(
+                    "registry notifications unavailable for {path} ({rc})"
+                ));
             }
             loop {
                 if stop.load(Ordering::Relaxed) {

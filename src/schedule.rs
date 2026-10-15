@@ -34,11 +34,22 @@ pub fn create_args(exe: &str, categories: &[&str], freq: Frequency, elevated: bo
         "\"{exe}\" clean --scheduled --categories {}",
         categories.join(",")
     );
-    let mut a: Vec<String> = vec!["/Create".into(), "/TN".into(), TASK.into(), "/TR".into(), run, "/F".into()];
+    let mut a: Vec<String> = vec![
+        "/Create".into(),
+        "/TN".into(),
+        TASK.into(),
+        "/TR".into(),
+        run,
+        "/F".into(),
+    ];
     match freq {
         Frequency::Daily => a.extend(["/SC", "DAILY", "/ST", "12:30"].map(String::from)),
-        Frequency::Weekly => a.extend(["/SC", "WEEKLY", "/D", "SUN", "/ST", "12:30"].map(String::from)),
-        Frequency::Monthly => a.extend(["/SC", "MONTHLY", "/D", "1", "/ST", "12:30"].map(String::from)),
+        Frequency::Weekly => {
+            a.extend(["/SC", "WEEKLY", "/D", "SUN", "/ST", "12:30"].map(String::from))
+        }
+        Frequency::Monthly => {
+            a.extend(["/SC", "MONTHLY", "/D", "1", "/ST", "12:30"].map(String::from))
+        }
     }
     if elevated {
         // Lets the task clean machine-wide locations too.
@@ -90,7 +101,11 @@ pub fn parse_task_xml(xml: &str) -> Option<(Frequency, Vec<String>)> {
     } else {
         return None;
     };
-    let args = xml.split("<Arguments>").nth(1)?.split("</Arguments>").next()?;
+    let args = xml
+        .split("<Arguments>")
+        .nth(1)?
+        .split("</Arguments>")
+        .next()?;
     let cats = args
         .split("--categories")
         .nth(1)
@@ -111,9 +126,15 @@ mod tests {
 
     #[test]
     fn task_arguments() {
-        let a = create_args("C:\\Tools\\Expunge.exe", &["user_temp", "crash_dumps"], Frequency::Weekly, false);
+        let a = create_args(
+            "C:\\Tools\\Expunge.exe",
+            &["user_temp", "crash_dumps"],
+            Frequency::Weekly,
+            false,
+        );
         assert!(a.contains(&"WEEKLY".to_string()));
-        assert!(a.iter().any(|x| x == "\"C:\\Tools\\Expunge.exe\" clean --scheduled --categories user_temp,crash_dumps"));
+        assert!(a.iter().any(|x| x
+            == "\"C:\\Tools\\Expunge.exe\" clean --scheduled --categories user_temp,crash_dumps"));
         assert!(!a.contains(&"HIGHEST".to_string()));
         let a = create_args("x.exe", &["user_temp"], Frequency::Monthly, true);
         assert!(a.contains(&"MONTHLY".to_string()) && a.contains(&"HIGHEST".to_string()));

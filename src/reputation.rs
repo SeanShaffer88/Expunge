@@ -65,7 +65,10 @@ fn get(url: &str, headers: &[&str]) -> Result<(u32, String), String> {
     let curl = if cfg!(windows) { "curl.exe" } else { "curl" };
     let (_, out) = crate::platform::run_hidden(curl, &refs).map_err(|e| e.to_string())?;
     let (body, code) = out.rsplit_once('\n').unwrap_or(("", out.as_str()));
-    let code: u32 = code.trim().parse().map_err(|_| "no answer from the server".to_string())?;
+    let code: u32 = code
+        .trim()
+        .parse()
+        .map_err(|_| "no answer from the server".to_string())?;
     if code == 0 {
         return Err("couldn't reach the lookup service (is the PC online?)".into());
     }
@@ -87,11 +90,16 @@ pub fn check(hash: &str, vt_key: Option<&str>) -> Result<Verdict, String> {
             }
             404 => {}
             401 | 403 => return Err("VirusTotal rejected the API key".into()),
-            429 => return Err("VirusTotal's request limit was reached; try again in a minute".into()),
+            429 => {
+                return Err("VirusTotal's request limit was reached; try again in a minute".into())
+            }
             c => return Err(format!("VirusTotal answered with error {c}")),
         }
     }
-    let (code, body) = get(&format!("https://hashlookup.circl.lu/lookup/sha256/{hash}"), &[])?;
+    let (code, body) = get(
+        &format!("https://hashlookup.circl.lu/lookup/sha256/{hash}"),
+        &[],
+    )?;
     match code {
         200 => Ok(parse_hashlookup(&body)),
         404 => Ok(Verdict::Unknown),
@@ -106,7 +114,10 @@ pub fn parse_virustotal(json: &str) -> Option<Verdict> {
     let bad = n("malicious") + n("suspicious");
     let engines = n("malicious") + n("suspicious") + n("undetected") + n("harmless");
     Some(if bad > 0 {
-        Verdict::Malicious { detections: bad, engines }
+        Verdict::Malicious {
+            detections: bad,
+            engines,
+        }
     } else {
         Verdict::Clean { engines }
     })
@@ -121,7 +132,10 @@ pub fn parse_hashlookup(json: &str) -> Verdict {
         .or_else(|| v.get("FileName").and_then(|x| x.as_str()))
         .unwrap_or("")
         .to_string();
-    let source = v.get("source").and_then(|x| x.as_str()).unwrap_or("hashlookup");
+    let source = v
+        .get("source")
+        .and_then(|x| x.as_str())
+        .unwrap_or("hashlookup");
     Verdict::Known {
         source: if product.is_empty() {
             source.to_string()
@@ -138,11 +152,23 @@ mod tests {
     #[test]
     fn parses_answers() {
         let vt = r#"{"data":{"attributes":{"last_analysis_stats":{"malicious":3,"suspicious":1,"undetected":60,"harmless":0}}}}"#;
-        assert_eq!(parse_virustotal(vt), Some(Verdict::Malicious { detections: 4, engines: 64 }));
-        let ok = r#"{"data":{"attributes":{"last_analysis_stats":{"malicious":0,"undetected":70}}}}"#;
+        assert_eq!(
+            parse_virustotal(vt),
+            Some(Verdict::Malicious {
+                detections: 4,
+                engines: 64
+            })
+        );
+        let ok =
+            r#"{"data":{"attributes":{"last_analysis_stats":{"malicious":0,"undetected":70}}}}"#;
         assert_eq!(parse_virustotal(ok), Some(Verdict::Clean { engines: 70 }));
         let hl = r#"{"FileName":"7z.exe","source":"NSRL","ProductCode":{"ProductName":"7-Zip"}}"#;
-        assert_eq!(parse_hashlookup(hl), Verdict::Known { source: "7-Zip (NSRL)".into() });
+        assert_eq!(
+            parse_hashlookup(hl),
+            Verdict::Known {
+                source: "7-Zip (NSRL)".into()
+            }
+        );
         let d = std::env::temp_dir().join(format!("expunge-rep-{}", std::process::id()));
         std::fs::write(&d, b"abc").unwrap();
         assert_eq!(

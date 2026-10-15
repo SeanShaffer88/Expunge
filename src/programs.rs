@@ -208,7 +208,10 @@ pub fn log_for<'a>(
 /// window or shortcut). Checks, in order: the folder the program was
 /// installed to, the folder of its icon or uninstaller, and the folder name
 /// against the program's name. Returns the index and how it was matched.
-pub fn program_for_path(programs: &[InstalledProgram], path: &str) -> Option<(usize, &'static str)> {
+pub fn program_for_path(
+    programs: &[InstalledProgram],
+    path: &str,
+) -> Option<(usize, &'static str)> {
     let fold = |s: &str| s.trim().trim_matches('"').replace('/', "\\").to_lowercase();
     let file = fold(path);
     let dir_of = |s: &str| -> String {
@@ -225,7 +228,10 @@ pub fn program_for_path(programs: &[InstalledProgram], path: &str) -> Option<(us
     };
     // Longest (most specific) folder wins.
     let mut best: Option<(usize, usize, &'static str)> = None;
-    let consider = |best: &mut Option<(usize, usize, &'static str)>, i: usize, dir: &str, how: &'static str| {
+    let consider = |best: &mut Option<(usize, usize, &'static str)>,
+                    i: usize,
+                    dir: &str,
+                    how: &'static str| {
         let d = fold(dir);
         if inside(&d) && best.is_none_or(|b| d.len() > b.1) {
             *best = Some((i, d.len(), how));
@@ -254,7 +260,9 @@ pub fn program_for_path(programs: &[InstalledProgram], path: &str) -> Option<(us
         let hits: Vec<usize> = programs
             .iter()
             .enumerate()
-            .filter(|(_, p)| crate::leftovers::norm(&crate::leftovers::base_name(&p.name)) == folder)
+            .filter(|(_, p)| {
+                crate::leftovers::norm(&crate::leftovers::base_name(&p.name)) == folder
+            })
             .map(|(i, _)| i)
             .collect();
         if hits.len() == 1 {
@@ -563,14 +571,34 @@ mod hunter_tests {
         let progs = vec![
             prog("Big Suite", "C:\\Program Files\\Acme", "", ""),
             prog("Acme Paint", "C:\\Program Files\\Acme\\Paint\\", "", ""),
-            prog("Spotify", "", "C:\\Users\\a\\AppData\\Roaming\\Spotify\\Spotify.exe,0", ""),
+            prog(
+                "Spotify",
+                "",
+                "C:\\Users\\a\\AppData\\Roaming\\Spotify\\Spotify.exe,0",
+                "",
+            ),
             prog("7-Zip 24.08 (x64)", "", "", "MsiExec.exe /X{1}"),
             prog("Notepad++ (64-bit x64)", "", "", ""),
         ];
-        assert_eq!(program_for_path(&progs, "C:\\Program Files\\Acme\\Paint\\paint.exe"), Some((1, "install folder")));
-        assert_eq!(program_for_path(&progs, "c:\\program files\\acme\\suite.exe"), Some((0, "install folder")));
-        assert_eq!(program_for_path(&progs, "C:\\Users\\a\\AppData\\Roaming\\Spotify\\Spotify.exe"), Some((2, "icon")));
-        assert_eq!(program_for_path(&progs, "C:\\Program Files\\Notepad++\\notepad++.exe").map(|x| x.0), Some(4));
+        assert_eq!(
+            program_for_path(&progs, "C:\\Program Files\\Acme\\Paint\\paint.exe"),
+            Some((1, "install folder"))
+        );
+        assert_eq!(
+            program_for_path(&progs, "c:\\program files\\acme\\suite.exe"),
+            Some((0, "install folder"))
+        );
+        assert_eq!(
+            program_for_path(
+                &progs,
+                "C:\\Users\\a\\AppData\\Roaming\\Spotify\\Spotify.exe"
+            ),
+            Some((2, "icon"))
+        );
+        assert_eq!(
+            program_for_path(&progs, "C:\\Program Files\\Notepad++\\notepad++.exe").map(|x| x.0),
+            Some(4)
+        );
         assert_eq!(program_for_path(&progs, "C:\\Windows\\explorer.exe"), None);
         // "C:\\" style roots never count as an install folder.
         let root = vec![prog("Weird", "C:\\", "", "")];

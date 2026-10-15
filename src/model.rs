@@ -404,7 +404,10 @@ impl InstallLog {
             || self.name.to_lowercase().contains(query_lower)
             || self.publisher.to_lowercase().contains(query_lower)
             || self.group.to_lowercase().contains(query_lower)
-            || self.tags.iter().any(|t| t.to_lowercase().contains(query_lower))
+            || self
+                .tags
+                .iter()
+                .any(|t| t.to_lowercase().contains(query_lower))
     }
 }
 

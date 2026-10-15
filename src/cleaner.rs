@@ -154,7 +154,8 @@ type Patterns = Vec<&'static str>;
 /// profile. Firefox history lives in the same file as bookmarks, so only
 /// its form history is removed.
 fn browser_patterns() -> &'static (Patterns, Patterns, Patterns, Patterns) {
-    static P: std::sync::OnceLock<(Patterns, Patterns, Patterns, Patterns)> = std::sync::OnceLock::new();
+    static P: std::sync::OnceLock<(Patterns, Patterns, Patterns, Patterns)> =
+        std::sync::OnceLock::new();
     P.get_or_init(|| {
         let leak = |s: String| -> &'static str { Box::leak(s.into_boxed_str()) };
         let mut cookies = Vec::new();
@@ -162,16 +163,42 @@ fn browser_patterns() -> &'static (Patterns, Patterns, Patterns, Patterns) {
         let mut site = Vec::new();
         let mut sessions = Vec::new();
         for base in CHROMIUM {
-            for f in ["Network\\Cookies", "Network\\Cookies-journal", "Cookies", "Cookies-journal"] {
+            for f in [
+                "Network\\Cookies",
+                "Network\\Cookies-journal",
+                "Cookies",
+                "Cookies-journal",
+            ] {
                 cookies.push(leak(format!("{base}\\{f}")));
             }
-            for f in ["History", "History-journal", "Visited Links", "Top Sites", "Top Sites-journal", "Shortcuts", "Shortcuts-journal"] {
+            for f in [
+                "History",
+                "History-journal",
+                "Visited Links",
+                "Top Sites",
+                "Top Sites-journal",
+                "Shortcuts",
+                "Shortcuts-journal",
+            ] {
                 history.push(leak(format!("{base}\\{f}")));
             }
-            for f in ["Local Storage", "Session Storage", "IndexedDB", "Service Worker", "File System", "databases"] {
+            for f in [
+                "Local Storage",
+                "Session Storage",
+                "IndexedDB",
+                "Service Worker",
+                "File System",
+                "databases",
+            ] {
                 site.push(leak(format!("{base}\\{f}")));
             }
-            for f in ["Sessions", "Current Session", "Current Tabs", "Last Session", "Last Tabs"] {
+            for f in [
+                "Sessions",
+                "Current Session",
+                "Current Tabs",
+                "Last Session",
+                "Last Tabs",
+            ] {
                 sessions.push(leak(format!("{base}\\{f}")));
             }
         }
@@ -182,7 +209,11 @@ fn browser_patterns() -> &'static (Patterns, Patterns, Patterns, Patterns) {
             for f in ["formhistory.sqlite", "formhistory.sqlite-wal"] {
                 history.push(leak(format!("{base}\\{f}")));
             }
-            for f in ["storage\\default", "webappsstore.sqlite", "webappsstore.sqlite-wal"] {
+            for f in [
+                "storage\\default",
+                "webappsstore.sqlite",
+                "webappsstore.sqlite-wal",
+            ] {
                 site.push(leak(format!("{base}\\{f}")));
             }
             for f in ["sessionstore.jsonlz4", "sessionstore-backups"] {
@@ -406,7 +437,9 @@ mod browser_tests {
         };
         assert_eq!(resolve(cookies).len(), 2);
         assert_eq!(resolve(history).len(), 2);
-        assert!(history.iter().all(|p| !p.contains("places.sqlite") && !p.contains("Bookmarks")));
+        assert!(history
+            .iter()
+            .all(|p| !p.contains("places.sqlite") && !p.contains("Bookmarks")));
         let _ = std::fs::remove_dir_all(&d);
     }
 }

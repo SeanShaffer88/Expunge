@@ -125,7 +125,9 @@ pub fn parse_events(xml: &str) -> BootInfo {
                 }
             }
             Some(101) => {
-                let Some(name) = data(ev, "Name") else { continue };
+                let Some(name) = data(ev, "Name") else {
+                    continue;
+                };
                 let ms: u64 = data(ev, "DegradationTime")
                     .and_then(|v| v.trim().parse().ok())
                     .unwrap_or(0);
@@ -228,7 +230,9 @@ pub fn delay(
         return Err(anyhow!("only startup programs can be delayed"));
     }
     if entry.all_users {
-        return Err(anyhow!("programs that start for all users can't be delayed for one account"));
+        return Err(anyhow!(
+            "programs that start for all users can't be delayed for one account"
+        ));
     }
     let (program, args) = crate::util::split_command_line(&entry.command);
     let program = crate::platform::expand_env(&program);
@@ -246,7 +250,14 @@ pub fn delay(
     let name = task_name(&entry.name);
     let r = run_hidden(
         "schtasks",
-        &["/Create", "/TN", &name, "/XML", &file.to_string_lossy(), "/F"],
+        &[
+            "/Create",
+            "/TN",
+            &name,
+            "/XML",
+            &file.to_string_lossy(),
+            "/F",
+        ],
     );
     let _ = std::fs::remove_file(&file);
     let (code, out) = r?;
@@ -290,7 +301,8 @@ mod tests {
         assert_eq!((od.boots, od.avg_ms, od.max_ms), (2, 1500, 2100));
         assert_eq!(od.level(), Level::High);
         assert_eq!(b.apps["spotify.exe"].level(), Level::Low);
-        let hit = b.impact_of("\"C:\\Program Files\\Microsoft OneDrive\\OneDrive.exe\" /background");
+        let hit =
+            b.impact_of("\"C:\\Program Files\\Microsoft OneDrive\\OneDrive.exe\" /background");
         assert_eq!(hit.map(|i| i.boots), Some(2));
         assert!(b.impact_of("C:\\x\\other.exe").is_none());
     }

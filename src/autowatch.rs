@@ -79,14 +79,23 @@ mod tests {
     fn notices_new_programs() {
         let r = crate::platform::MemRegistry::new();
         let root = "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall";
-        r.put(crate::model::KeyData::new(&format!("{root}\\A")).with(crate::model::RegValue::string("DisplayName", "A")));
+        r.put(
+            crate::model::KeyData::new(&format!("{root}\\A"))
+                .with(crate::model::RegValue::string("DisplayName", "A")),
+        );
         let before = uninstall_keys(&r);
-        r.put(crate::model::KeyData::new(&format!("{root}\\B")).with(crate::model::RegValue::string("DisplayName", "B")));
+        r.put(
+            crate::model::KeyData::new(&format!("{root}\\B"))
+                .with(crate::model::RegValue::string("DisplayName", "B")),
+        );
         let now = uninstall_keys(&r);
         assert_eq!(added(&before, &now).len(), 1);
         assert!(added(&before, &now)[0].ends_with("\\b"));
         assert!(added(&now, &before).is_empty());
         let a = create_args("C:\\Expunge.exe");
-        assert!(a.contains(&"ONLOGON".to_string()) && a.contains(&"\"C:\\Expunge.exe\" watch".to_string()));
+        assert!(
+            a.contains(&"ONLOGON".to_string())
+                && a.contains(&"\"C:\\Expunge.exe\" watch".to_string())
+        );
     }
 }

@@ -82,7 +82,8 @@ pub struct App {
     pub auto_watch: Option<bool>,
     pub auto_watch_job: Option<super::Job<bool>>,
     pub health: Option<(expunge_core::health::Health, expunge_core::health::History)>,
-    pub health_job: Option<super::Job<(expunge_core::health::Health, expunge_core::health::History)>>,
+    pub health_job:
+        Option<super::Job<(expunge_core::health::Health, expunge_core::health::History)>>,
     /// Transfer export or restore window.
     pub transfer: Option<super::transfer_ui::TransferUi>,
     pub monitor: monitor::MonitorState,
@@ -262,7 +263,10 @@ impl App {
 
     fn poll_lists(&mut self) {
         if let Some((list, again)) = self.logs.loader.poll() {
-            self.logs.stats = list.iter().map(|l| (l.id.clone(), l.changes.stats())).collect();
+            self.logs.stats = list
+                .iter()
+                .map(|l| (l.id.clone(), l.changes.stats()))
+                .collect();
             self.logs.logs = list;
             if again {
                 self.reload_logs();

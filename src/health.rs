@@ -113,8 +113,14 @@ pub fn drives() -> Vec<DriveSpace> {
                     continue;
                 }
                 let (mut avail, mut total, mut free) = (0u64, 0u64, 0u64);
-                if GetDiskFreeSpaceExW(w.as_ptr(), &mut avail, &mut total, &mut free) != 0 && total > 0 {
-                    v.push(DriveSpace { root, total, free: avail });
+                if GetDiskFreeSpaceExW(w.as_ptr(), &mut avail, &mut total, &mut free) != 0
+                    && total > 0
+                {
+                    v.push(DriveSpace {
+                        root,
+                        total,
+                        free: avail,
+                    });
                 }
             }
         }
@@ -251,7 +257,13 @@ mod tests {
     #[test]
     fn history_and_trend() {
         let mut h = History::default();
-        let d = |free| vec![DriveSpace { root: "C:\\".into(), total: 100, free }];
+        let d = |free| {
+            vec![DriveSpace {
+                root: "C:\\".into(),
+                total: 100,
+                free,
+            }]
+        };
         h.record("2026-10-01", &d(50));
         h.record("2026-10-02", &d(45));
         h.record("2026-10-02", &d(40)); // same day: latest wins
@@ -273,7 +285,10 @@ mod tests {
         assert_eq!(c[0].service, "Print Spooler");
         assert_eq!(c[0].count, 2);
         assert_eq!(c[0].last, "2026-10-12T09:00:00.000Z");
-        let m = Memory { total: 1000, available: 250 };
+        let m = Memory {
+            total: 1000,
+            available: 250,
+        };
         assert_eq!(m.used_percent(), 75);
     }
 }

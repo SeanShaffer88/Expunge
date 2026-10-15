@@ -408,8 +408,93 @@ pub fn build_plan(cs: &ChangeSet, reg: &dyn Registry) -> Plan {
             f.path
         ));
     }
+    mark_windows_components(&mut plan, cs, &fold(&expand_env("%SystemRoot%")));
     plan.items.sort_by_key(|i| i.action.order());
     plan
+}
+
+/// The part of a registry path that identifies its owner: the COM class or
+/// AppID for `...\CLSID\{guid}\...` paths, otherwise the key itself.
+fn owner_root(path: &str) -> String {
+    let f = fold(path);
+    for marker in ["\\clsid\\{", "\\appid\\{", "\\typelib\\{", "\\interface\\{"] {
+        if let Some(i) = f.find(marker) {
+            let rest = &f[i + marker.len()..];
+            if let Some(end) = rest.find('}') {
+                return f[..i + marker.len() + end + 1].to_string();
+            }
+        }
+    }
+    f
+}
+
+/// Registry areas Windows maintains itself (its security components and
+/// app packages). Windows can change them in the background during an
+/// installation, so they are never treated as the program's.
+fn windows_owned_key(path: &str) -> bool {
+    let f = fold(path);
+    [
+        "\\windows defender",
+        "securityhealth",
+        "sechealth",
+        "defenderagent",
+        "\\appx\\packagestate\\",
+        "\\appmodel\\",
+    ]
+    .iter()
+    .any(|m| f.contains(m))
+}
+
+/// Unselect registry items that belong to Windows rather than the program:
+/// entries whose data points into the Windows folder (and everything under
+/// the same COM class or AppID), and areas Windows maintains itself.
+fn mark_windows_components(plan: &mut Plan, cs: &ChangeSet, sysroot: &str) {
+    let sysroot = sysroot.to_string();
+    let check_paths = !sysroot.contains('%') && !sysroot.is_empty();
+    let points_into_windows = |v: &RegValue| {
+        check_paths
+            && v.as_string().is_some_and(|s| {
+                let f = fold(&s);
+                let f = f.trim_start_matches('@').trim_start_matches('"');
+                let f = f.strip_prefix("\\\\?\\").unwrap_or(f);
+                f.starts_with(&sysroot)
+                    || f.starts_with("%systemroot%")
+                    || f.starts_with("%windir%")
+            })
+    };
+    let mut owned: BTreeSet<String> = BTreeSet::new();
+    for k in &cs.keys_added {
+        if k.values.values().any(&points_into_windows) {
+            owned.insert(owner_root(&k.path));
+        }
+    }
+    for v in &cs.values_added {
+        if points_into_windows(&v.value) {
+            owned.insert(owner_root(&v.key));
+        }
+    }
+    for v in &cs.values_modified {
+        if points_into_windows(&v.before) || points_into_windows(&v.after) {
+            owned.insert(owner_root(&v.key));
+        }
+    }
+    for v in &cs.values_removed {
+        if points_into_windows(&v.value) {
+            owned.insert(owner_root(&v.key));
+        }
+    }
+    for i in &mut plan.items {
+        let key = match &i.action {
+            Action::DeleteKey { path } => path.as_str(),
+            Action::DeleteValue { key, .. } | Action::SetValue { key, .. } => key.as_str(),
+            Action::RestoreKey { key } => key.path.as_str(),
+            _ => continue,
+        };
+        if windows_owned_key(key) || owned.contains(&owner_root(key)) {
+            i.selected = false;
+            i.note = "Windows component".to_string();
+        }
+    }
 }
 
 /// Carry out the selected plan items, backing everything up first.
@@ -765,7 +850,8 @@ pub fn risk(item: &PlanItem) -> Risk {
 pub fn residue(cs: &ChangeSet, reg: &dyn Registry) -> Plan {
     let mut p = build_plan(cs, reg);
     // Protected locations are never removed, so they never count as residue.
-    p.items.retain(|i| !i.note.starts_with("Protected"));
+    p.items
+        .retain(|i| !i.note.starts_with("Protected") && i.note != "Windows component");
     p.items.retain(|i| match &i.action {
         Action::DeleteFile { .. }
         | Action::DeleteDir { .. }
@@ -1028,5 +1114,60 @@ mod tests {
         );
         assert!(!res[0].ok);
         assert!(reg.exists("HKLM\\SOFTWARE\\Classes"));
+    }
+}
+
+#[cfg(test)]
+mod windows_component_tests {
+    use super::*;
+
+    #[test]
+    fn windows_owned_entries_are_left_alone() {
+        let mut cs = ChangeSet::default();
+        let clsid = "HKLM\\SOFTWARE\\Classes\\CLSID\\{10964DDD-6A53-4C60-917F-7B5723014344}";
+        cs.values_modified.push(ValueChange {
+            key: format!("{clsid}\\InprocServer32"),
+            before: RegValue::string("", "\\\\?\\C:\\Windows\\System32\\SecurityHealthAgent.dll"),
+            after: RegValue::string("", "C:\\ProgramData\\Defender\\new.dll"),
+        });
+        cs.keys_added
+            .push(KeyData::new(&format!("{clsid}\\Elevation")).with(RegValue::dword("Enabled", 1)));
+        cs.keys_added.push(KeyData::new("HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\DefenderAgentScan.exe"));
+        cs.keys_added.push(
+            KeyData::new("HKLM\\SOFTWARE\\7-Zip")
+                .with(RegValue::string("Path", "C:\\Program Files\\7-Zip\\")),
+        );
+        let mut plan = Plan::default();
+        for k in &cs.keys_added {
+            plan.items.push(PlanItem {
+                action: Action::DeleteKey {
+                    path: k.path.clone(),
+                },
+                selected: true,
+                exists: true,
+                note: String::new(),
+            });
+        }
+        plan.items.push(PlanItem {
+            action: Action::SetValue {
+                key: format!("{clsid}\\InprocServer32"),
+                value: RegValue::string("", "x"),
+            },
+            selected: true,
+            exists: true,
+            note: String::new(),
+        });
+        mark_windows_components(&mut plan, &cs, "c:\\windows");
+        let sel: Vec<(String, bool)> = plan
+            .items
+            .iter()
+            .map(|i| (i.action.describe(), i.selected))
+            .collect();
+        assert!(
+            sel.iter().any(|(d, s)| d.contains("7-Zip") && *s),
+            "{sel:?}"
+        );
+        assert_eq!(sel.iter().filter(|(_, s)| !*s).count(), 3, "{sel:?}");
+        assert_eq!(owner_root(&format!("{clsid}\\InprocServer32")), fold(clsid));
     }
 }

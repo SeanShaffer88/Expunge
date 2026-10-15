@@ -52,14 +52,24 @@ pub fn msix_version(v: &str) -> String {
     while parts.len() < 4 {
         parts.push(0);
     }
-    parts.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(".")
+    parts
+        .iter()
+        .map(|n| n.to_string())
+        .collect::<Vec<_>>()
+        .join(".")
 }
 
 /// Package identity name: letters, digits, dots and dashes, 3–50 characters.
 pub fn identity_name(name: &str) -> String {
     let mut s: String = name
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '.' || c == '-' { c } else { '-' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '.' || c == '-' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect();
     while s.contains("--") {
         s = s.replace("--", "-");
@@ -78,17 +88,35 @@ pub fn publisher_dn(publisher: &str) -> String {
         .collect::<String>()
         .trim()
         .to_string();
-    format!("CN={}", if p.is_empty() { "Unknown Publisher" } else { &p })
+    format!(
+        "CN={}",
+        if p.is_empty() {
+            "Unknown Publisher"
+        } else {
+            &p
+        }
+    )
 }
 
 fn xml(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 pub fn manifest(log: &InstallLog, executable: &str) -> String {
     let name = identity_name(&log.name);
-    let display = if log.name.trim().is_empty() { "Application" } else { log.name.trim() };
-    let publisher = if log.publisher.trim().is_empty() { "Unknown Publisher" } else { log.publisher.trim() };
+    let display = if log.name.trim().is_empty() {
+        "Application"
+    } else {
+        log.name.trim()
+    };
+    let publisher = if log.publisher.trim().is_empty() {
+        "Unknown Publisher"
+    } else {
+        log.publisher.trim()
+    };
     format!(
         r#"<?xml version="1.0" encoding="utf-8"?>
 <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
@@ -126,7 +154,9 @@ pub fn manifest(log: &InstallLog, executable: &str) -> String {
 /// or crash reporter, preferring one named like the program, else the
 /// largest. Paths are relative to the layout, with backslashes.
 pub fn pick_executable(candidates: &[(String, u64)], program: &str) -> Option<String> {
-    let skip = ["unins", "uninst", "setup", "update", "crash", "helper", "elevat", "report"];
+    let skip = [
+        "unins", "uninst", "setup", "update", "crash", "helper", "elevat", "report",
+    ];
     let good: Vec<&(String, u64)> = candidates
         .iter()
         .filter(|(p, _)| p.to_lowercase().ends_with(".exe"))
@@ -146,11 +176,17 @@ pub fn pick_executable(candidates: &[(String, u64)], program: &str) -> Option<St
             return Some(hit.0.clone());
         }
     }
-    good.iter().max_by_key(|(_, size)| *size).map(|(p, _)| p.clone())
+    good.iter()
+        .max_by_key(|(_, size)| *size)
+        .map(|(p, _)| p.clone())
 }
 
 fn copy_tree(from: &Path, to: &Path, found: &mut Vec<(String, u64)>, root: &Path) -> Result<()> {
-    for e in walkdir::WalkDir::new(from).follow_links(false).into_iter().flatten() {
+    for e in walkdir::WalkDir::new(from)
+        .follow_links(false)
+        .into_iter()
+        .flatten()
+    {
         let rel = e.path().strip_prefix(from).unwrap_or(e.path());
         let dest = to.join(rel);
         if e.file_type().is_dir() {
@@ -188,7 +224,9 @@ fn logo(path: &Path, size: u32) -> Result<()> {
 
 /// Windows SDK MakeAppx.exe, newest version first.
 pub fn find_makeappx() -> Option<PathBuf> {
-    let base = PathBuf::from(crate::platform::expand_env("%ProgramFiles(x86)%\\Windows Kits\\10\\bin"));
+    let base = PathBuf::from(crate::platform::expand_env(
+        "%ProgramFiles(x86)%\\Windows Kits\\10\\bin",
+    ));
     let mut versions: Vec<PathBuf> = std::fs::read_dir(&base)
         .ok()?
         .flatten()
@@ -211,16 +249,28 @@ pub fn build(repackaged: &Path, log: &InstallLog) -> Result<MsixResult> {
     };
     let mut files = Vec::new();
     let src = repackaged.join("files");
-    for e in std::fs::read_dir(&src).with_context(|| format!("read {}", src.display()))?.flatten() {
+    for e in std::fs::read_dir(&src)
+        .with_context(|| format!("read {}", src.display()))?
+        .flatten()
+    {
         let var = e.file_name().to_string_lossy().to_string();
         match vfs_folder(&var) {
-            Some(vfs) => copy_tree(&e.path(), &layout.join("VFS").join(vfs), &mut files, &layout)?,
+            Some(vfs) => copy_tree(
+                &e.path(),
+                &layout.join("VFS").join(vfs),
+                &mut files,
+                &layout,
+            )?,
             None => res.skipped.push(var),
         }
     }
-    res.executable = pick_executable(&files, &log.name)
-        .ok_or_else(|| anyhow::anyhow!("the installation contains no program file (.exe) to start"))?;
-    std::fs::write(layout.join("AppxManifest.xml"), manifest(log, &res.executable))?;
+    res.executable = pick_executable(&files, &log.name).ok_or_else(|| {
+        anyhow::anyhow!("the installation contains no program file (.exe) to start")
+    })?;
+    std::fs::write(
+        layout.join("AppxManifest.xml"),
+        manifest(log, &res.executable),
+    )?;
     logo(&layout.join("Assets").join("Square150x150Logo.png"), 150)?;
     logo(&layout.join("Assets").join("Square44x44Logo.png"), 44)?;
     logo(&layout.join("Assets").join("StoreLogo.png"), 50)?;
@@ -228,7 +278,14 @@ pub fn build(repackaged: &Path, log: &InstallLog) -> Result<MsixResult> {
         let out = repackaged.join(format!("{}.msix", identity_name(&log.name)));
         let (code, text) = crate::platform::run_hidden(
             &tool.to_string_lossy(),
-            &["pack", "/d", &layout.to_string_lossy(), "/p", &out.to_string_lossy(), "/o"],
+            &[
+                "pack",
+                "/d",
+                &layout.to_string_lossy(),
+                "/p",
+                &out.to_string_lossy(),
+                "/o",
+            ],
         )?;
         if code == 0 {
             res.package = Some(out);
@@ -259,12 +316,19 @@ program needs them. {skipped}\r\n",
             file = res
                 .package
                 .as_ref()
-                .map(|p| p.file_name().unwrap_or_default().to_string_lossy().to_string())
+                .map(|p| p
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string())
                 .unwrap_or_else(|| "app.msix".into()),
             skipped = if res.skipped.is_empty() {
                 String::new()
             } else {
-                format!("Files in these folders can't be packaged and were left out: {}.", res.skipped.join(", "))
+                format!(
+                    "Files in these folders can't be packaged and were left out: {}.",
+                    res.skipped.join(", ")
+                )
             },
         ),
     )?;
@@ -280,19 +344,31 @@ mod tests {
         assert_eq!(msix_version("24.08"), "24.8.0.0");
         assert_eq!(msix_version("1.2.3.4.5"), "1.2.3.4");
         assert_eq!(msix_version("beta"), "1.0.0.0");
-        assert_eq!(identity_name("Photo Editor (64-bit)"), "Photo-Editor-64-bit");
+        assert_eq!(
+            identity_name("Photo Editor (64-bit)"),
+            "Photo-Editor-64-bit"
+        );
         assert_eq!(identity_name("Q"), "App-Q");
         assert_eq!(publisher_dn("Acme, Inc."), "CN=Acme Inc.");
         assert_eq!(vfs_folder("ProgramFiles"), Some("ProgramFilesX64"));
         assert_eq!(vfs_folder("USERPROFILE"), None);
         let exes = vec![
             ("VFS\\ProgramFilesX64\\Acme\\unins000.exe".to_string(), 900),
-            ("VFS\\ProgramFilesX64\\Acme\\PhotoEditor.exe".to_string(), 500),
+            (
+                "VFS\\ProgramFilesX64\\Acme\\PhotoEditor.exe".to_string(),
+                500,
+            ),
             ("VFS\\ProgramFilesX64\\Acme\\big.exe".to_string(), 800),
             ("VFS\\ProgramFilesX64\\Acme\\data.pak".to_string(), 9000),
         ];
-        assert_eq!(pick_executable(&exes, "Photo Editor 2.1").unwrap(), "VFS\\ProgramFilesX64\\Acme\\PhotoEditor.exe");
-        assert_eq!(pick_executable(&exes, "Something Else").unwrap(), "VFS\\ProgramFilesX64\\Acme\\big.exe");
+        assert_eq!(
+            pick_executable(&exes, "Photo Editor 2.1").unwrap(),
+            "VFS\\ProgramFilesX64\\Acme\\PhotoEditor.exe"
+        );
+        assert_eq!(
+            pick_executable(&exes, "Something Else").unwrap(),
+            "VFS\\ProgramFilesX64\\Acme\\big.exe"
+        );
     }
 
     #[test]
@@ -315,7 +391,17 @@ mod tests {
         assert_eq!(r.skipped, vec!["USERPROFILE"]);
         let m = std::fs::read_to_string(r.layout.join("AppxManifest.xml")).unwrap();
         assert!(m.contains("Version=\"2.0.0.0\"") && m.contains("CN=Acme Corp"));
-        assert!(r.layout.join("Assets").join("Square44x44Logo.png").is_file());
-        assert!(r.layout.join("VFS").join("ProgramFilesX64").join("Acme").join("acme.exe").is_file());
+        assert!(r
+            .layout
+            .join("Assets")
+            .join("Square44x44Logo.png")
+            .is_file());
+        assert!(r
+            .layout
+            .join("VFS")
+            .join("ProgramFilesX64")
+            .join("Acme")
+            .join("acme.exe")
+            .is_file());
     }
 }

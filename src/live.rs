@@ -64,7 +64,11 @@ fn push(shared: &Mutex<Shared>, kind: LiveKind, path: String) {
             return;
         }
     }
-    s.events.push_back(LiveEvent { time: now(), kind, path });
+    s.events.push_back(LiveEvent {
+        time: now(),
+        kind,
+        path,
+    });
     while s.events.len() > KEEP {
         s.events.pop_front();
     }
@@ -73,7 +77,11 @@ fn push(shared: &Mutex<Shared>, kind: LiveKind, path: String) {
 impl LiveWatcher {
     /// Watch folders (with whether to include subfolders) and registry
     /// roots. Paths matching `exclusions` are ignored.
-    pub fn start(folders: &[(PathBuf, bool)], registry: &[String], exclusions: crate::util::Exclusions) -> Self {
+    pub fn start(
+        folders: &[(PathBuf, bool)],
+        registry: &[String],
+        exclusions: crate::util::Exclusions,
+    ) -> Self {
         use notify::{EventKind, RecursiveMode, Watcher};
         let shared = Arc::new(Mutex::new(Shared {
             events: VecDeque::new(),
@@ -100,7 +108,11 @@ impl LiveWatcher {
         .ok()
         .map(|mut w| {
             for (dir, recursive) in folders {
-                let mode = if *recursive { RecursiveMode::Recursive } else { RecursiveMode::NonRecursive };
+                let mode = if *recursive {
+                    RecursiveMode::Recursive
+                } else {
+                    RecursiveMode::NonRecursive
+                };
                 let _ = w.watch(dir, mode);
             }
             w
@@ -136,7 +148,12 @@ impl LiveWatcher {
 
     pub fn counts(&self) -> (u64, u64, u64, u64) {
         let s = self.shared.lock().unwrap();
-        (s.counts.added, s.counts.changed, s.counts.removed, s.counts.registry)
+        (
+            s.counts.added,
+            s.counts.changed,
+            s.counts.removed,
+            s.counts.registry,
+        )
     }
 }
 
@@ -155,7 +172,11 @@ mod tests {
         let d = std::env::temp_dir().join(format!("expunge-live-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(d.join("sub")).unwrap();
-        let w = LiveWatcher::start(&[(d.clone(), true)], &[], crate::util::Exclusions::new(&["*.tmp".to_string()]));
+        let w = LiveWatcher::start(
+            &[(d.clone(), true)],
+            &[],
+            crate::util::Exclusions::new(&["*.tmp".to_string()]),
+        );
         std::thread::sleep(std::time::Duration::from_millis(200));
         std::fs::write(d.join("sub").join("app.dll"), b"x").unwrap();
         std::fs::write(d.join("ignored.tmp"), b"x").unwrap();
@@ -164,7 +185,9 @@ mod tests {
         for _ in 0..40 {
             std::thread::sleep(std::time::Duration::from_millis(50));
             let ev = w.recent(50);
-            if ev.iter().any(|e| e.kind == LiveKind::Added && e.path.ends_with("app.dll"))
+            if ev
+                .iter()
+                .any(|e| e.kind == LiveKind::Added && e.path.ends_with("app.dll"))
                 && ev.iter().any(|e| e.kind == LiveKind::Removed)
             {
                 ok = true;

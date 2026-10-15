@@ -30,7 +30,17 @@ pub struct LogsState {
     /// Show only this group ("" = all).
     pub group_filter: String,
     pub loader: super::Reload<Vec<InstallLog>>,
-    pub repackage_job: Option<Job<Result<(expunge_core::repackage::Summary, Option<expunge_core::msix::MsixResult>), String>>>,
+    pub repackage_job: Option<
+        Job<
+            Result<
+                (
+                    expunge_core::repackage::Summary,
+                    Option<expunge_core::msix::MsixResult>,
+                ),
+                String,
+            >,
+        >,
+    >,
 }
 
 /// Collapsible lists of every change. With `editable`, each entry gets a ✖
@@ -259,8 +269,9 @@ impl App {
         let reg = self.reg.clone();
         self.set_status(tf("Repackaging {name}…", &[("name", log.name.clone())]));
         self.logs.repackage_job = Some(Job::spawn(&self.ctx, move |pr| {
-            let s = expunge_core::repackage::repackage(&log, reg.as_ref(), &dir, &|s| pr.set_phase(s))
-                .map_err(|e| e.to_string())?;
+            let s =
+                expunge_core::repackage::repackage(&log, reg.as_ref(), &dir, &|s| pr.set_phase(s))
+                    .map_err(|e| e.to_string())?;
             let m = if msix {
                 pr.set_phase("MSIX".to_string());
                 Some(expunge_core::msix::build(&s.folder, &log).map_err(|e| e.to_string())?)
@@ -366,8 +377,13 @@ impl App {
                     r.request_focus();
                     self.focus_search = false;
                 }
-                let mut groups: Vec<String> =
-                    self.logs.logs.iter().map(|l| l.group.clone()).filter(|g| !g.is_empty()).collect();
+                let mut groups: Vec<String> = self
+                    .logs
+                    .logs
+                    .iter()
+                    .map(|l| l.group.clone())
+                    .filter(|g| !g.is_empty())
+                    .collect();
                 groups.sort_by_key(|g| g.to_lowercase());
                 groups.dedup();
                 if !groups.is_empty() {
@@ -379,7 +395,11 @@ impl App {
                             self.logs.group_filter.clone()
                         })
                         .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut self.logs.group_filter, String::new(), t("All groups"));
+                            ui.selectable_value(
+                                &mut self.logs.group_filter,
+                                String::new(),
+                                t("All groups"),
+                            );
                             for g in &groups {
                                 ui.selectable_value(&mut self.logs.group_filter, g.clone(), g);
                             }
@@ -444,7 +464,11 @@ impl App {
                                 } else {
                                     log.group.clone()
                                 };
-                                ui.label(RichText::new(title.to_uppercase()).small().color(theme::MUTED));
+                                ui.label(
+                                    RichText::new(title.to_uppercase())
+                                        .small()
+                                        .color(theme::MUTED),
+                                );
                             }
                             let sel = self.logs.selected.as_deref() == Some(&log.id);
                             let fill = if sel {
@@ -471,7 +495,13 @@ impl App {
                                         format!(
                                             "{}  ·  {}",
                                             log.created,
-                                            human_size(self.logs.stats.get(&log.id).map(|s| s.bytes_added).unwrap_or(0))
+                                            human_size(
+                                                self.logs
+                                                    .stats
+                                                    .get(&log.id)
+                                                    .map(|s| s.bytes_added)
+                                                    .unwrap_or(0)
+                                            )
                                         ),
                                     );
                                 })

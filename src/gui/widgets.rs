@@ -28,7 +28,7 @@ pub fn field(ui: &mut egui::Ui, label: &str, value: &str) {
 /// Progress line for a running job.
 pub fn job_progress(ui: &mut egui::Ui, phase: &str, count: u64) {
     ui.horizontal(|ui| {
-        ui.spinner();
+        spinner(ui);
         ui.label(phase);
         if count > 0 {
             small_muted(ui, tf("{n} items", &[("n", count.to_string())]));
@@ -148,4 +148,31 @@ pub fn search_box(ui: &mut egui::Ui, text: &mut String, hint: &str, width: f32) 
         r
     })
     .inner
+}
+
+/// A busy indicator that redraws about 15 times a second instead of every
+/// frame (egui's own spinner repaints continuously, which keeps a CPU core
+/// busy on PCs without a fast GPU).
+pub fn spinner(ui: &mut egui::Ui) -> egui::Response {
+    let size = ui.style().spacing.interact_size.y;
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(size, size), egui::Sense::hover());
+    if ui.is_rect_visible(rect) {
+        let time = ui.input(|i| i.time);
+        let color = ui.visuals().strong_text_color();
+        let radius = rect.height() / 2.0 - 2.0;
+        let n = 24;
+        let start = time * std::f64::consts::TAU;
+        let end = start + 240f64.to_radians() * ((time + 0.5).sin() * 0.5 + 0.6);
+        let pts: Vec<egui::Pos2> = (0..=n)
+            .map(|i| {
+                let a = start + (end - start) * i as f64 / n as f64;
+                rect.center() + radius * egui::vec2(a.cos() as f32, a.sin() as f32)
+            })
+            .collect();
+        ui.painter()
+            .add(egui::Shape::line(pts, egui::Stroke::new(3.0, color)));
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(66));
+    }
+    resp
 }

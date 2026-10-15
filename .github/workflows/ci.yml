@@ -81,7 +81,7 @@ jobs:
             $p = Start-Process ./target/release/expunge.exe -PassThru
             while ($p.MainWindowHandle -eq 0 -and $sw.Elapsed.TotalSeconds -lt 30) { Start-Sleep -Milliseconds 25; $p.Refresh() }
             $startMs = [int]$sw.Elapsed.TotalMilliseconds
-            Start-Sleep -Seconds 5; $p.Refresh()
+            Start-Sleep -Seconds 30; $p.Refresh()
             $cpu0 = $p.TotalProcessorTime.TotalMilliseconds
             Start-Sleep -Seconds 20; $p.Refresh()
             $idle = [Math]::Round(($p.TotalProcessorTime.TotalMilliseconds - $cpu0) / 200 / [Environment]::ProcessorCount, 2)

@@ -472,7 +472,11 @@ impl App {
         (st.store_apps.as_ptr() as usize, st.store_apps.len()).hash(&mut h);
         (st.sizes.len(), st.trust.len(), st.broken.len()).hash(&mut h);
         (self.logs.logs.as_ptr() as usize, self.logs.logs.len()).hash(&mut h);
-        (self.extras.upgrades.as_ptr() as usize, self.extras.upgrades.len()).hash(&mut h);
+        (
+            self.extras.upgrades.as_ptr() as usize,
+            self.extras.upgrades.len(),
+        )
+            .hash(&mut h);
         h.finish()
     }
 
@@ -1190,13 +1194,20 @@ impl App {
             }
         }
         let Some((path, title)) = target else { return };
-        let label = if title.is_empty() { path.clone() } else { format!("{title} ({path})") };
+        let label = if title.is_empty() {
+            path.clone()
+        } else {
+            format!("{title} ({path})")
+        };
         match programs::program_for_path(&self.programs.list, &path) {
             Some((i, _how)) => {
                 let p = self.programs.list[i].clone();
                 self.programs.selected = Some(p.key.clone());
                 self.programs.filter.clear();
-                self.status = tf("{window} belongs to {name}.", &[("window", label), ("name", p.name)]);
+                self.status = tf(
+                    "{window} belongs to {name}.",
+                    &[("window", label), ("name", p.name)],
+                );
             }
             None => {
                 self.status = tf(
@@ -1399,10 +1410,17 @@ impl App {
                         continue;
                     }
                     pr.set_phase(name.clone());
-                    plan.info.push(match expunge_core::scripts::run(&s.post, name, dir) {
-                        Ok(_) => tf("Ran the after-uninstall script for {name}.", &[("name", name.clone())]),
-                        Err(e) => tf("The after-uninstall script for {name} failed: {error}", &[("name", name.clone()), ("error", e)]),
-                    });
+                    plan.info
+                        .push(match expunge_core::scripts::run(&s.post, name, dir) {
+                            Ok(_) => tf(
+                                "Ran the after-uninstall script for {name}.",
+                                &[("name", name.clone())],
+                            ),
+                            Err(e) => tf(
+                                "The after-uninstall script for {name} failed: {error}",
+                                &[("name", name.clone()), ("error", e)],
+                            ),
+                        });
                 }
                 let mut used_logs = Vec::new();
                 let scope = LeftoverScope::default();
@@ -1577,7 +1595,7 @@ impl App {
                             ui.add_space(6.0);
                         } else {
                             ui.horizontal(|ui| {
-                                ui.spinner();
+                                super::widgets::spinner(ui);
                                 ui.label(RichText::new(&p.name).strong());
                             });
                         }

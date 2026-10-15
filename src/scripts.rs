@@ -49,7 +49,10 @@ impl Scripts {
     }
 
     pub fn get(&self, program: &str) -> ProgramScripts {
-        self.programs.get(&key(program)).cloned().unwrap_or_default()
+        self.programs
+            .get(&key(program))
+            .cloned()
+            .unwrap_or_default()
     }
 
     pub fn set(&mut self, program: &str, s: ProgramScripts) {
@@ -84,7 +87,9 @@ pub fn run(script: &str, program: &str, install_dir: &str) -> Result<String, Str
         use std::os::windows::process::CommandExt;
         c.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     }
-    let out = c.output().map_err(|e| format!("could not start the script: {e}"))?;
+    let out = c
+        .output()
+        .map_err(|e| format!("could not start the script: {e}"))?;
     let mut text = String::from_utf8_lossy(&out.stdout).trim().to_string();
     let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
     if !err.is_empty() {
@@ -109,7 +114,13 @@ mod tests {
         let d = std::env::temp_dir().join(format!("expunge-scripts-{}", std::process::id()));
         std::fs::create_dir_all(&d).unwrap();
         let mut s = Scripts::default();
-        s.set("Photo Editor", ProgramScripts { pre: "echo before".into(), post: String::new() });
+        s.set(
+            "Photo Editor",
+            ProgramScripts {
+                pre: "echo before".into(),
+                post: String::new(),
+            },
+        );
         s.save(&d).unwrap();
         let back = Scripts::load(&d);
         assert_eq!(back.get("photo editor").pre, "echo before");
@@ -120,8 +131,13 @@ mod tests {
 
         #[cfg(not(windows))]
         {
-            assert_eq!(run("echo $EXPUNGE_PROGRAM", "Photo Editor", "/x").unwrap(), "Photo Editor");
-            assert!(run("exit 3", "a", "b").unwrap_err().starts_with("exit code 3"));
+            assert_eq!(
+                run("echo $EXPUNGE_PROGRAM", "Photo Editor", "/x").unwrap(),
+                "Photo Editor"
+            );
+            assert!(run("exit 3", "a", "b")
+                .unwrap_err()
+                .starts_with("exit code 3"));
             assert_eq!(run("  ", "a", "b").unwrap(), "");
         }
     }

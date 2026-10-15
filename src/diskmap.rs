@@ -369,7 +369,9 @@ pub fn drives() -> Vec<PathBuf> {
         // Fixed drives, and removable ones with media in them. Asking the
         // drive type first avoids touching empty card readers and
         // disconnected network drives, which can stall.
-        use windows_sys::Win32::Storage::FileSystem::{GetDiskFreeSpaceExW, GetDriveTypeW, GetLogicalDrives};
+        use windows_sys::Win32::Storage::FileSystem::{
+            GetDiskFreeSpaceExW, GetDriveTypeW, GetLogicalDrives,
+        };
         const DRIVE_REMOVABLE: u32 = 2;
         const DRIVE_FIXED: u32 = 3;
         let mask = unsafe { GetLogicalDrives() };

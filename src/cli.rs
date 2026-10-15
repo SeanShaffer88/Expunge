@@ -113,13 +113,19 @@ fn pick_program<'a>(
         return Ok(p);
     }
     let low = name.to_lowercase();
-    let hits: Vec<_> = progs.iter().filter(|p| p.name.to_lowercase().contains(&low)).collect();
+    let hits: Vec<_> = progs
+        .iter()
+        .filter(|p| p.name.to_lowercase().contains(&low))
+        .collect();
     match hits.len() {
         0 => anyhow::bail!("no installed program matches"),
         1 => Ok(hits[0]),
         _ => anyhow::bail!(
             "several programs match: {}",
-            hits.iter().map(|p| p.name.as_str()).collect::<Vec<_>>().join(", ")
+            hits.iter()
+                .map(|p| p.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
         ),
     }
 }
@@ -296,8 +302,15 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
             let logs: Vec<_> = store()?
                 .list_logs()
                 .into_iter()
-                .filter(|l| group.as_ref().is_none_or(|g| l.group.eq_ignore_ascii_case(g)))
-                .filter(|l| tag.as_ref().is_none_or(|t| l.tags.iter().any(|x| x.eq_ignore_ascii_case(t))))
+                .filter(|l| {
+                    group
+                        .as_ref()
+                        .is_none_or(|g| l.group.eq_ignore_ascii_case(g))
+                })
+                .filter(|l| {
+                    tag.as_ref()
+                        .is_none_or(|t| l.tags.iter().any(|x| x.eq_ignore_ascii_case(t)))
+                })
                 .collect();
             if has(&args, "--json") {
                 let items: Vec<_> = logs
@@ -335,7 +348,9 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
             }
         }
         "tag" => {
-            let id = args.get(1).ok_or_else(|| anyhow::anyhow!("usage: expunge tag <log-id> [--group G] [--tags a,b]"))?;
+            let id = args.get(1).ok_or_else(|| {
+                anyhow::anyhow!("usage: expunge tag <log-id> [--group G] [--tags a,b]")
+            })?;
             let st = store()?;
             let mut log = st.load_log(id)?;
             if let Some(g) = arg_value(&args, "--group") {
@@ -345,7 +360,12 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                 log.tags = expunge_core::model::parse_tags(&t);
             }
             st.save_log(&log)?;
-            println!("{}: group \"{}\", tags [{}]", log.name, log.group, log.tags.join(", "));
+            println!(
+                "{}: group \"{}\", tags [{}]",
+                log.name,
+                log.group,
+                log.tags.join(", ")
+            );
         }
         "updates" => {
             let list = expunge_core::winget::list_upgrades()?;
@@ -411,8 +431,14 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
             if has(&args, "--msix") {
                 let m = expunge_core::msix::build(&s.folder, &log)?;
                 match &m.package {
-                    Some(p) => println!("MSIX package: {} (unsigned; see MSIX-README.txt)", p.display()),
-                    None => println!("MSIX layout: {} (pack with MakeAppx; see MSIX-README.txt)", m.layout.display()),
+                    Some(p) => println!(
+                        "MSIX package: {} (unsigned; see MSIX-README.txt)",
+                        p.display()
+                    ),
+                    None => println!(
+                        "MSIX layout: {} (pack with MakeAppx; see MSIX-README.txt)",
+                        m.layout.display()
+                    ),
                 }
             }
             if s.missing > 0 {
@@ -646,15 +672,26 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
             }
         }
         "uninstall" => {
-            let names: Vec<&String> = args[1..].iter().filter(|a| !a.starts_with("--")).collect::<Vec<_>>();
+            let names: Vec<&String> = args[1..]
+                .iter()
+                .filter(|a| !a.starts_with("--"))
+                .collect::<Vec<_>>();
             let names: Vec<String> = {
                 // Drop values that belong to flags.
                 let mut out = Vec::new();
                 let mut skip = false;
                 for a in &args[1..] {
-                    if skip { skip = false; continue; }
-                    if a == "--leftovers" { skip = true; continue; }
-                    if !a.starts_with("--") { out.push(a.clone()); }
+                    if skip {
+                        skip = false;
+                        continue;
+                    }
+                    if a == "--leftovers" {
+                        skip = true;
+                        continue;
+                    }
+                    if !a.starts_with("--") {
+                        out.push(a.clone());
+                    }
                 }
                 let _ = names;
                 out
@@ -685,7 +722,11 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                     p.uninstall_command(false)
                 };
                 let Some(cmd) = cmd else {
-                    eprintln!("{}: no {}uninstaller available", p.name, if silent_mode { "silent " } else { "" });
+                    eprintln!(
+                        "{}: no {}uninstaller available",
+                        p.name,
+                        if silent_mode { "silent " } else { "" }
+                    );
                     failures += 1;
                     continue;
                 };
@@ -707,7 +748,10 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                 }
                 std::thread::sleep(std::time::Duration::from_secs(2));
                 if reg.exists(&p.key) {
-                    eprintln!("  {} is still installed; skipping the leftover scan", p.name);
+                    eprintln!(
+                        "  {} is still installed; skipping the leftover scan",
+                        p.name
+                    );
                     failures += 1;
                     continue;
                 }
@@ -729,11 +773,16 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                     println!("  no leftovers found");
                     continue;
                 }
-                let mut w = BackupWriter::new(&st.backups_dir(), &format!("Leftovers of {}", p.name))?;
-                let results = execute_plan(&plan, reg.as_ref(), Some(&mut w), &ExecOptions::default());
+                let mut w =
+                    BackupWriter::new(&st.backups_dir(), &format!("Leftovers of {}", p.name))?;
+                let results =
+                    execute_plan(&plan, reg.as_ref(), Some(&mut w), &ExecOptions::default());
                 let b = w.finish()?;
                 let ok = results.iter().filter(|r| r.ok).count();
-                println!("  removed {ok} leftovers (backup {}; restore with: expunge restore {})", b.id, b.id);
+                println!(
+                    "  removed {ok} leftovers (backup {}; restore with: expunge restore {})",
+                    b.id, b.id
+                );
                 if ok < results.len() {
                     failures += 1;
                 }
@@ -752,14 +801,26 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                         "{:<20} {:>10}  {}{}",
                         c.id,
                         human_size(r.bytes),
-                        if c.default_on && !expunge_core::cleaner::is_advanced(c.id) { "default" } else { "" },
-                        if c.needs_admin { " (administrator)" } else { "" }
+                        if c.default_on && !expunge_core::cleaner::is_advanced(c.id) {
+                            "default"
+                        } else {
+                            ""
+                        },
+                        if c.needs_admin {
+                            " (administrator)"
+                        } else {
+                            ""
+                        }
                     );
                 }
                 return Ok(0);
             }
             let wanted: Vec<String> = match arg_value(&args, "--categories") {
-                Some(v) => v.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
+                Some(v) => v
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect(),
                 None => cats
                     .iter()
                     .filter(|c| c.default_on && !expunge_core::cleaner::is_advanced(c.id))
@@ -789,7 +850,11 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
             }
             if has(&args, "--scheduled") {
                 // Leave a trace for the user in the data folder.
-                let line = format!("{}  cleaned {}\n", expunge_core::util::now_string(), human_size(total));
+                let line = format!(
+                    "{}  cleaned {}\n",
+                    expunge_core::util::now_string(),
+                    human_size(total)
+                );
                 let path = st_log_path()?;
                 let mut old = std::fs::read_to_string(&path).unwrap_or_default();
                 old.push_str(&line);
@@ -811,10 +876,16 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                 "daily" => expunge_core::schedule::Frequency::Daily,
                 "weekly" => expunge_core::schedule::Frequency::Weekly,
                 "monthly" => expunge_core::schedule::Frequency::Monthly,
-                _ => anyhow::bail!("usage: expunge schedule-clean daily|weekly|monthly|off [--categories a,b]"),
+                _ => anyhow::bail!(
+                    "usage: expunge schedule-clean daily|weekly|monthly|off [--categories a,b]"
+                ),
             };
             let cats: Vec<String> = match arg_value(&args, "--categories") {
-                Some(v) => v.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
+                Some(v) => v
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect(),
                 None => expunge_core::cleaner::categories()
                     .iter()
                     .filter(|c| c.default_on && !expunge_core::cleaner::is_advanced(c.id))
@@ -829,7 +900,9 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
             let entries = expunge_core::startup::list_startup(reg.as_ref());
             match args.get(1).map(|s| s.as_str()) {
                 Some(op @ ("enable" | "disable")) => {
-                    let name = args.get(2).ok_or_else(|| anyhow::anyhow!("name the startup program"))?;
+                    let name = args
+                        .get(2)
+                        .ok_or_else(|| anyhow::anyhow!("name the startup program"))?;
                     let e = entries
                         .iter()
                         .find(|e| e.name.eq_ignore_ascii_case(name))
@@ -838,8 +911,16 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                         anyhow::bail!("{} is needed by Windows, security software or hardware and can't be disabled", e.name);
                     }
                     let st = store()?;
-                    let mut w = BackupWriter::new(&st.backups_dir(), &format!("Startup: {} {}", op, e.name))?;
-                    expunge_core::startup::set_enabled(reg.as_ref(), e, op == "enable", Some(&mut w))?;
+                    let mut w = BackupWriter::new(
+                        &st.backups_dir(),
+                        &format!("Startup: {} {}", op, e.name),
+                    )?;
+                    expunge_core::startup::set_enabled(
+                        reg.as_ref(),
+                        e,
+                        op == "enable",
+                        Some(&mut w),
+                    )?;
                     w.finish()?;
                     println!("{} {}d.", e.name, op);
                 }
@@ -862,7 +943,9 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                             let impact = boot
                                 .as_ref()
                                 .and_then(|b| b.impact_of(&e.command))
-                                .map(|i| format!("  [impact: {}, {} ms]", i.level().label(), i.avg_ms))
+                                .map(|i| {
+                                    format!("  [impact: {}, {} ms]", i.level().label(), i.avg_ms)
+                                })
                                 .unwrap_or_default();
                             println!(
                                 "[{}] {}{}{impact}  {}",
@@ -881,8 +964,14 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                 let mut v = Vec::new();
                 let mut skip = false;
                 for a in &args[1..] {
-                    if skip { skip = false; continue; }
-                    if a == "--vt-key" { skip = true; continue; }
+                    if skip {
+                        skip = false;
+                        continue;
+                    }
+                    if a == "--vt-key" {
+                        skip = true;
+                        continue;
+                    }
                     v.push(a);
                 }
                 v
@@ -890,14 +979,21 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
             if files.is_empty() {
                 anyhow::bail!("name at least one file");
             }
-            let key = arg_value(&args, "--vt-key").unwrap_or_else(|| store().map(|s| s.load_settings().virustotal_key).unwrap_or_default());
+            let key = arg_value(&args, "--vt-key").unwrap_or_else(|| {
+                store()
+                    .map(|s| s.load_settings().virustotal_key)
+                    .unwrap_or_default()
+            });
             let mut bad = false;
             for f in files {
                 let hash = expunge_core::reputation::sha256_file(std::path::Path::new(f))?;
                 match expunge_core::reputation::check(&hash, Some(&key)) {
                     Ok(v) => {
                         bad |= v.is_bad();
-                        println!("{f}\n  sha256 {hash}\n  {v:?}\n  {}", expunge_core::reputation::virustotal_url(&hash));
+                        println!(
+                            "{f}\n  sha256 {hash}\n  {v:?}\n  {}",
+                            expunge_core::reputation::virustotal_url(&hash)
+                        );
                     }
                     Err(e) => println!("{f}\n  sha256 {hash}\n  lookup failed: {e}"),
                 }
@@ -975,7 +1071,9 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
             }
         }
         "check-clean" => {
-            let id = args.get(1).ok_or_else(|| anyhow::anyhow!("usage: expunge check-clean <log-id>"))?;
+            let id = args
+                .get(1)
+                .ok_or_else(|| anyhow::anyhow!("usage: expunge check-clean <log-id>"))?;
             let log = store()?.load_log(id)?;
             let left = residue(&log.changes, reg.as_ref());
             if left.items.is_empty() {

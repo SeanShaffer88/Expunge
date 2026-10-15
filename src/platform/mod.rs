@@ -359,7 +359,10 @@ pub fn resolve_shortcut(path: &str) -> String {
             "(New-Object -ComObject WScript.Shell).CreateShortcut('{}').TargetPath",
             path.replace('\'', "''")
         );
-        if let Ok((0, out)) = run_hidden("powershell", &["-NoProfile", "-NonInteractive", "-Command", &script]) {
+        if let Ok((0, out)) = run_hidden(
+            "powershell",
+            &["-NoProfile", "-NonInteractive", "-Command", &script],
+        ) {
             let out = out.trim();
             if !out.is_empty() {
                 return out.to_string();

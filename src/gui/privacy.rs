@@ -537,7 +537,7 @@ impl App {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if let Some((j, job)) = &self.privacy.repair_job {
                         if *j == i {
-                            ui.spinner();
+                            super::widgets::spinner(ui);
                             ui.ctx()
                                 .request_repaint_after(std::time::Duration::from_millis(500));
                             let _ = job;
