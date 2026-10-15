@@ -984,3 +984,305 @@ pub fn drive_size(root: &str) -> Option<u64> {
     let (mut a, mut t, mut f) = (0u64, 0u64, 0u64);
     unsafe { (GetDiskFreeSpaceExW(w.as_ptr(), &mut a, &mut t, &mut f) != 0).then_some(t) }
 }
+
+// ---------------------------------------------------------------------------
+// Files held open: Restart Manager
+// ---------------------------------------------------------------------------
+
+use windows_sys::Win32::System::RestartManager::{
+    RmEndSession, RmGetList, RmRegisterResources, RmRestart, RmShutdown, RmStartSession,
+    RM_PROCESS_INFO, RM_UNIQUE_PROCESS,
+};
+
+const ERROR_MORE_DATA: u32 = 234;
+const RM_SESSION_KEY_LEN: usize = 32;
+const RM_FORCE_SHUTDOWN: u32 = 0x1;
+// RM_APP_TYPE values.
+const RM_SERVICE: i32 = 3;
+const RM_EXPLORER: i32 = 4;
+const RM_CRITICAL: i32 = 1000;
+/// Paths registered with one Restart Manager session at most.
+const RM_MAX_FILES: usize = 4096;
+
+/// A Restart Manager session, ended when dropped.
+struct RmSession(u32);
+
+impl RmSession {
+    fn start() -> Option<Self> {
+        let mut handle = 0u32;
+        let mut key = [0u16; RM_SESSION_KEY_LEN + 1];
+        let rc = unsafe { RmStartSession(&mut handle, 0, key.as_mut_ptr()) };
+        (rc == 0).then_some(RmSession(handle))
+    }
+
+    fn register_files(&self, paths: &[&Path]) -> bool {
+        let wides: Vec<Vec<u16>> = paths
+            .iter()
+            .take(RM_MAX_FILES)
+            .map(|p| wide(&p.to_string_lossy()))
+            .collect();
+        let ptrs: Vec<*const u16> = wides.iter().map(|w| w.as_ptr()).collect();
+        let rc = unsafe {
+            RmRegisterResources(
+                self.0,
+                ptrs.len() as u32,
+                ptrs.as_ptr(),
+                0,
+                std::ptr::null(),
+                0,
+                std::ptr::null(),
+            )
+        };
+        rc == 0
+    }
+
+    fn list(&self) -> Vec<RM_PROCESS_INFO> {
+        let mut infos: Vec<RM_PROCESS_INFO> = Vec::new();
+        // The list can grow between calls; retry a few times.
+        for _ in 0..4 {
+            let mut needed = 0u32;
+            let mut count = infos.capacity() as u32;
+            let mut reasons = 0u32;
+            let rc = unsafe {
+                RmGetList(
+                    self.0,
+                    &mut needed,
+                    &mut count,
+                    infos.as_mut_ptr(),
+                    &mut reasons,
+                )
+            };
+            match rc {
+                0 => {
+                    unsafe { infos.set_len(count as usize) };
+                    return infos;
+                }
+                ERROR_MORE_DATA => {
+                    infos = Vec::with_capacity(needed as usize + 4);
+                }
+                _ => return Vec::new(),
+            }
+        }
+        Vec::new()
+    }
+}
+
+impl Drop for RmSession {
+    fn drop(&mut self) {
+        unsafe { RmEndSession(self.0) };
+    }
+}
+
+fn from_wide_buf(buf: &[u16]) -> String {
+    let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+    String::from_utf16_lossy(&buf[..end])
+}
+
+fn holder_from(info: &RM_PROCESS_INFO) -> crate::locks::Holder {
+    use crate::locks::{Holder, HolderKind};
+    let name = from_wide_buf(&info.strAppName);
+    let service = from_wide_buf(&info.strServiceShortName);
+    let kind = match info.ApplicationType {
+        RM_EXPLORER => HolderKind::Explorer,
+        RM_SERVICE => HolderKind::Service,
+        RM_CRITICAL => HolderKind::System,
+        _ => HolderKind::Program,
+    };
+    Holder {
+        pid: info.Process.dwProcessId,
+        name,
+        service: (!service.is_empty()).then_some(service),
+        kind,
+    }
+}
+
+pub fn file_holders(paths: &[&Path]) -> Vec<crate::locks::Holder> {
+    let Some(s) = RmSession::start() else {
+        return Vec::new();
+    };
+    if !s.register_files(paths) {
+        return Vec::new();
+    }
+    s.list().iter().map(holder_from).collect()
+}
+
+/// Windows Explorer shut down through the Restart Manager; restarted on drop.
+pub struct ExplorerPause {
+    session: RmSession,
+}
+
+impl Drop for ExplorerPause {
+    fn drop(&mut self) {
+        let rc = unsafe { RmRestart(self.session.0, 0, None) };
+        if rc != 0 {
+            // Restart Manager couldn't bring it back; start it ourselves so
+            // the user isn't left without a taskbar.
+            let _ = std::process::Command::new(expand_windir("explorer.exe")).spawn();
+        }
+    }
+}
+
+fn expand_windir(file: &str) -> String {
+    match std::env::var("SystemRoot") {
+        Ok(root) => format!("{root}\\{file}"),
+        Err(_) => file.to_string(),
+    }
+}
+
+pub fn pause_explorer(paths: &[&Path]) -> Option<ExplorerPause> {
+    let query = RmSession::start()?;
+    if !query.register_files(paths) {
+        return None;
+    }
+    let explorers: Vec<RM_UNIQUE_PROCESS> = query
+        .list()
+        .iter()
+        .filter(|i| i.ApplicationType == RM_EXPLORER)
+        .map(|i| i.Process)
+        .collect();
+    drop(query);
+    if explorers.is_empty() {
+        return None;
+    }
+    // A second session that knows only Explorer, so nothing else that has
+    // the files open is ever shut down.
+    let session = RmSession::start()?;
+    let rc = unsafe {
+        RmRegisterResources(
+            session.0,
+            0,
+            std::ptr::null(),
+            explorers.len() as u32,
+            explorers.as_ptr(),
+            0,
+            std::ptr::null(),
+        )
+    };
+    if rc != 0 {
+        return None;
+    }
+    let rc = unsafe { RmShutdown(session.0, RM_FORCE_SHUTDOWN, None) };
+    if rc != 0 {
+        // Partly shut down is possible: restart whatever did close.
+        unsafe { RmRestart(session.0, 0, None) };
+        return None;
+    }
+    Some(ExplorerPause { session })
+}
+
+// ---------------------------------------------------------------------------
+// Services: stop and wait
+// ---------------------------------------------------------------------------
+
+use windows_sys::Win32::System::Services::{
+    CloseServiceHandle, ControlService, OpenSCManagerW, OpenServiceW, QueryServiceStatusEx,
+    SC_HANDLE, SERVICE_STATUS, SERVICE_STATUS_PROCESS,
+};
+
+const SC_MANAGER_CONNECT: u32 = 0x0001;
+const SERVICE_QUERY_STATUS: u32 = 0x0004;
+const SERVICE_STOP_ACCESS: u32 = 0x0020;
+const SERVICE_CONTROL_STOP: u32 = 1;
+const SC_STATUS_PROCESS_INFO: i32 = 0;
+const STATE_STOPPED: u32 = 1;
+const WIN32_OWN_PROCESS: u32 = 0x10;
+const ERROR_SERVICE_DOES_NOT_EXIST: u32 = 1060;
+
+struct ScHandle(SC_HANDLE);
+
+impl ScHandle {
+    fn new(h: SC_HANDLE) -> Option<Self> {
+        (!h.is_null()).then_some(ScHandle(h))
+    }
+}
+
+impl Drop for ScHandle {
+    fn drop(&mut self) {
+        unsafe { CloseServiceHandle(self.0) };
+    }
+}
+
+fn service_status(svc: &ScHandle) -> Result<SERVICE_STATUS_PROCESS> {
+    let mut st: SERVICE_STATUS_PROCESS = unsafe { std::mem::zeroed() };
+    let mut needed = 0u32;
+    let ok = unsafe {
+        QueryServiceStatusEx(
+            svc.0,
+            SC_STATUS_PROCESS_INFO as _,
+            &mut st as *mut _ as *mut u8,
+            std::mem::size_of::<SERVICE_STATUS_PROCESS>() as u32,
+            &mut needed,
+        )
+    };
+    if ok == 0 {
+        return Err(anyhow!(
+            "query service status: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    Ok(st)
+}
+
+pub fn stop_service(name: &str, timeout: std::time::Duration) -> Result<crate::locks::ServiceStop> {
+    use crate::locks::ServiceStop;
+    use std::time::{Duration, Instant};
+    let scm = ScHandle::new(unsafe {
+        OpenSCManagerW(std::ptr::null(), std::ptr::null(), SC_MANAGER_CONNECT)
+    })
+    .ok_or_else(|| anyhow!("open service manager: {}", std::io::Error::last_os_error()))?;
+    let wname = wide(name);
+    let Some(svc) = ScHandle::new(unsafe {
+        OpenServiceW(
+            scm.0,
+            wname.as_ptr(),
+            SERVICE_STOP_ACCESS | SERVICE_QUERY_STATUS,
+        )
+    }) else {
+        let err = unsafe { GetLastError() };
+        if err == ERROR_SERVICE_DOES_NOT_EXIST {
+            return Ok(ServiceStop::NotFound);
+        }
+        return Err(anyhow!(
+            "open service {name}: {}",
+            std::io::Error::from_raw_os_error(err as i32)
+        ));
+    };
+    let first = service_status(&svc)?;
+    if first.dwCurrentState == STATE_STOPPED {
+        return Ok(ServiceStop::WasNotRunning);
+    }
+    let pid = first.dwProcessId;
+    let own_process = first.dwServiceType & WIN32_OWN_PROCESS != 0;
+    let deadline = Instant::now() + timeout;
+    let mut asked = false;
+    loop {
+        if !asked {
+            let mut st: SERVICE_STATUS = unsafe { std::mem::zeroed() };
+            // Refused while starting or already stopping: keep polling and
+            // ask again, the service may accept it shortly.
+            asked = unsafe { ControlService(svc.0, SERVICE_CONTROL_STOP, &mut st) } != 0;
+        }
+        let st = service_status(&svc)?;
+        if st.dwCurrentState == STATE_STOPPED {
+            break;
+        }
+        if Instant::now() >= deadline {
+            anyhow::bail!("{name} did not stop within {} s", timeout.as_secs());
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    // Stopped is reported before the process has finished exiting; its
+    // open files are released only when it has.
+    if own_process && pid != 0 {
+        while process_alive(pid) {
+            if Instant::now() >= deadline {
+                anyhow::bail!(
+                    "{name} stopped, but its process {pid} was still running after {} s",
+                    timeout.as_secs()
+                );
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
+    Ok(ServiceStop::Stopped)
+}

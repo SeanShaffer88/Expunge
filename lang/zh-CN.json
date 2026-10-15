@@ -1486,5 +1486,7 @@
   "{title}, started {created}, was interrupted, perhaps by a crash or a power cut. Part of it may already be done. Everything it changed so far is in its backup.": "{title}（开始于 {created}）被中断，可能是由于崩溃或断电。部分操作可能已经完成。到目前为止更改的所有内容都在其备份中。",
   "Undo what was done": "撤销已完成的操作",
   "Keep as it is": "保持现状",
-  "Keep the changes; the backup stays on the Backups page.": "保留更改；备份仍保留在“备份”页面中。"
+  "Keep the changes; the backup stays on the Backups page.": "保留更改；备份仍保留在“备份”页面中。",
+  "Restart Windows Explorer if it is using the program's files": "如果资源管理器正在使用该程序的文件，则重启资源管理器",
+  "Shell extensions stay loaded in Explorer until it restarts. Restarting it during the removal deletes them at once instead of at the next restart. The taskbar disappears for a moment.": "Shell 扩展会一直加载在资源管理器中，直到它重启。在删除过程中重启它，可以立即删除这些文件，而不必等到下次重启电脑。任务栏会短暂消失。"
 }

@@ -33,7 +33,7 @@ USAGE:
                                             each program's digital signature)
   expunge verify <file>                     Check a file's digital signature
                                             (exit 2 if unsigned or invalid)
-  expunge revert <log-id> [--dry-run] [--remove-unlogged] [--no-backup] [--recycle] [--keep-log]
+  expunge revert <log-id> [--dry-run] [--remove-unlogged] [--no-backup] [--recycle] [--restart-explorer] [--keep-log]
                                             Undo an installation precisely
   expunge export <log-id> <html|json|reg|ps1|xml> <output-file>
   expunge repackage <log-id> <folder> [--no-setup]
@@ -1265,6 +1265,7 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                 remove_unlogged: has(&args, "--remove-unlogged"),
                 dry_run: has(&args, "--dry-run"),
                 use_recycle_bin: has(&args, "--recycle"),
+                restart_explorer: has(&args, "--restart-explorer"),
             };
             let mut writer = if has(&args, "--no-backup") || opts.dry_run {
                 None

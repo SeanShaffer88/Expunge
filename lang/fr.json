@@ -1486,5 +1486,7 @@
   "{title}, started {created}, was interrupted, perhaps by a crash or a power cut. Part of it may already be done. Everything it changed so far is in its backup.": "{title}, lancée le {created}, a été interrompue, peut-être par un plantage ou une coupure de courant. Une partie est peut-être déjà faite. Tout ce qu'elle a modifié jusqu'ici est dans sa sauvegarde.",
   "Undo what was done": "Annuler ce qui a été fait",
   "Keep as it is": "Laisser tel quel",
-  "Keep the changes; the backup stays on the Backups page.": "Conserver les modifications ; la sauvegarde reste sur la page Sauvegardes."
+  "Keep the changes; the backup stays on the Backups page.": "Conserver les modifications ; la sauvegarde reste sur la page Sauvegardes.",
+  "Restart Windows Explorer if it is using the program's files": "Redémarrer l'Explorateur Windows s'il utilise des fichiers du programme",
+  "Shell extensions stay loaded in Explorer until it restarts. Restarting it during the removal deletes them at once instead of at the next restart. The taskbar disappears for a moment.": "Les extensions du shell restent chargées dans l'Explorateur jusqu'à son redémarrage. Le redémarrer pendant la suppression les efface immédiatement au lieu d'attendre le prochain redémarrage. La barre des tâches disparaît un instant."
 }

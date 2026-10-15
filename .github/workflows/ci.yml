@@ -23,6 +23,8 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
+      - name: Build the locked-file test helper
+        run: cargo build --example lockholder --locked
       - name: Unit tests
         shell: pwsh
         run: |

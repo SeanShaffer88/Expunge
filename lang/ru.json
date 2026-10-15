@@ -1486,5 +1486,7 @@
   "{title}, started {created}, was interrupted, perhaps by a crash or a power cut. Part of it may already be done. Everything it changed so far is in its backup.": "{title}, начатая {created}, была прервана — возможно, сбоем или отключением питания. Часть уже могла быть выполнена. Всё, что она успела изменить, есть в её резервной копии.",
   "Undo what was done": "Отменить сделанное",
   "Keep as it is": "Оставить как есть",
-  "Keep the changes; the backup stays on the Backups page.": "Сохранить изменения; резервная копия останется на странице «Резервные копии»."
+  "Keep the changes; the backup stays on the Backups page.": "Сохранить изменения; резервная копия останется на странице «Резервные копии».",
+  "Restart Windows Explorer if it is using the program's files": "Перезапускать Проводник, если он использует файлы программы",
+  "Shell extensions stay loaded in Explorer until it restarts. Restarting it during the removal deletes them at once instead of at the next restart. The taskbar disappears for a moment.": "Расширения оболочки остаются загруженными в Проводнике до его перезапуска. Перезапуск во время удаления позволяет удалить их сразу, а не после перезагрузки. Панель задач на мгновение исчезнет."
 }

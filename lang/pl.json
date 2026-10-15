@@ -1491,5 +1491,7 @@
   "{title}, started {created}, was interrupted, perhaps by a crash or a power cut. Part of it may already be done. Everything it changed so far is in its backup.": "{title}, rozpoczęta {created}, została przerwana, być może przez awarię lub zanik zasilania. Część mogła już zostać wykonana. Wszystko, co dotąd zmieniła, jest w jej kopii zapasowej.",
   "Undo what was done": "Cofnij to, co zostało zrobione",
   "Keep as it is": "Zostaw tak",
-  "Keep the changes; the backup stays on the Backups page.": "Zachowaj zmiany; kopia zapasowa pozostaje na stronie Kopie zapasowe."
+  "Keep the changes; the backup stays on the Backups page.": "Zachowaj zmiany; kopia zapasowa pozostaje na stronie Kopie zapasowe.",
+  "Restart Windows Explorer if it is using the program's files": "Uruchom ponownie Eksplorator Windows, jeśli używa plików programu",
+  "Shell extensions stay loaded in Explorer until it restarts. Restarting it during the removal deletes them at once instead of at the next restart. The taskbar disappears for a moment.": "Rozszerzenia powłoki pozostają załadowane w Eksploratorze do jego ponownego uruchomienia. Ponowne uruchomienie podczas usuwania kasuje je od razu zamiast przy następnym restarcie. Pasek zadań na chwilę zniknie."
 }

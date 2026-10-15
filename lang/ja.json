@@ -1486,5 +1486,7 @@
   "{title}, started {created}, was interrupted, perhaps by a crash or a power cut. Part of it may already be done. Everything it changed so far is in its backup.": "{title} ({created} 開始) は、クラッシュや停電などで中断されました。一部はすでに完了している可能性があります。これまでに変更された内容はすべてバックアップにあります。",
   "Undo what was done": "実行済みの内容を元に戻す",
   "Keep as it is": "このままにする",
-  "Keep the changes; the backup stays on the Backups page.": "変更を保持します。バックアップは [バックアップ] ページに残ります。"
+  "Keep the changes; the backup stays on the Backups page.": "変更を保持します。バックアップは [バックアップ] ページに残ります。",
+  "Restart Windows Explorer if it is using the program's files": "プログラムのファイルを使用中の場合はエクスプローラーを再起動する",
+  "Shell extensions stay loaded in Explorer until it restarts. Restarting it during the removal deletes them at once instead of at the next restart. The taskbar disappears for a moment.": "シェル拡張はエクスプローラーが再起動するまで読み込まれたままです。削除中に再起動すると、次回の再起動を待たずにすぐ削除できます。タスクバーが一瞬消えます。"
 }

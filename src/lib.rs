@@ -21,6 +21,7 @@ pub mod features;
 pub mod i18n;
 pub mod leftovers;
 pub mod live;
+pub mod locks;
 pub mod merge;
 pub mod model;
 pub mod nlquery;
@@ -51,6 +52,8 @@ pub mod trust;
 pub mod usage;
 pub mod util;
 
+#[cfg(all(test, windows))]
+mod lock_tests;
 #[cfg(test)]
 mod stress_tests;
 

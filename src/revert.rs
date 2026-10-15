@@ -162,7 +162,14 @@ pub struct ExecOptions {
     /// Send deleted files and folders to the Recycle Bin (in addition to the
     /// backup) instead of deleting them permanently.
     pub use_recycle_bin: bool,
+    /// Close Windows Explorer while the removal runs if it has any of the
+    /// program's DLLs loaded (shell extensions), and start it again after,
+    /// so those files are deleted now instead of at the next restart.
+    pub restart_explorer: bool,
 }
+
+/// How long a service gets to stop before its removal goes ahead anyway.
+const SERVICE_STOP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 const SERVICES_PREFIX: &str = "hklm\\system\\currentcontrolset\\services\\";
 
@@ -570,6 +577,26 @@ pub fn execute_plan_with(
                 _ => std::cmp::Ordering::Equal,
             })
     });
+    // Explorer is closed once for the whole removal, not per file.
+    let explorer = if opts.restart_explorer && !opts.dry_run {
+        let modules = crate::locks::module_paths(
+            items
+                .iter()
+                .filter(|i| refusal(&i.action, protected).is_none())
+                .map(|i| &i.action),
+        );
+        let refs: Vec<&Path> = modules.iter().map(|p| p.as_path()).collect();
+        let pause = crate::locks::pause_explorer(&refs);
+        if pause.is_some() {
+            results.push(ActionResult::ok(
+                "Close Windows Explorer",
+                "it had the program's shell extensions loaded; it starts again when the removal is done",
+            ));
+        }
+        pause
+    } else {
+        None
+    };
     for item in items {
         let desc = item.action.describe();
         // Refused whatever the item's origin, before anything is touched.
@@ -587,6 +614,7 @@ pub fn execute_plan_with(
             Err(e) => ActionResult::err(desc, format!("{e:#}")),
         });
     }
+    drop(explorer); // starts Explorer again
     results
 }
 
@@ -603,10 +631,18 @@ fn run_action(
             if let Some(b) = backup.as_deref_mut() {
                 b.add_tree(reg, &key)?;
             }
-            let _ = platform::run_hidden("sc.exe", &["stop", name]);
+            // Wait until it has really stopped, so its files are released
+            // before the file deletions that follow.
+            let stop = crate::locks::stop_service(name, SERVICE_STOP_TIMEOUT);
             let (code, out) = platform::run_hidden("sc.exe", &["delete", name])?;
             if code == 0 {
-                Ok("stopped and deleted".into())
+                Ok(match stop {
+                    Ok(crate::locks::ServiceStop::Stopped) => "stopped and deleted".into(),
+                    Ok(_) => "deleted (it was not running)".into(),
+                    Err(e) => format!(
+                        "deleted, but it did not stop ({e:#}); Windows removes it at the next restart"
+                    ),
+                })
             } else if code == 1060 {
                 Ok("already gone".into())
             } else {
@@ -643,10 +679,16 @@ fn run_action(
             }
             match platform::delete_file(p) {
                 Ok(()) => Ok("deleted".into()),
-                Err(e) => match platform::delete_on_reboot(p) {
-                    Ok(()) => Ok(format!("in use ({e}); will be deleted at next restart")),
-                    Err(_) => Err(e.into()),
-                },
+                Err(e) => {
+                    let why = match crate::locks::describe(&crate::locks::file_holders(&[p])) {
+                        Some(who) => format!("in use, {who}"),
+                        None => format!("in use ({e})"),
+                    };
+                    match platform::delete_on_reboot(p) {
+                        Ok(()) => Ok(format!("{why}; will be deleted at next restart")),
+                        Err(_) => Err(anyhow::anyhow!("{why}: {e}")),
+                    }
+                }
             }
         }
         Action::DeleteDir { path } => {
@@ -705,7 +747,7 @@ fn run_action(
                 Ok(()) => Ok("deleted".into()),
                 Err(e) => {
                     // Something is locked: remove what we can, schedule the rest.
-                    let mut scheduled = 0;
+                    let mut scheduled: Vec<std::path::PathBuf> = Vec::new();
                     for f in walkdir::WalkDir::new(p)
                         .contents_first(true)
                         .into_iter()
@@ -718,12 +760,21 @@ fn run_action(
                             platform::delete_file(fp).is_ok()
                         };
                         if !gone && platform::delete_on_reboot(fp).is_ok() {
-                            scheduled += 1;
+                            scheduled.push(fp.to_path_buf());
                         }
                     }
-                    if scheduled > 0 {
+                    if !scheduled.is_empty() {
+                        let files: Vec<&Path> = scheduled
+                            .iter()
+                            .filter(|p| p.is_file())
+                            .map(|p| p.as_path())
+                            .collect();
+                        let who = crate::locks::describe(&crate::locks::file_holders(&files))
+                            .map(|w| format!(" ({w})"))
+                            .unwrap_or_default();
                         Ok(format!(
-                            "{scheduled} locked items will be deleted at next restart"
+                            "{} locked items{who} will be deleted at next restart",
+                            scheduled.len()
                         ))
                     } else if p.exists() {
                         Err(e.into())
@@ -1262,6 +1313,7 @@ mod protected_tests {
                 remove_unlogged: true,
                 dry_run,
                 use_recycle_bin: false,
+                restart_explorer: false,
             };
             let results = execute_plan_with(&plan_of(actions.clone()), &reg, None, &opts, &prot);
             assert_eq!(results.len(), n);
