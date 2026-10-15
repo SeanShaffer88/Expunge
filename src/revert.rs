@@ -517,12 +517,43 @@ fn mark_windows_components(plan: &mut Plan, cs: &ChangeSet, sysroot: &str) {
     }
 }
 
+/// Why an action must never run: deleting a protected folder or registry
+/// key (Windows, Program Files, profiles, drive roots, hive roots…). Checked
+/// for every item, whether or not the target exists.
+pub fn refusal(action: &Action, protected: &[String]) -> Option<String> {
+    match action {
+        Action::DeleteDir { path } | Action::DeleteTree { path }
+            if is_protected_dir(path, protected) =>
+        {
+            Some(format!("refusing to delete protected folder {path}"))
+        }
+        Action::DeleteFile { path } if is_protected_dir(path, protected) => {
+            Some(format!("refusing to delete protected location {path}"))
+        }
+        Action::DeleteKey { path } if is_protected_key(path) => {
+            Some(format!("refusing to delete protected key {path}"))
+        }
+        _ => None,
+    }
+}
+
 /// Carry out the selected plan items, backing everything up first.
 pub fn execute_plan(
     plan: &Plan,
     reg: &dyn Registry,
+    backup: Option<&mut BackupWriter>,
+    opts: &ExecOptions,
+) -> Vec<ActionResult> {
+    execute_plan_with(plan, reg, backup, opts, &protected_dirs())
+}
+
+/// [`execute_plan`] with a chosen list of protected folders (for tests).
+pub fn execute_plan_with(
+    plan: &Plan,
+    reg: &dyn Registry,
     mut backup: Option<&mut BackupWriter>,
     opts: &ExecOptions,
+    protected: &[String],
 ) -> Vec<ActionResult> {
     let mut results = Vec::new();
     let mut items: Vec<&PlanItem> = plan.items.iter().filter(|i| i.selected).collect();
@@ -539,14 +570,18 @@ pub fn execute_plan(
                 _ => std::cmp::Ordering::Equal,
             })
     });
-    let protected = protected_dirs();
     for item in items {
         let desc = item.action.describe();
+        // Refused whatever the item's origin, before anything is touched.
+        if let Some(why) = refusal(&item.action, protected) {
+            results.push(ActionResult::err(desc, why));
+            continue;
+        }
         if opts.dry_run {
             results.push(ActionResult::ok(desc, "would run"));
             continue;
         }
-        let r = run_action(&item.action, reg, backup.as_deref_mut(), opts, &protected);
+        let r = run_action(&item.action, reg, backup.as_deref_mut(), opts, protected);
         results.push(match r {
             Ok(msg) => ActionResult::ok(desc, msg),
             Err(e) => ActionResult::err(desc, format!("{e:#}")),
@@ -1100,6 +1135,168 @@ mod confidence_tests {
         });
         flagged.note = "Matched by name".into();
         assert!(confidence(&flagged).score < own.score);
+    }
+}
+
+#[cfg(test)]
+mod protected_tests {
+    use super::*;
+    use crate::platform::MemRegistry;
+    use crate::util::protected_dirs_with;
+
+    fn win_env(s: &str) -> String {
+        let vars = [
+            ("SystemDrive", "C:"),
+            ("SystemRoot", "C:\\Windows"),
+            ("ProgramFiles", "C:\\Program Files"),
+            ("ProgramFiles(x86)", "C:\\Program Files (x86)"),
+            ("ProgramW6432", "C:\\Program Files"),
+            ("CommonProgramFiles", "C:\\Program Files\\Common Files"),
+            (
+                "CommonProgramFiles(x86)",
+                "C:\\Program Files (x86)\\Common Files",
+            ),
+            ("CommonProgramW6432", "C:\\Program Files\\Common Files"),
+            ("ProgramData", "C:\\ProgramData"),
+            ("PUBLIC", "C:\\Users\\Public"),
+            ("USERPROFILE", "C:\\Users\\Sean"),
+            ("APPDATA", "C:\\Users\\Sean\\AppData\\Roaming"),
+            ("LOCALAPPDATA", "C:\\Users\\Sean\\AppData\\Local"),
+        ];
+        let mut out = s.to_string();
+        for (k, v) in vars {
+            out = out.replace(&format!("%{k}%"), v);
+        }
+        out
+    }
+
+    const FOLDERS: &[&str] = &[
+        "C:\\",
+        "C:",
+        "D:\\",
+        "\\\\server\\share",
+        "C:\\Windows",
+        "C:\\Windows\\",
+        "c:\\windows",
+        "C:\\Windows\\System32",
+        "C:\\Windows\\System32\\drivers",
+        "C:\\Windows\\SysWOW64",
+        "C:\\Windows\\WinSxS",
+        "C:\\Windows\\Fonts",
+        "C:\\Program Files",
+        "C:\\Program Files (x86)",
+        "C:\\Program Files\\Common Files",
+        "C:\\ProgramData",
+        "C:\\ProgramData\\Microsoft",
+        "C:\\Users",
+        "C:\\Users\\Sean",
+        "C:\\Users\\Public",
+        "C:\\Users\\Sean\\AppData\\Roaming",
+        "C:\\Users\\Sean\\AppData\\Local",
+        "C:\\Users\\Sean\\Documents",
+        "C:\\Users\\Sean\\Desktop",
+        "C:\\$Recycle.Bin",
+        "C:\\System Volume Information",
+    ];
+
+    const KEYS: &[&str] = &[
+        "HKLM",
+        "HKCU",
+        "HKCR",
+        "HKU",
+        "HKLM\\SOFTWARE",
+        "HKLM\\SYSTEM",
+        "HKLM\\SOFTWARE\\Microsoft",
+        "HKLM\\SOFTWARE\\Classes",
+        "HKLM\\SOFTWARE\\WOW6432Node",
+        "HKLM\\SYSTEM\\CurrentControlSet",
+        "HKLM\\SYSTEM\\ControlSet001\\Services",
+        "HKCU\\Software",
+        "HKCU\\Software\\Classes",
+        "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run",
+        "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+    ];
+
+    fn plan_of(actions: Vec<Action>) -> Plan {
+        Plan {
+            items: actions
+                .into_iter()
+                .map(|action| PlanItem {
+                    action,
+                    selected: true,
+                    exists: true,
+                    note: String::new(),
+                })
+                .collect(),
+            info: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn every_removal_path_refuses_critical_locations() {
+        let prot = protected_dirs_with(&win_env);
+        let reg = MemRegistry::default();
+        for key in KEYS {
+            reg.put(crate::model::KeyData::new(key));
+        }
+        let mut actions = Vec::new();
+        for f in FOLDERS {
+            actions.push(Action::DeleteTree {
+                path: f.to_string(),
+            });
+            actions.push(Action::DeleteDir {
+                path: f.to_string(),
+            });
+            actions.push(Action::DeleteFile {
+                path: f.to_string(),
+            });
+        }
+        for k in KEYS {
+            actions.push(Action::DeleteKey {
+                path: k.to_string(),
+            });
+        }
+        let n = actions.len();
+        for dry_run in [true, false] {
+            let opts = ExecOptions {
+                remove_unlogged: true,
+                dry_run,
+                use_recycle_bin: false,
+            };
+            let results = execute_plan_with(&plan_of(actions.clone()), &reg, None, &opts, &prot);
+            assert_eq!(results.len(), n);
+            for r in &results {
+                assert!(!r.ok, "not refused: {}", r.description);
+            }
+        }
+        for k in KEYS {
+            assert!(reg.exists(k), "{k} was deleted");
+        }
+    }
+
+    #[test]
+    fn ordinary_program_locations_are_allowed() {
+        let prot = protected_dirs_with(&win_env);
+        for p in [
+            "C:\\Program Files\\Acme",
+            "C:\\Users\\Sean\\AppData\\Roaming\\Acme",
+            "C:\\ProgramData\\Acme",
+        ] {
+            assert_eq!(
+                refusal(&Action::DeleteTree { path: p.into() }, &prot),
+                None,
+                "{p}"
+            );
+        }
+        assert_eq!(
+            refusal(
+                &Action::DeleteKey {
+                    path: "HKLM\\SOFTWARE\\Acme".into()
+                },
+                &prot
+            ),
+            None
+        );
     }
 }
 

@@ -18,12 +18,11 @@ Every planned feature has been built. The items below are ideas for after versio
 - **A sandbox for Windows 11 Home** — Windows Sandbox needs Pro, Enterprise or Education; a Hyper-V or other virtual machine option would keep Home PCs untouched too.
 
 **Release readiness**
-- **Code signing** — sign `Expunge.exe`, the installer and the portable zip for both x64 and Arm64 in the release workflow, through a free open-source signing service (SignPath Foundation) or Azure Artifact Signing, so Windows SmartScreen and antivirus software trust the downloads.
-- **Antivirus false-positive pre-screening** — uninstallers and monitors read system files and stop processes, which heuristic scanners sometimes flag. Upload each release candidate to VirusTotal from the release workflow and submit any false positives to Microsoft Defender, Malwarebytes and other vendors before publishing.
+- **Code signing certificate** — the release workflow already signs `Expunge.exe` (x64 and Arm64) and the installer, with a timestamp, as soon as the `CODESIGN_PFX` and `CODESIGN_PASSWORD` repository secrets are set. What's left is getting a certificate: a free open-source one (SignPath Foundation), Azure Artifact Signing, or an OV certificate.
+- **Antivirus false-positive reports** — the release workflow already uploads every download to VirusTotal when the `VIRUSTOTAL_API_KEY` secret is set, warns about any detection and links each report in the release notes. What's left is a free VirusTotal account for the key, and submitting any false positives to Microsoft Defender, Malwarebytes and other vendors before publishing.
 - **Files held open by services** — the stress tests cover files another program holds open; also cover running services and COM objects Explorer still has loaded.
 - **Clean-VM validation matrix** — run the full monitor, uninstall and check-clean cycle on a freshly provisioned, snapshot-isolated Windows 11 virtual machine (the CI runners are Windows Server), with complex installers: large MSI suites, Inno Setup, NSIS, Wise, InstallShield, WiX bundles and Squirrel.
 - **Long-running soak test** — run background monitoring and live activity for days under a profiler to confirm memory, handle and thread counts stay flat and no files stay locked.
-- **Startup and size budget** — keep cold start under a set time and the exe under a set size, enforced by the existing performance check in CI.
 
 **Everything else**
 - **More integration tests** — add WiX bundles and Squirrel installers, and run on Windows 11 client images when GitHub offers them.
