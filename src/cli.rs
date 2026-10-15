@@ -61,6 +61,9 @@ USAGE:
                                             programs (pointing to missing files)
   expunge disk [folder] [--top N] [--json]  Largest folders and files under a
                                             folder or drive (default: C:\\)
+  expunge duplicates <folder>... [--min-size MB] [--json]
+                                            List identical files (compared by
+                                            content); nothing is deleted
   expunge backups                           List backups
   expunge restore <backup-id>               Undo a removal from its backup
   expunge --version | --help
@@ -488,6 +491,66 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                 if map.unreadable > 0 {
                     eprintln!("{} folders could not be read.", map.unreadable);
                 }
+            }
+        }
+        "duplicates" => {
+            let mut roots = Vec::new();
+            let mut i = 1;
+            while i < args.len() {
+                if args[i] == "--min-size" {
+                    i += 2;
+                    continue;
+                }
+                if !args[i].starts_with("--") {
+                    roots.push(std::path::PathBuf::from(&args[i]));
+                }
+                i += 1;
+            }
+            if roots.is_empty() {
+                anyhow::bail!("name at least one folder to search");
+            }
+            let min_mb: f64 = arg_value(&args, "--min-size")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(1.0);
+            let progress = expunge_core::snapshot::Progress::default();
+            let r = expunge_core::duplicates::find(&roots, (min_mb * 1048576.0) as u64, &progress);
+            if has(&args, "--json") {
+                let groups: Vec<_> = r
+                    .groups
+                    .iter()
+                    .map(|g| {
+                        serde_json::json!({
+                            "bytes": g.size,
+                            "sha256": g.hash,
+                            "files": g.files.iter().map(|f| f.path.to_string_lossy().to_string()).collect::<Vec<_>>(),
+                        })
+                    })
+                    .collect();
+                println!(
+                    "{}",
+                    serde_json::json!({ "files_checked": r.files_scanned, "wasted_bytes": r.wasted(), "groups": groups })
+                );
+            } else if r.groups.is_empty() {
+                println!(
+                    "No duplicate files found ({} files checked).",
+                    r.files_scanned
+                );
+            } else {
+                for g in &r.groups {
+                    println!(
+                        "{} copies of {}:",
+                        g.files.len(),
+                        expunge_core::model::human_size(g.size)
+                    );
+                    for f in &g.files {
+                        println!("  {}", f.path.display());
+                    }
+                }
+                eprintln!(
+                    "{} sets; keeping one copy of each would free {}. Remove copies from the app (Tools > Duplicate files), which keeps one copy and uses the Recycle Bin.",
+                    r.groups.len(),
+                    expunge_core::model::human_size(r.wasted())
+                );
             }
         }
         "orphans" => {

@@ -31,7 +31,7 @@ Most uninstallers run the vendor's own uninstaller and then *guess* at what was 
 
 **Expunge closes that gap.** It takes a snapshot of the system before and after an installation and records every file, folder, registry key and value, service, and scheduled task that changed. Later, it turns that record into a precise, reviewable removal plan. Everything Expunge deletes or modifies is backed up first, so every operation can be undone.
 
-Beyond uninstalling, Expunge brings together the tools needed to keep Windows 11 lean and private: a startup manager, a disk space map, a junk cleaner, a debloater, and an Anti-Telemetry page with reversible privacy settings.
+Beyond uninstalling, Expunge brings together the tools needed to keep Windows 11 lean and private: a startup manager, a disk space map, a duplicate file finder, a junk cleaner, a debloater, and an Anti-Telemetry page with reversible privacy settings.
 
 Expunge is a free, GPL-licensed alternative to commercial tools such as Total Uninstall Pro. It is approachable enough for someone new to computers and thorough enough for developers testing their own installers.
 
@@ -95,6 +95,7 @@ For programs that were installed without monitoring:
 ### System tools
 - **Startup manager:** Run keys and Startup folders (with Task Manager–compatible enabling and disabling), services and drivers, and scheduled tasks. Advanced mode adds every other autostart location: Winlogon, Active Setup, Image File Execution Options, AppInit DLLs, Explorer extensions, icon overlays, browser helper objects, boot-time programs, and WMI subscriptions.
 - **Disk space map:** a treemap of any drive or folder in which each block's size matches the space it uses, colored by file type (videos, music, pictures, archives and disk images, programs, documents). Click any block to look inside it, or use the size-sorted list beside it with the keyboard. Read-only, so it is safe in Simple mode.
+- **Duplicate file finder:** finds files with identical contents (compared by SHA-256, not by name) in your personal folders or any folder you choose. Keep the oldest, newest or shortest-path copy automatically, or choose yourself; at least one copy is always kept, and removed copies go to the Recycle Bin. Windows, program and app-data folders are never searched, and cloud-only files are never downloaded.
 - **Junk cleaner:** temporary files, crash and memory dumps, Windows logs, Delivery Optimization and Windows Update downloads, shader and browser caches, Prefetch data, and the Recycle Bin.
 - **Deep cleanup** (Advanced mode): the previous Windows installation (Windows.old), superseded Windows components, files of disabled features, and old restore points. Each item is analyzed first and confirmed separately.
 - **Windows Updates manager** (Advanced mode): list installed updates and uninstall individual ones. Permanent servicing-stack updates are clearly labeled.
@@ -162,6 +163,7 @@ expunge restore <backup-id>
 expunge learn-noise [--seconds N] [--apply]
 expunge orphans
 expunge disk C:\Users --top 20
+expunge duplicates %USERPROFILE%\Pictures --min-size 1
 expunge updates
 expunge update --all
 expunge transfer export moved.expunge "Photo Editor"

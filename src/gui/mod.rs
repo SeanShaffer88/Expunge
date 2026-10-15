@@ -6,6 +6,7 @@ mod backups;
 mod cleaner;
 mod dashboard;
 mod disk;
+mod dups;
 mod extras;
 mod lab;
 mod logs;

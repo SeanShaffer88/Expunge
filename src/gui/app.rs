@@ -21,6 +21,7 @@ pub enum Tab {
     Cleaner,
     Privacy,
     Disk,
+    Dups,
     Lab,
     Settings,
 }
@@ -44,6 +45,7 @@ pub enum Confirm {
     ApplyTweaks,
     /// Remove the ticked pre-installed apps.
     RemoveBloat,
+    RemoveDuplicates,
 }
 
 pub struct ConfirmDialog {
@@ -73,6 +75,7 @@ pub struct App {
     pub extras: super::extras::ExtrasState,
     pub privacy: super::privacy::PrivacyState,
     pub disk: super::disk::DiskState,
+    pub dups: super::dups::DupState,
     /// Transfer export or restore window.
     pub transfer: Option<super::transfer_ui::TransferUi>,
     pub monitor: monitor::MonitorState,
@@ -149,6 +152,7 @@ impl App {
             extras: Default::default(),
             privacy: Default::default(),
             disk: Default::default(),
+            dups: Default::default(),
             transfer: None,
             monitor: Default::default(),
             logs: Default::default(),
@@ -290,6 +294,10 @@ impl App {
             Confirm::DeepClean(item) => self.start_deep(item),
             Confirm::ApplyTweaks => self.start_apply_tweaks(false),
             Confirm::RemoveBloat => self.start_remove_bloat(),
+            Confirm::RemoveDuplicates => {
+                let ctx = self.ctx.clone();
+                self.start_remove_duplicates(&ctx)
+            }
             Confirm::DeleteStartup(i) => self.delete_startup(i),
             Confirm::DeleteTask(i) => self.delete_task(i),
             Confirm::ResetSettings => {
@@ -535,6 +543,11 @@ impl App {
                 {
                     self.tab = Tab::Disk;
                 }
+                if theme::nav_item(ui, "📑", &t("Duplicate files"), self.tab == Tab::Dups, None)
+                    .clicked()
+                {
+                    self.tab = Tab::Dups;
+                }
                 if self.settings.advanced_mode
                     && theme::nav_item(ui, "🔁", &t("Windows Updates"), false, None).clicked()
                 {
@@ -591,6 +604,10 @@ impl App {
             Tab::Disk => (
                 "Disk space",
                 "See which folders and files take up the most space",
+            ),
+            Tab::Dups => (
+                "Duplicate files",
+                "Find identical copies of files and free the space they waste",
             ),
             Tab::Lab => (
                 "Installer Lab",
@@ -905,6 +922,11 @@ fn page_help(tab: Tab) -> &'static [&'static str] {
             "Click a block or double-click a list entry to look inside a folder. Use the arrow button or Backspace to go back up.",
             "Nothing is deleted here. Use Show in File Explorer to deal with large files yourself, or the Programs and Cleaner pages to remove programs and junk safely.",
         ],
+        Tab::Dups => &[
+            "Expunge compares the contents of files, not just their names, so only truly identical files are listed.",
+            "Tick the copies you don't need, or let Expunge tick all but one copy of each. They go to the Recycle Bin, so you can restore them.",
+            "Windows, program and app-data folders are never searched, so nothing a program needs can be removed.",
+        ],
         Tab::Lab => &[
             "Installer lint reviews a recorded installation and points out packaging problems, with advice on fixing them.",
             "Uninstaller test runs a program's own uninstaller and reports exactly what it left behind — useful for testing your own installers.",
@@ -1084,8 +1106,9 @@ impl App {
             if let Some(back) = ctrl_tab {
                 let mut order = tabs.to_vec();
                 order.insert(8, Tab::Disk);
+                order.insert(9, Tab::Dups);
                 if self.settings.advanced_mode {
-                    order.insert(9, Tab::Lab);
+                    order.insert(10, Tab::Lab);
                 }
                 let pos = order.iter().position(|t| *t == self.tab).unwrap_or(0);
                 let n = order.len();
@@ -1192,6 +1215,7 @@ impl eframe::App for App {
             Tab::Cleaner => self.ui_cleaner(ctx),
             Tab::Privacy => self.ui_privacy(ctx),
             Tab::Disk => self.ui_disk(ctx),
+            Tab::Dups => self.ui_dups(ctx),
             Tab::Lab => self.ui_lab(ctx),
             Tab::Settings => self.ui_settings(ctx),
         }
