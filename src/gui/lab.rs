@@ -2,7 +2,6 @@
 //! captures.
 
 use super::app::App;
-use super::logs::changes_ui;
 use super::theme;
 use super::widgets::*;
 use super::Job;
@@ -28,6 +27,8 @@ pub struct LabState {
     /// Quick compare: the "before" snapshot, kept in memory.
     quick_before: Option<std::sync::Arc<expunge_core::model::Snapshot>>,
     quick_job: Option<Job<Result<std::sync::Arc<expunge_core::model::Snapshot>, String>>>,
+    tree: super::difftree_ui::TreeView,
+    show_list: bool,
 }
 
 impl App {
@@ -302,7 +303,13 @@ impl App {
                         }
                     });
                 });
-                changes_ui(ui, &mut log.changes, true);
+                super::difftree_ui::map_or_list(
+                    ui,
+                    &mut self.lab.tree,
+                    &mut self.lab.show_list,
+                    &mut log.changes,
+                    true,
+                );
             });
             if export_ini {
                 let log = self.lab.cmp_result.as_ref().unwrap();

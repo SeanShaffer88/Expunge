@@ -1,7 +1,6 @@
 //! Monitor tab: snapshot before, install, snapshot after, review, save.
 
 use super::app::{App, Confirm};
-use super::logs::changes_ui;
 use super::theme;
 use super::widgets::*;
 use super::Job;
@@ -24,6 +23,8 @@ pub enum Phase {
 
 #[derive(Default)]
 pub struct MonitorState {
+    pub tree: super::difftree_ui::TreeView,
+    pub show_list: bool,
     pub phase: Phase,
     pub name: String,
     pub installer: String,
@@ -465,7 +466,13 @@ impl App {
             .max_height(h)
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                changes_ui(ui, &mut log.changes, true);
+                super::difftree_ui::map_or_list(
+                    ui,
+                    &mut self.monitor.tree,
+                    &mut self.monitor.show_list,
+                    &mut log.changes,
+                    true,
+                );
             });
         ui.separator();
         let mut save = false;

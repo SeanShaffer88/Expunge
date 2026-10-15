@@ -29,6 +29,10 @@ pub struct LogsState {
     /// Show only this group ("" = all).
     pub group_filter: String,
     pub loader: super::Reload<Vec<InstallLog>>,
+    /// The visual map of the selected log's changes.
+    pub tree: super::difftree_ui::TreeView,
+    /// Show the plain list instead of the map.
+    pub show_list: bool,
 }
 
 /// Collapsible lists of every change. With `editable`, each entry gets a ✖
@@ -546,9 +550,9 @@ impl App {
                 small_muted(
                     ui,
                     format!(
-                        "{}{}  ·  {}",
+                        "{}{}{}",
                         log.publisher,
-                        if log.publisher.is_empty() { "" } else { "  ·" },
+                        if log.publisher.is_empty() { "" } else { "  ·  " },
                         tf("monitored {name}", &[("name", log.created.clone())])
                     ),
                 );
@@ -670,16 +674,26 @@ impl App {
                 }
             }
             ui.add_space(8.0);
-            let advanced = self.settings.advanced_mode;
-            let cs = &mut self.logs.logs[idx].changes;
+            let LogsState { logs, tree, show_list, .. } = &mut self.logs;
+            let cs = &mut logs[idx].changes;
             egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                 theme::card(ui, |ui| {
-                    if advanced {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(t("Where it put things")).strong());
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.selectable_label(*show_list, t("List")).clicked() {
+                                *show_list = true;
+                            }
+                            if ui.selectable_label(!*show_list, t("Map")).clicked() {
+                                *show_list = false;
+                            }
+                        });
+                    });
+                    ui.add_space(4.0);
+                    if *show_list {
                         changes_ui(ui, cs, false);
                     } else {
-                        egui::CollapsingHeader::new(t("Show technical details"))
-                            .default_open(false)
-                            .show(ui, |ui| changes_ui(ui, cs, false));
+                        super::difftree_ui::diff_tree_ui(ui, tree, cs);
                     }
                 });
             });

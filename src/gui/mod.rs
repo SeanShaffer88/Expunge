@@ -6,6 +6,7 @@ mod backups;
 mod builder;
 mod cleaner;
 mod dashboard;
+mod difftree_ui;
 mod lab;
 mod logs;
 mod monitor;
