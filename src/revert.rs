@@ -619,8 +619,11 @@ fn run_action(
             if !p.exists() {
                 return Ok("already gone".into());
             }
-            if is_protected_dir(path, protected) {
-                anyhow::bail!("refusing to delete protected folder");
+            crate::util::guard_dir_delete(p, protected)?;
+            if crate::util::is_link(p) {
+                // A junction or symbolic link: remove the link, never what it points to.
+                std::fs::remove_dir(p).or_else(|_| std::fs::remove_file(p))?;
+                return Ok("link removed".into());
             }
             let empty = std::fs::read_dir(p)
                 .map(|mut d| d.next().is_none())
@@ -651,8 +654,11 @@ fn run_action(
             if !p.exists() {
                 return Ok("already gone".into());
             }
-            if is_protected_dir(path, protected) {
-                anyhow::bail!("refusing to delete protected folder");
+            crate::util::guard_dir_delete(p, protected)?;
+            if crate::util::is_link(p) {
+                // A junction or symbolic link: remove the link, never what it points to.
+                std::fs::remove_dir(p).or_else(|_| std::fs::remove_file(p))?;
+                return Ok("link removed".into());
             }
             if let Some(b) = backup.as_deref_mut() {
                 b.add_dir_tree(p)?;

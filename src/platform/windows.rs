@@ -131,6 +131,10 @@ impl Registry for WinRegistry {
         if rest.is_empty() {
             return Err(anyhow!("refusing to delete a hive root"));
         }
+        // The last line of defence, whoever asked.
+        if crate::util::is_protected_key(path) {
+            return Err(anyhow!("refusing to delete protected key {path}"));
+        }
         let (parent, leaf) = match rest.rsplit_once('\\') {
             Some((p, l)) => (format!("{h}\\{p}"), l.to_string()),
             None => (h.to_string(), rest.to_string()),

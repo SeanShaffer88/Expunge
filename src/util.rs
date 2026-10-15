@@ -189,18 +189,90 @@ pub fn is_excluded(path: &str, patterns: &[String]) -> bool {
     Exclusions::new(patterns).matches(path)
 }
 
-fn norm_file(p: &str) -> String {
-    let mut s = fold(&p.replace('/', "\\"));
-    while s.len() > 3 && s.ends_with('\\') {
-        s.pop();
+/// A file path the way Windows resolves it, for comparisons: `/` becomes
+/// `\`, the `\\?\` and `\??\` prefixes go, `.` and `..` are resolved,
+/// trailing dots and spaces are dropped from each name (Windows ignores
+/// them), repeated separators collapse, and case is folded. Purely lexical:
+/// junctions and short (8.3) names are handled by [`guard_dir_delete`].
+pub fn lexical_path(p: &str) -> String {
+    let mut s = p.trim().replace('/', "\\");
+    for prefix in ["\\\\?\\UNC\\", "\\??\\UNC\\"] {
+        if s.len() >= prefix.len() && s[..prefix.len()].eq_ignore_ascii_case(prefix) {
+            s = format!("\\\\{}", &s[prefix.len()..]);
+        }
     }
-    s
+    for prefix in ["\\\\?\\", "\\??\\", "\\\\.\\"] {
+        if let Some(rest) = s.strip_prefix(prefix) {
+            s = rest.to_string();
+        }
+    }
+    let unc = s.starts_with("\\\\");
+    let mut out: Vec<String> = Vec::new();
+    for raw in s.split('\\') {
+        match raw.trim_end_matches(' ') {
+            "" | "." => {}
+            ".." => {
+                // Never climb above the drive or share root.
+                if out.len() > if unc { 2 } else { 1 } {
+                    out.pop();
+                }
+            }
+            seg => {
+                let seg = seg.trim_end_matches(['.', ' ']);
+                if !seg.is_empty() {
+                    out.push(seg.to_string());
+                }
+            }
+        }
+    }
+    let body = out.join("\\");
+    let joined = if unc {
+        format!("\\\\{body}")
+    } else if out.len() == 1 && body.ends_with(':') {
+        format!("{body}\\")
+    } else {
+        body
+    };
+    fold(&joined)
+}
+
+fn norm_file(p: &str) -> String {
+    lexical_path(p)
 }
 
 /// Folders Expunge must never delete as a whole, whatever a log or heuristic
-/// says. Files *inside* them may still be removed individually.
+/// says. Files *inside* them may still be removed individually. An entry
+/// ending in `\*` also protects every folder directly inside it.
 pub fn protected_dirs() -> Vec<String> {
+    protected_dirs_with(&expand_env)
+}
+
+/// [`protected_dirs`] with a chosen `%VARIABLE%` expander (for tests).
+pub fn protected_dirs_with(expand: &dyn Fn(&str) -> String) -> Vec<String> {
     let mut v: Vec<String> = [
+        // Everything directly inside Windows, System32 and SysWOW64
+        // (WinSxS, Installer, config, DriverStore, spool…).
+        "%SystemRoot%\\*",
+        "%SystemRoot%\\System32\\*",
+        "%SystemRoot%\\SysWOW64\\*",
+        "%SystemRoot%\\System32\\DriverStore\\FileRepository",
+        // Folders at the top of the system drive that belong to Windows.
+        "%SystemDrive%\\$Recycle.Bin",
+        "%SystemDrive%\\System Volume Information",
+        "%SystemDrive%\\Recovery",
+        "%SystemDrive%\\Boot",
+        "%SystemDrive%\\EFI",
+        "%SystemDrive%\\PerfLogs",
+        "%SystemDrive%\\Windows.old",
+        "%SystemDrive%\\Config.Msi",
+        // The Users folder and every profile in it.
+        "%USERPROFILE%\\..\\*",
+        "%ProgramFiles%\\WindowsApps",
+        "%ProgramFiles%\\Windows Defender",
+        "%ProgramFiles%\\Windows NT",
+        "%ProgramFiles%\\Common Files\\Microsoft Shared",
+        "%ProgramData%\\Microsoft\\Windows Defender",
+        "%ProgramData%\\Packages",
         "%SystemDrive%\\",
         "%SystemRoot%",
         "%SystemRoot%\\System32",
@@ -248,18 +320,8 @@ pub fn protected_dirs() -> Vec<String> {
         "%OneDrive%",
     ]
     .iter()
-    .map(|s| expand_env(s))
+    .map(|s| expand(s))
     .filter(|s| !s.contains('%'))
-    .map(|s| {
-        // Resolve a trailing `\..` lexically (the Users folder).
-        match s.strip_suffix("\\..") {
-            Some(base) => base
-                .rsplit_once('\\')
-                .map(|(p, _)| p.to_string())
-                .unwrap_or_default(),
-            None => s,
-        }
-    })
     .map(|s| norm_file(&s))
     .collect();
     v.sort();
@@ -276,10 +338,45 @@ pub fn is_protected_dir(path: &str, protected: &[String]) -> bool {
         .split('\\')
         .filter(|s| !s.is_empty())
         .count();
-    if depth <= 1 {
+    // A network share's root (\\server\share) counts like a drive root.
+    if depth <= 1 || (p.starts_with("\\\\") && depth <= 2) {
         return true;
     }
-    protected.iter().any(|d| d == &p)
+    let parent = p.rsplit_once('\\').map(|(a, _)| a).unwrap_or("");
+    protected.iter().any(|d| match d.strip_suffix("\\*") {
+        Some(dir) => dir == p || dir == parent,
+        None => d == &p,
+    })
+}
+
+/// The last check before a folder is deleted with everything in it: the
+/// path as written and, when it exists, where it really leads (through
+/// junctions, symbolic links and short 8.3 names) must both be safe.
+pub fn guard_dir_delete(path: &std::path::Path, protected: &[String]) -> anyhow::Result<()> {
+    let written = path.to_string_lossy();
+    if is_protected_dir(&written, protected) {
+        anyhow::bail!("refusing to delete protected folder {written}");
+    }
+    // A link is removed on its own (see `is_link`), so only where a real
+    // folder leads matters.
+    if is_link(path) {
+        return Ok(());
+    }
+    if let Ok(real) = std::fs::canonicalize(path) {
+        let real = real.to_string_lossy().to_string();
+        if is_protected_dir(&real, protected) {
+            anyhow::bail!("refusing to delete {written}: it leads to protected folder {real}");
+        }
+    }
+    Ok(())
+}
+
+/// Whether `path` is a link to somewhere else (a symbolic link or a
+/// junction). Deleting one must remove only the link.
+pub fn is_link(path: &std::path::Path) -> bool {
+    std::fs::symlink_metadata(path)
+        .map(|m| m.file_type().is_symlink())
+        .unwrap_or(false)
 }
 
 /// Registry keys that must never be deleted as a whole.
@@ -320,6 +417,47 @@ const PROTECTED_KEY_SUFFIXES: &[&str] = &[
     "system\\currentcontrolset\\control",
     "system\\currentcontrolset\\control\\session manager",
     "system\\currentcontrolset\\control\\session manager\\environment",
+    "system\\currentcontrolset\\enum",
+    "system\\currentcontrolset\\control\\class",
+    "system\\currentcontrolset\\control\\safeboot",
+    "system\\currentcontrolset\\control\\lsa",
+    "system\\currentcontrolset\\control\\nls",
+    "system\\currentcontrolset\\control\\print",
+    "system\\currentcontrolset\\control\\terminal server",
+    "system\\mounteddevices",
+    "system\\select",
+    "system\\setup",
+    "sam",
+    "security",
+    "hardware",
+    "bcd00000000",
+    "components",
+    "drivers",
+    "schema",
+    "software\\classes\\systemfileassociations",
+    "software\\classes\\exefile",
+    "software\\classes\\lnkfile",
+    "software\\classes\\.exe",
+    "software\\classes\\.lnk",
+    "software\\classes\\.dll",
+    "software\\microsoft\\windows\\currentversion\\policies",
+    "software\\microsoft\\windows\\currentversion\\shell extensions\\blocked",
+    "software\\microsoft\\windows\\currentversion\\explorer\\shell folders",
+    "software\\microsoft\\windows\\currentversion\\explorer\\user shell folders",
+    "software\\microsoft\\windows\\currentversion\\installer",
+    "software\\microsoft\\windows nt\\currentversion\\winlogon",
+    "software\\microsoft\\windows nt\\currentversion\\image file execution options",
+    "software\\microsoft\\windows nt\\currentversion\\profilelist",
+    "software\\microsoft\\windows nt\\currentversion\\fonts",
+    "software\\microsoft\\windows nt\\currentversion\\windows",
+    "software\\microsoft\\cryptography",
+    "software\\microsoft\\windows defender",
+    "software\\microsoft\\.netframework",
+    "software\\microsoft\\net framework setup",
+    "software\\classes\\wow6432node",
+    "control panel",
+    "control panel\\desktop",
+    "keyboard layout",
     "environment",
 ];
 
@@ -331,14 +469,25 @@ pub fn is_protected_key(path: &str) -> bool {
     // HKU\<sid> and HKU\<sid>\Software are profile roots.
     let rest = if hive == "hku" {
         match rest.split_once('\\') {
+            // HKU\<sid>_Classes is that user's Software\Classes.
+            Some((sid, r)) if sid.ends_with("_classes") => format!("software\\classes\\{r}"),
             Some((_, r)) => r.to_string(),
             None => return true,
         }
     } else {
         rest.to_string()
     };
-    // Treat the 32-bit view the same as the 64-bit one.
+    // Treat the 32-bit view the same as the 64-bit one, and every numbered
+    // control set (ControlSet001…) like CurrentControlSet.
     let rest = rest.replace("software\\wow6432node\\", "software\\");
+    let rest = match rest.strip_prefix("system\\controlset") {
+        Some(after) if after.len() >= 3 && after[..3].bytes().all(|b| b.is_ascii_digit()) => {
+            format!("system\\currentcontrolset{}", &after[3..])
+        }
+        _ => rest,
+    };
+    // HKLM\SOFTWARE\Classes\Wow6432Node mirrors Classes.
+    let rest = rest.replace("software\\classes\\wow6432node\\", "software\\classes\\");
     // HKCR is a merged view of Software\Classes.
     let rest = if hive == "hkcr" {
         format!("software\\classes\\{rest}")
@@ -418,5 +567,247 @@ mod tests {
         assert!(is_protected_dir("c:\\program files", &p));
         assert!(!is_protected_dir("C:\\Program Files\\Vendor", &p));
         assert!(is_protected_dir("D:", &p));
+    }
+
+    /// The variables a Windows 11 PC sets, for tests that must not depend
+    /// on the machine running them.
+    fn win_env(s: &str) -> String {
+        let vars = [
+            ("SystemDrive", "C:"),
+            ("SystemRoot", "C:\\Windows"),
+            ("ProgramFiles", "C:\\Program Files"),
+            ("ProgramFiles(x86)", "C:\\Program Files (x86)"),
+            ("ProgramW6432", "C:\\Program Files"),
+            ("CommonProgramFiles", "C:\\Program Files\\Common Files"),
+            (
+                "CommonProgramFiles(x86)",
+                "C:\\Program Files (x86)\\Common Files",
+            ),
+            ("CommonProgramW6432", "C:\\Program Files\\Common Files"),
+            ("ProgramData", "C:\\ProgramData"),
+            ("PUBLIC", "C:\\Users\\Public"),
+            ("USERPROFILE", "C:\\Users\\Sean"),
+            ("APPDATA", "C:\\Users\\Sean\\AppData\\Roaming"),
+            ("LOCALAPPDATA", "C:\\Users\\Sean\\AppData\\Local"),
+            ("TEMP", "C:\\Users\\Sean\\AppData\\Local\\Temp"),
+            ("OneDrive", "C:\\Users\\Sean\\OneDrive"),
+        ];
+        let mut out = s.to_string();
+        for (k, v) in vars {
+            out = out.replace(&format!("%{k}%"), v);
+        }
+        out
+    }
+
+    /// Every way of writing a path that Windows treats as the same folder.
+    fn spellings(p: &str) -> Vec<String> {
+        let leaf = p.rsplit('\\').next().unwrap_or(p);
+        vec![
+            p.to_string(),
+            p.to_uppercase(),
+            format!("{p}\\"),
+            format!("{p}\\\\"),
+            p.replace('\\', "/"),
+            format!("\\\\?\\{p}"),
+            format!("\\??\\{p}"),
+            format!("{p}."),
+            format!("{p} "),
+            format!("{p}\\."),
+            format!("{p}\\x\\.."),
+            format!("{p}\\..\\{leaf}"),
+            p.replace('\\', "\\\\"),
+            p.replacen('\\', "\\.\\", 1),
+        ]
+    }
+
+    #[test]
+    fn every_critical_folder_is_refused_however_it_is_written() {
+        let prot = protected_dirs_with(&win_env);
+        let critical = [
+            "C:\\",
+            "C:\\Windows",
+            "C:\\Windows\\System32",
+            "C:\\Windows\\SysWOW64",
+            "C:\\Windows\\WinSxS",
+            "C:\\Windows\\Installer",
+            "C:\\Windows\\System32\\config",
+            "C:\\Windows\\System32\\drivers",
+            "C:\\Windows\\System32\\DriverStore",
+            "C:\\Windows\\Fonts",
+            "C:\\Program Files",
+            "C:\\Program Files (x86)",
+            "C:\\Program Files\\Common Files",
+            "C:\\Program Files\\WindowsApps",
+            "C:\\Program Files\\Windows Defender",
+            "C:\\ProgramData",
+            "C:\\ProgramData\\Microsoft",
+            "C:\\Users",
+            "C:\\Users\\Sean",
+            "C:\\Users\\Someone Else",
+            "C:\\Users\\Public",
+            "C:\\Users\\Sean\\Documents",
+            "C:\\Users\\Sean\\Desktop",
+            "C:\\Users\\Sean\\AppData",
+            "C:\\Users\\Sean\\AppData\\Roaming",
+            "C:\\Users\\Sean\\AppData\\Local",
+            "C:\\Users\\Sean\\AppData\\Local\\Temp",
+            "C:\\Users\\Sean\\OneDrive",
+            "C:\\$Recycle.Bin",
+            "C:\\System Volume Information",
+            "C:\\Recovery",
+            "D:\\",
+        ];
+        for dir in critical {
+            for s in spellings(dir) {
+                assert!(is_protected_dir(&s, &prot), "{s} must be protected");
+            }
+        }
+        // Climbing out of an ordinary folder lands on a protected one.
+        assert!(is_protected_dir("C:\\Program Files\\Vendor\\..", &prot));
+        assert!(is_protected_dir(
+            "C:\\Program Files\\Vendor\\..\\..\\Windows",
+            &prot
+        ));
+        assert!(is_protected_dir("C:\\..\\..\\Windows", &prot));
+        assert!(is_protected_dir("\\\\?\\UNC\\server\\share", &prot));
+    }
+
+    #[test]
+    fn ordinary_program_folders_can_still_be_removed() {
+        let prot = protected_dirs_with(&win_env);
+        for dir in [
+            "C:\\Program Files\\Vendor\\App",
+            "C:\\Program Files\\Vendor",
+            "C:\\Program Files (x86)\\Vendor",
+            "C:\\ProgramData\\Vendor",
+            "C:\\Users\\Sean\\AppData\\Roaming\\Vendor",
+            "C:\\Users\\Sean\\AppData\\Local\\Programs\\App",
+            "C:\\Users\\Sean\\AppData\\Local\\Temp\\setup-123",
+            "C:\\Windows\\Installer\\{12345678-ABCD}",
+            "C:\\Tools\\App",
+            "C:\\Python312",
+            "D:\\Games\\Game",
+        ] {
+            assert!(!is_protected_dir(dir, &prot), "{dir} should be removable");
+        }
+    }
+
+    #[test]
+    fn lexical_paths() {
+        assert_eq!(
+            lexical_path("C:/Program Files/./A/../B. "),
+            "c:\\program files\\b"
+        );
+        assert_eq!(lexical_path("\\\\?\\C:\\Windows\\"), "c:\\windows");
+        assert_eq!(lexical_path("C:\\..\\.."), "c:\\");
+        assert_eq!(
+            lexical_path("\\\\?\\UNC\\srv\\share\\a\\..\\..\\.."),
+            "\\\\srv\\share"
+        );
+    }
+
+    #[test]
+    fn every_critical_key_is_refused_however_it_is_written() {
+        let keys = [
+            "HKLM",
+            "HKEY_LOCAL_MACHINE",
+            "HKLM\\SOFTWARE",
+            "HKLM\\SOFTWARE\\Microsoft",
+            "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run",
+            "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+            "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon",
+            "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options",
+            "HKLM\\SOFTWARE\\Classes",
+            "HKLM\\SOFTWARE\\Classes\\CLSID",
+            "HKLM\\SOFTWARE\\Classes\\exefile",
+            "HKLM\\SOFTWARE\\Classes\\.exe",
+            "HKLM\\SOFTWARE\\WOW6432Node",
+            "HKLM\\SOFTWARE\\WOW6432Node\\Microsoft",
+            "HKLM\\SOFTWARE\\Classes\\WOW6432Node",
+            "HKLM\\SOFTWARE\\Classes\\WOW6432Node\\CLSID",
+            "HKLM\\SYSTEM",
+            "HKLM\\SYSTEM\\CurrentControlSet\\Services",
+            "HKLM\\SYSTEM\\ControlSet001\\Services",
+            "HKLM\\SYSTEM\\ControlSet002\\Control",
+            "HKLM\\SYSTEM\\CurrentControlSet\\Enum",
+            "HKLM\\SYSTEM\\MountedDevices",
+            "HKLM\\SAM",
+            "HKLM\\SECURITY",
+            "HKLM\\HARDWARE",
+            "HKLM\\BCD00000000",
+            "HKCR",
+            "HKCR\\CLSID",
+            "HKCR\\*",
+            "HKCR\\Directory\\shell",
+            "HKCU",
+            "HKCU\\Software",
+            "HKCU\\Software\\Classes",
+            "HKCU\\Environment",
+            "HKCU\\Control Panel",
+            "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies",
+            "HKU",
+            "HKU\\.DEFAULT",
+            "HKU\\S-1-5-21-1-2-3-1001",
+            "HKU\\S-1-5-21-1-2-3-1001\\Software",
+            "HKU\\S-1-5-21-1-2-3-1001_Classes",
+            "HKU\\S-1-5-21-1-2-3-1001_Classes\\CLSID",
+        ];
+        for k in keys {
+            for s in [
+                k.to_string(),
+                k.to_lowercase(),
+                format!("{k}\\"),
+                format!("\\{k}"),
+                k.replace('\\', "\\\\"),
+            ] {
+                assert!(is_protected_key(&s), "{s} must be protected");
+            }
+        }
+        for ok in [
+            "HKLM\\SOFTWARE\\Vendor",
+            "HKLM\\SOFTWARE\\WOW6432Node\\Vendor",
+            "HKCU\\Software\\Vendor\\App",
+            "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\App",
+            "HKLM\\SYSTEM\\CurrentControlSet\\Services\\VendorService",
+            "HKCR\\CLSID\\{12345678-1234-1234-1234-123456789012}",
+            "HKU\\S-1-5-21-1-2-3-1001_Classes\\.vendorfile",
+        ] {
+            assert!(!is_protected_key(ok), "{ok} should be removable");
+        }
+    }
+
+    #[test]
+    fn the_registry_itself_refuses_protected_keys() {
+        use crate::model::KeyData;
+        use crate::platform::{MemRegistry, Registry};
+        let r = MemRegistry::new();
+        r.put(KeyData::new("HKLM\\SOFTWARE\\Microsoft"));
+        r.put(KeyData::new("HKLM\\SOFTWARE\\Vendor"));
+        assert!(r.delete_tree("HKLM\\SOFTWARE\\Microsoft").is_err());
+        assert!(r.delete_tree("HKLM\\software\\microsoft\\").is_err());
+        assert!(r.exists("HKLM\\SOFTWARE\\Microsoft"));
+        assert!(r.delete_tree("HKLM\\SOFTWARE\\Vendor").is_ok());
+    }
+
+    #[test]
+    fn links_are_removed_without_touching_their_target() {
+        let base = std::env::temp_dir().join(format!("expunge-link-{}", std::process::id()));
+        let target = base.join("target");
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(target.join("keep.txt"), "keep").unwrap();
+        let link = base.join("link");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        #[cfg(windows)]
+        if std::os::windows::fs::symlink_dir(&target, &link).is_err() {
+            // Creating symbolic links needs Developer Mode or elevation.
+            let _ = std::fs::remove_dir_all(&base);
+            return;
+        }
+        assert!(is_link(&link));
+        assert!(!is_link(&target));
+        let prot = protected_dirs_with(&win_env);
+        assert!(guard_dir_delete(&link, &prot).is_ok());
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

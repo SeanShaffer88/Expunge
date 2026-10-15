@@ -158,6 +158,10 @@ impl Registry for MemRegistry {
     }
 
     fn delete_tree(&self, path: &str) -> Result<()> {
+        // Same last line of defence as the real registry.
+        if crate::util::is_protected_key(path) {
+            return Err(anyhow!("refusing to delete protected key {path}"));
+        }
         let f = fold(path);
         let prefix = format!("{f}\\");
         let mut keys = self.keys.lock().unwrap();
