@@ -76,6 +76,8 @@ pub struct App {
     pub privacy: super::privacy::PrivacyState,
     pub disk: super::disk::DiskState,
     pub dups: super::dups::DupState,
+    /// Live activity while monitoring an installation.
+    pub live: Option<expunge_core::live::LiveWatcher>,
     /// Whether background monitoring is on (read from Task Scheduler once).
     pub auto_watch: Option<bool>,
     pub health: Option<(expunge_core::health::Health, expunge_core::health::History)>,
@@ -157,6 +159,7 @@ impl App {
             privacy: Default::default(),
             disk: Default::default(),
             dups: Default::default(),
+            live: None,
             auto_watch: None,
             health: None,
             health_job: None,

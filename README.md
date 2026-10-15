@@ -58,6 +58,7 @@ Expunge is a free, GPL-licensed alternative to commercial tools such as Total Un
 - **Install and monitor:** choose an installer, or right-click it in File Explorer and select **Install with Expunge**. Expunge takes a snapshot, runs the installer, and records every change.
 - **Background auto-monitoring** (optional): records installations automatically, even the ones you forgot to monitor.
 - **Manual monitoring** for anything else, including Microsoft Store apps, winget packages, scripts, and portable applications.
+- **Live activity:** watch files being added, changed, and removed while an installer runs.
 - **Restart-safe:** monitoring continues across restarts, so installers that require a reboot are captured completely.
 - **Automatic exclusions:** temporary files, logs, and browser and application caches are ignored, so each log contains only the installer's real changes.
 - **Background-noise learning:** Expunge observes what your PC changes on its own and offers to exclude it from future captures.

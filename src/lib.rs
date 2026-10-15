@@ -17,6 +17,7 @@ pub mod duplicates;
 pub mod autowatch;
 pub mod boot;
 pub mod health;
+pub mod live;
 pub mod reputation;
 pub mod schedule;
 pub mod scripts;

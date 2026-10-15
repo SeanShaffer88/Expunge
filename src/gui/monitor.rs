@@ -283,7 +283,59 @@ impl App {
                 }
                 Phase::Review => self.monitor_review(ui),
             }
+            if self.monitor.phase == Phase::Installing {
+                ui.add_space(16.0);
+                self.ui_live(ui);
+            } else {
+                self.live = None;
+            }
         });
+    }
+
+    fn ui_live(&mut self, ui: &mut egui::Ui) {
+        use expunge_core::live::{LiveKind, LiveWatcher};
+        if self.live.is_none() {
+            let folders: Vec<(std::path::PathBuf, bool)> = self
+                .settings
+                .file_roots
+                .iter()
+                .map(|r| (std::path::PathBuf::from(expunge_core::platform::expand_env(&r.path)), r.recursive))
+                .filter(|(p, _)| p.is_dir())
+                .collect();
+            let excl = expunge_core::util::Exclusions::new(&self.settings.effective_file_exclusions());
+            self.live = Some(LiveWatcher::start(&folders, &self.settings.registry_roots, excl));
+        }
+        let Some(live) = &self.live else { return };
+        ui.ctx().request_repaint_after(std::time::Duration::from_millis(500));
+        egui::CollapsingHeader::new(RichText::new(t("Live activity")).strong())
+            .default_open(self.settings.advanced_mode)
+            .show(ui, |ui| {
+                let (a, c, r, g) = live.counts();
+                small_muted(ui, tf(
+                    "Files added: {a} · changed: {c} · removed: {r} · registry areas changed: {g}",
+                    &[("a", a.to_string()), ("c", c.to_string()), ("r", r.to_string()), ("g", g.to_string())],
+                ));
+                small_muted(ui, t("Changes appear here as they happen. The exact list, including registry values, is compared when you click Finish."));
+                egui::ScrollArea::vertical()
+                    .max_height(260.0)
+                    .stick_to_bottom(true)
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        for e in live.recent(300) {
+                            let (sym, color) = match e.kind {
+                                LiveKind::Added => ("+", theme::ADDED),
+                                LiveKind::Changed | LiveKind::Renamed => ("~", theme::CHANGED),
+                                LiveKind::Removed => ("−", theme::REMOVED),
+                                LiveKind::Registry => ("®", theme::MUTED),
+                            };
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new(&e.time).monospace().small().color(theme::MUTED));
+                                ui.label(RichText::new(sym).monospace().color(color));
+                                ui.add(egui::Label::new(RichText::new(&e.path).monospace().small()).truncate());
+                            });
+                        }
+                    });
+            });
     }
 
     fn monitor_idle(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {

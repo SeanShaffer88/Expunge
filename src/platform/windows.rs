@@ -761,3 +761,50 @@ pub fn background_priority() {
         SetPriorityClass(GetCurrentProcess(), PROCESS_MODE_BACKGROUND_BEGIN);
     }
 }
+
+/// Block until `stop` is set, calling `on_change` whenever anything under the
+/// registry key `path` changes (keys added or removed, values written).
+pub fn watch_registry(
+    path: &str,
+    stop: &std::sync::atomic::AtomicBool,
+    mut on_change: impl FnMut(),
+) -> Result<()> {
+    use std::sync::atomic::Ordering;
+    use windows_sys::Win32::System::Registry::{
+        RegNotifyChangeKeyValue, REG_NOTIFY_CHANGE_LAST_SET, REG_NOTIFY_CHANGE_NAME,
+    };
+    use windows_sys::Win32::System::Threading::{CreateEventW, WaitForSingleObject};
+    let key = open(path, KEY_NOTIFY)?;
+    let raw = key.raw_handle() as windows_sys::Win32::System::Registry::HKEY;
+    unsafe {
+        let event = CreateEventW(std::ptr::null(), 0, 0, std::ptr::null());
+        if event.is_null() {
+            return Err(anyhow!("could not create an event"));
+        }
+        while !stop.load(Ordering::Relaxed) {
+            let rc = RegNotifyChangeKeyValue(
+                raw,
+                1,
+                REG_NOTIFY_CHANGE_NAME | REG_NOTIFY_CHANGE_LAST_SET,
+                event,
+                1,
+            );
+            if rc != 0 {
+                CloseHandle(event);
+                return Err(anyhow!("registry notifications unavailable for {path} ({rc})"));
+            }
+            loop {
+                if stop.load(Ordering::Relaxed) {
+                    break;
+                }
+                if WaitForSingleObject(event, 400) == WAIT_OBJECT_0 {
+                    on_change();
+                    break;
+                }
+            }
+        }
+        CloseHandle(event);
+    }
+    drop(key);
+    Ok(())
+}
