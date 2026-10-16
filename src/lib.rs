@@ -16,6 +16,7 @@ pub mod boot;
 pub mod cache;
 pub mod cleaner;
 pub mod debloat;
+pub mod decrap;
 pub mod difftree;
 pub mod features;
 pub mod i18n;
