@@ -153,7 +153,7 @@ mod tests {
         assert_eq!(c.trust("k", "C:\\a.exe", Some((11, 5))), None);
         assert_eq!(c.trust.len(), 1);
 
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::util::tempdir().unwrap();
         let path = dir.path().join("cache.json");
         c.put_size("k", "C:\\App", "1", 7, 3);
         c.save(&path).unwrap();

@@ -1353,7 +1353,7 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                 }
             }
             if has(&args, "--apply") && !l.is_empty() {
-                let date = chrono::Local::now().format("%Y-%m-%d").to_string();
+                let date = expunge_core::time::DateTime::now_local().ymd();
                 expunge_core::noise::append_learned(
                     &mut settings.registry_exclusions,
                     &l.registry,

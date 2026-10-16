@@ -49,6 +49,7 @@ pub mod slimmer;
 pub mod snapshot;
 pub mod startup;
 pub mod store;
+pub mod time;
 pub mod transfer;
 pub mod trust;
 pub mod usage;

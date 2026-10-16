@@ -24,6 +24,9 @@ All notable changes to Expunge are documented here. The format follows
 - **More installer types in the integration tests**: Squirrel (Atom) and a WiX Burn bundle (PowerToys), plus InstallShield and Wise once the `INSTALLSHIELD_URL` / `WISE_URL` repository variables point to a test installer.
 - **Soak test**: `scripts/soak.ps1` installs and removes real programs in a loop with background monitoring running, failing on leftovers, background-monitoring misfires and growing handle or memory use; it runs for five hours weekly in CI and can run for days on a test VM.
 
+### Changed
+- Four fewer third-party libraries: dates and times (with Windows' own daylight-saving rules), SHA-256, byte search and test folders are now Expunge's own code.
+
 ### Fixed
 - Background monitoring no longer holds gigabytes of memory: its snapshots and comparisons run in a short-lived copy of Expunge, so the process that stays running for days stays small. Found by the new soak test, where it had grown from 17 MB to over 2 GB.
 - Background monitoring could record its own duplicate log of an installation being monitored from the command line; `expunge monitor` now marks the installation as monitored (and refuses to start while another monitoring session is in progress).

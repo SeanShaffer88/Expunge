@@ -1945,3 +1945,37 @@ impl WinRegistry {
         }
     }
 }
+
+/// Local date and time for a Unix timestamp, with the daylight-saving
+/// rules in force on that date.
+pub fn local_time_of(ts: i64) -> Option<crate::time::DateTime> {
+    use windows_sys::Win32::Foundation::{FILETIME, SYSTEMTIME};
+    use windows_sys::Win32::System::Time::{FileTimeToSystemTime, SystemTimeToTzSpecificLocalTime};
+    let ticks = (ts.checked_add(11_644_473_600)?).checked_mul(10_000_000)?;
+    if ticks < 0 {
+        return None;
+    }
+    let ft = FILETIME {
+        dwLowDateTime: ticks as u32,
+        dwHighDateTime: (ticks >> 32) as u32,
+    };
+    let mut utc: SYSTEMTIME = unsafe { std::mem::zeroed() };
+    let mut local: SYSTEMTIME = unsafe { std::mem::zeroed() };
+    unsafe {
+        if FileTimeToSystemTime(&ft, &mut utc) == 0
+            || SystemTimeToTzSpecificLocalTime(std::ptr::null(), &utc, &mut local) == 0
+        {
+            return None;
+        }
+    }
+    Some(crate::time::DateTime {
+        date: crate::time::Date::from_ymd(
+            local.wYear as i32,
+            local.wMonth as u32,
+            local.wDay as u32,
+        )?,
+        hour: local.wHour as u32,
+        minute: local.wMinute as u32,
+        second: local.wSecond as u32,
+    })
+}

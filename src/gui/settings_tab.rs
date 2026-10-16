@@ -186,7 +186,7 @@ impl App {
                 .collect::<Vec<_>>()
         };
         let (regs, files) = (pick(&res.registry), pick(&res.files));
-        let date = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let date = expunge_core::time::DateTime::now_local().ymd();
         noise::append_learned(&mut self.settings.registry_exclusions, &regs, &date);
         noise::append_learned(&mut self.settings.file_exclusions, &files, &date);
         self.save_settings();

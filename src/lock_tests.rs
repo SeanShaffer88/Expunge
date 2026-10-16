@@ -121,7 +121,7 @@ fn copy_system_dll(to: &Path) {
 #[test]
 fn a_file_open_in_another_program_names_that_program() {
     let Some(helper) = helper() else { return };
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = crate::util::tempdir().unwrap();
     let f = tmp.path().join("settings.db");
     std::fs::write(&f, b"data").unwrap();
     let h = Holder::start(&helper, &["open", &path_str(&f), "120"]);
@@ -150,7 +150,7 @@ fn a_file_open_in_another_program_names_that_program() {
 #[test]
 fn a_dll_loaded_by_another_process_is_reported_and_the_rest_removed() {
     let Some(helper) = helper() else { return };
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = crate::util::tempdir().unwrap();
     let app = tmp.path().join("App");
     std::fs::create_dir_all(app.join("shell")).unwrap();
     std::fs::write(app.join("readme.txt"), b"x").unwrap();
@@ -190,7 +190,7 @@ fn a_dll_loaded_by_another_process_is_reported_and_the_rest_removed() {
 #[test]
 fn only_explorer_is_ever_closed() {
     let Some(helper) = helper() else { return };
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = crate::util::tempdir().unwrap();
     let dll = tmp.path().join("Ext.dll");
     copy_system_dll(&dll);
     let mut h = Holder::start(&helper, &["load", &path_str(&dll), "120"]);
@@ -218,7 +218,7 @@ fn a_service_is_stopped_and_its_files_released_before_they_are_deleted() {
         eprintln!("skipped: creating a service needs an elevated prompt");
         return;
     }
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = crate::util::tempdir().unwrap();
     let dir = tmp.path().join("Svc");
     std::fs::create_dir_all(&dir).unwrap();
     // The service runs from the program's own folder, as real ones do, so
@@ -301,7 +301,7 @@ fn stopping_a_service_that_does_not_exist_is_not_an_error() {
 #[test]
 fn the_running_program_is_closed_and_its_files_removed_at_once() {
     let Some(helper) = helper() else { return };
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = crate::util::tempdir().unwrap();
     let app = tmp.path().join("App");
     std::fs::create_dir_all(&app).unwrap();
     // The program runs from its own folder, holding its own data open.
@@ -338,7 +338,7 @@ fn the_running_program_is_closed_and_its_files_removed_at_once() {
 #[test]
 fn a_program_that_only_loaded_one_of_the_files_is_not_closed() {
     let Some(helper) = helper() else { return };
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = crate::util::tempdir().unwrap();
     let app = tmp.path().join("App");
     std::fs::create_dir_all(&app).unwrap();
     // An add-in: the host runs from elsewhere and loaded the program's DLL.

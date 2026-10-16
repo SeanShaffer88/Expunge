@@ -34,7 +34,7 @@ fn run(p: &Plan, reg: &dyn Registry, broot: &Path) -> (Vec<crate::backup::Action
 
 #[test]
 fn deep_and_wide_registry_trees_are_removed_and_restored() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = crate::util::tempdir().unwrap();
     let reg = MemRegistry::new();
     let root = "HKCU\\Software\\StressVendor";
     // 400 levels deep, and 2,000 siblings with values.
@@ -68,7 +68,7 @@ fn deep_and_wide_registry_trees_are_removed_and_restored() {
 
 #[test]
 fn thousands_of_files_are_backed_up_quickly() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = crate::util::tempdir().unwrap();
     let dir = tmp.path().join("Program Files").join("Bulk");
     for d in 0..30 {
         let sub = dir.join(format!("d{d}"));
@@ -111,7 +111,7 @@ fn long_dir(base: &Path) -> PathBuf {
 
 #[test]
 fn paths_longer_than_260_characters() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = crate::util::tempdir().unwrap();
     let deep = long_dir(tmp.path());
     std::fs::create_dir_all(&deep).unwrap();
     let file = deep.join("settings.ini");
@@ -131,7 +131,7 @@ fn paths_longer_than_260_characters() {
 
 #[test]
 fn a_link_inside_a_removed_folder_never_reaches_its_target() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = crate::util::tempdir().unwrap();
     let outside = tmp.path().join("Precious");
     std::fs::create_dir_all(&outside).unwrap();
     std::fs::write(outside.join("thesis.docx"), "years of work").unwrap();
@@ -169,7 +169,7 @@ fn a_link_inside_a_removed_folder_never_reaches_its_target() {
 #[test]
 fn files_in_use_are_scheduled_not_fatal() {
     use std::os::windows::fs::OpenOptionsExt;
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp = crate::util::tempdir().unwrap();
     let dir = tmp.path().join("Busy");
     std::fs::create_dir_all(&dir).unwrap();
     let file = dir.join("locked.dll");

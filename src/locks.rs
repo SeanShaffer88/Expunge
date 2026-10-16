@@ -310,7 +310,7 @@ mod tests {
 
     #[test]
     fn modules_are_found_in_files_and_folders_being_removed() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::util::tempdir().unwrap();
         let d = tmp.path().join("App");
         std::fs::create_dir_all(d.join("shell")).unwrap();
         for f in [
@@ -365,7 +365,7 @@ mod tests {
 
     #[test]
     fn programs_are_found_by_extension() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::util::tempdir().unwrap();
         let d = tmp.path().join("App");
         std::fs::create_dir_all(d.join("bin")).unwrap();
         for f in ["App.EXE", "bin/helper.exe", "bin/core.dll", "notes.exe.txt"] {

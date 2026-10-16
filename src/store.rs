@@ -95,11 +95,7 @@ impl Store {
                 let when = e
                     .metadata()
                     .and_then(|m| m.modified())
-                    .map(|t| {
-                        chrono::DateTime::<chrono::Local>::from(t)
-                            .format("%Y-%m-%d %H:%M")
-                            .to_string()
-                    })
+                    .map(|t| crate::time::DateTime::from_system_time_local(t).ymd_hm())
                     .unwrap_or_default();
                 (name, e.path(), when)
             })
@@ -210,7 +206,7 @@ mod tests {
 
     #[test]
     fn logs_and_settings_persist() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::util::tempdir().unwrap();
         let st = Store::at(tmp.path()).unwrap();
         let mut s = st.load_settings();
         s.language = "de".into();

@@ -895,7 +895,7 @@ impl App {
         {
             use std::sync::atomic::{AtomicI64, Ordering};
             static LAST: AtomicI64 = AtomicI64::new(0);
-            let now = chrono::Utc::now().timestamp();
+            let now = expunge_core::time::unix_now();
             if now - LAST.load(Ordering::Relaxed) >= 300 {
                 LAST.store(now, Ordering::Relaxed);
                 let root = self.store.root.clone();

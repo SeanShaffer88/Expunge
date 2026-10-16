@@ -795,8 +795,8 @@ mod tests {
 
     #[test]
     fn export_and_restore_round_trip() {
-        let src = tempfile::tempdir().unwrap();
-        let dst = tempfile::tempdir().unwrap();
+        let src = crate::util::tempdir().unwrap();
+        let dst = crate::util::tempdir().unwrap();
         let s = |p: &Path| p.to_string_lossy().to_string();
         let from = Vars::from_pairs(vec![("ProgramFiles".into(), s(src.path()))]);
         let to = Vars::from_pairs(vec![("ProgramFiles".into(), s(dst.path()))]);
@@ -829,7 +829,7 @@ mod tests {
 
         // Restore on the "new PC".
         let reg2 = MemRegistry::new();
-        let backups = tempfile::tempdir().unwrap();
+        let backups = crate::util::tempdir().unwrap();
         let mut bw = BackupWriter::new(backups.path(), "Transfer").unwrap();
         let ck = check(&m, &reg2, &to);
         assert!(ck.problems.is_empty(), "{:?}", ck.problems);

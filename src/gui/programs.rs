@@ -280,12 +280,12 @@ impl App {
     /// Days since a program was last opened; for programs Windows has no
     /// record of opening, days since it was installed. None while unknown.
     pub fn unused_days(&self, p: &InstalledProgram) -> Option<i64> {
-        let now = chrono::Utc::now().timestamp();
+        let now = expunge_core::time::unix_now();
         let u = self.programs.usage.get(&p.key)?;
         match u.last_opened {
             Some(ts) => Some((now - ts) / 86_400),
             None => expunge_core::nlquery::parse_date(&p.install_date)
-                .map(|d| (chrono::Local::now().date_naive() - d).num_days()),
+                .map(|d| expunge_core::time::Date::today_local().days_since(d)),
         }
     }
 
@@ -989,7 +989,7 @@ impl App {
                 field(ui, "Location", &p.install_location);
                 if let Some(u) = self.programs.usage.get(&p.key) {
                     let ago = |ts: i64| {
-                        let days = (chrono::Utc::now().timestamp() - ts) / 86_400;
+                        let days = (expunge_core::time::unix_now() - ts) / 86_400;
                         match days {
                             0 => t("today"),
                             1 => t("yesterday"),

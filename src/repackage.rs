@@ -322,8 +322,8 @@ mod tests {
 
     #[test]
     fn builds_a_package_folder() {
-        let src = tempfile::tempdir().unwrap();
-        let out = tempfile::tempdir().unwrap();
+        let src = crate::util::tempdir().unwrap();
+        let out = crate::util::tempdir().unwrap();
         let app = src.path().join("Contoso");
         std::fs::create_dir_all(&app).unwrap();
         std::fs::write(app.join("app.exe"), b"bin").unwrap();

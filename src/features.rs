@@ -234,7 +234,7 @@ The operation completed successfully.\n";
 
     #[test]
     fn lists_aliases() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::util::tempdir().unwrap();
         let pkg = dir
             .path()
             .join("PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0");

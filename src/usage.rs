@@ -220,7 +220,7 @@ pub fn sample_now() -> Vec<ProcSample> {
 
 /// Sample and save, if the last round was at least `min_gap` seconds ago.
 pub fn sample_and_save(root: &Path, min_gap: i64) {
-    let now = chrono::Utc::now().timestamp();
+    let now = crate::time::unix_now();
     let mut db = UsageDb::load(root);
     if now - db.last_sample < min_gap {
         return;

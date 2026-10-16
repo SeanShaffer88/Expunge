@@ -740,7 +740,7 @@ mod tests {
 
     #[test]
     fn finds_leftovers_conservatively() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::util::tempdir().unwrap();
         let pf = tmp.path().join("pf");
         let appdata = tmp.path().join("appdata");
         let desk = tmp.path().join("desk");
@@ -812,7 +812,7 @@ mod tests {
 
     #[test]
     fn deep_scan_finds_registrations_pointing_into_the_install_folder() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::util::tempdir().unwrap();
         let pf = tmp.path().join("pf");
         let loc_path = pf.join("FooCorp").join("Foo Editor");
         std::fs::create_dir_all(&loc_path).unwrap();

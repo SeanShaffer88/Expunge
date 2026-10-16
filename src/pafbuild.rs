@@ -226,7 +226,7 @@ pub fn detect_installer(path: &Path) -> InstallerKind {
         let mut buf = vec![0u8; 4 * 1024 * 1024];
         let n = f.read(&mut buf).unwrap_or(0);
         let hay = &buf[..n];
-        let has = |needle: &[u8]| memchr::memmem::find(hay, needle).is_some();
+        let has = |needle: &[u8]| crate::util::find_bytes(hay, needle).is_some();
         if has(b"Inno Setup") || has(b"InnoSetupLdrWindow") {
             return InstallerKind::Inno;
         }

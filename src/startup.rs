@@ -219,7 +219,7 @@ pub fn set_enabled(
     data[0] = if enabled { 2 } else { 3 };
     if !enabled {
         // FILETIME of when it was disabled (shown by Task Manager).
-        let secs = chrono::Utc::now().timestamp() + 11_644_473_600;
+        let secs = crate::time::unix_now() + 11_644_473_600;
         let ft = (secs as u64) * 10_000_000;
         data[4..12].copy_from_slice(&ft.to_le_bytes());
     }
@@ -503,7 +503,7 @@ mod tests {
 
     #[test]
     fn run_entries_toggle_like_task_manager() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::util::tempdir().unwrap();
         let folder = tmp.path().join("Startup");
         std::fs::create_dir_all(&folder).unwrap();
         std::fs::write(folder.join("App.lnk"), "x").unwrap();

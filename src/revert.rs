@@ -1449,7 +1449,7 @@ mod tests {
 
     #[test]
     fn full_install_then_revert_restores_system() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::util::tempdir().unwrap();
         let root = tmp.path().join("pf");
         std::fs::create_dir_all(&root).unwrap();
         let reg = MemRegistry::new();

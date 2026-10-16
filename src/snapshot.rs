@@ -679,7 +679,7 @@ mod tests {
 
     #[test]
     fn snapshot_diff_detects_install() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::util::tempdir().unwrap();
         let root = tmp.path().to_string_lossy().to_string();
         let reg = MemRegistry::new();
         reg.put(
@@ -778,7 +778,7 @@ mod tests {
 
     #[test]
     fn snapshot_save_load() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::util::tempdir().unwrap();
         let s = sample();
         let p = tmp.path().join("a.snap");
         save_snapshot(&p, &s).unwrap();
@@ -795,7 +795,7 @@ mod tests {
 
     #[test]
     fn snapshots_from_earlier_versions_still_load() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::util::tempdir().unwrap();
         let p = tmp.path().join("old.snap");
         let json = r#"{"created":"c","computer":"pc","user":"u",
             "registry":{"hkcu\\software\\a":{"path":"HKCU\\Software\\A","values":{"x":{"name":"x","kind":1,"data":"790000"}}}},
@@ -812,7 +812,7 @@ mod tests {
 
     #[test]
     fn a_damaged_snapshot_is_refused_not_misread() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::util::tempdir().unwrap();
         let p = tmp.path().join("a.snap");
         save_snapshot(&p, &sample()).unwrap();
         let mut raw = Vec::new();

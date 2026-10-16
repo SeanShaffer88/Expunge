@@ -570,7 +570,7 @@ pub fn add_manual(
         install_location: dir_s,
         display_icon: icon,
         size_kb: bytes / 1024,
-        install_date: chrono::Local::now().format("%Y-%m-%d").to_string(),
+        install_date: crate::time::DateTime::now_local().ymd(),
         source: Source::Manual,
         ..Default::default()
     };

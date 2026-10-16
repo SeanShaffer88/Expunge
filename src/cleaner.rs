@@ -384,7 +384,7 @@ mod tests {
 
     #[test]
     fn wildcard_resolution_and_clean() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::util::tempdir().unwrap();
         for p in ["Profile 1/Cache/a", "Default/Cache", "Default/Keep"] {
             std::fs::create_dir_all(tmp.path().join(p)).unwrap();
         }

@@ -311,7 +311,7 @@ mod tests {
 
     #[test]
     fn recognises_nsis_files() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::util::tempdir().unwrap();
         let yes = dir.path().join("Uninstall.exe");
         let mut bytes = vec![0u8; 5000];
         bytes.extend_from_slice(b"Nullsoft.NSIS.exehead");

@@ -38,7 +38,7 @@ impl App {
     }
 
     fn run_ask(&mut self) {
-        let today = chrono::Local::now().date_naive();
+        let today = expunge_core::time::Date::today_local();
         let q = nlquery::parse(&self.ask_ui.text, today);
         let size_of = |p: &InstalledProgram| {
             if p.size_kb > 0 {

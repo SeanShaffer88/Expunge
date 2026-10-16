@@ -120,12 +120,12 @@ fn lower_ascii(b: &[u8]) -> Vec<u8> {
 
 fn find(hay: &[u8], needle: &str) -> bool {
     let n = needle.as_bytes();
-    if memchr::memmem::find(hay, n).is_some() {
+    if crate::util::find_bytes(hay, n).is_some() {
         return true;
     }
     // UTF-16LE, as Windows resources store text.
     let wide: Vec<u8> = n.iter().flat_map(|&c| [c, 0]).collect();
-    memchr::memmem::find(hay, &wide).is_some()
+    crate::util::find_bytes(hay, &wide).is_some()
 }
 
 /// Scan the bytes of a setup file (already lower-cased).

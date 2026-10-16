@@ -4,7 +4,7 @@
 //! programs and install logs. Runs locally with simple rules; nothing is sent
 //! anywhere, and removal always goes through the usual review.
 
-use chrono::{Datelike, Duration, NaiveDate};
+use crate::time::Date as NaiveDate;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Action {
@@ -488,17 +488,17 @@ pub fn parse(text: &str, today: NaiveDate) -> Query {
     if has("today") {
         q.since = Some(today);
     } else if has("yesterday") {
-        q.since = Some(today - Duration::days(1));
-        q.until = Some(today - Duration::days(1));
+        q.since = Some(today.add_days(-1));
+        q.until = Some(today.add_days(-1));
     } else if has("recently") || has("recent") || has("new") || has("newest") || has("latest") {
         window = window.or(Some(14));
     }
     if let Some(d) = window {
         // "2 weeks ago" means around then, "last week" means since then.
         let ago = has("ago");
-        q.since = Some(today - Duration::days(d + if ago { 4 } else { 0 }));
+        q.since = Some(today.add_days(-(d + if ago { 4 } else { 0 })));
         if ago {
-            q.until = Some(today - Duration::days((d - 4).max(0)));
+            q.until = Some(today.add_days(-((d - 4).max(0))));
         }
     }
     for (i, m) in MONTHS.iter().enumerate() {
@@ -509,14 +509,14 @@ pub fn parse(text: &str, today: NaiveDate) -> Query {
             } else {
                 today.year()
             };
-            if let Some(first) = NaiveDate::from_ymd_opt(year, month, 1) {
+            if let Some(first) = NaiveDate::from_ymd(year, month, 1) {
                 let next = if month == 12 {
-                    NaiveDate::from_ymd_opt(year + 1, 1, 1)
+                    NaiveDate::from_ymd(year + 1, 1, 1)
                 } else {
-                    NaiveDate::from_ymd_opt(year, month + 1, 1)
+                    NaiveDate::from_ymd(year, month + 1, 1)
                 };
                 q.since = Some(first);
-                q.until = next.map(|n| n - Duration::days(1));
+                q.until = next.map(|n| n.add_days(-1));
             }
         }
     }
@@ -675,9 +675,7 @@ impl Query {
 /// "2026-10-08" (or "20261008") → a date.
 pub fn parse_date(s: &str) -> Option<NaiveDate> {
     let s = s.trim();
-    NaiveDate::parse_from_str(s.get(..10).unwrap_or(s), "%Y-%m-%d")
-        .ok()
-        .or_else(|| NaiveDate::parse_from_str(s.get(..8).unwrap_or(s), "%Y%m%d").ok())
+    NaiveDate::parse_ymd(s).or_else(|| NaiveDate::parse_compact(s))
 }
 
 #[cfg(test)]
@@ -685,7 +683,7 @@ mod tests {
     use super::*;
 
     fn d(s: &str) -> NaiveDate {
-        NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap()
+        NaiveDate::parse_ymd(s).unwrap()
     }
 
     #[test]

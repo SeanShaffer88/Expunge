@@ -28,10 +28,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 flate2 = "1"
 zip = { version = "2", default-features = false, features = ["deflate"] }
-chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
 walkdir = "2"
-sha2 = "0.10"
-memchr = "2"
 notify = { version = "8", default-features = false }
 eframe = { version = "0.33", default-features = false, features = ["default_fonts", "wgpu", "accesskit"] }
 egui = { version = "0.33", default-features = false }
@@ -64,6 +61,7 @@ windows-sys = { version = "0.59", features = [
     "Win32_System_Services",
     "Win32_System_SystemInformation",
     "Win32_System_Threading",
+    "Win32_System_Time",
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }
@@ -71,8 +69,6 @@ windows-sys = { version = "0.59", features = [
 [build-dependencies]
 winresource = "0.1"
 
-[dev-dependencies]
-tempfile = "3"
 
 # Test builds in CI: release optimisation without the slow whole-program
 # link-time optimisation, so the integration tests start minutes sooner.

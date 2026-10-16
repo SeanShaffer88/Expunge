@@ -47,7 +47,7 @@ pub struct LiveWatcher {
 }
 
 fn now() -> String {
-    chrono::Local::now().format("%H:%M:%S").to_string()
+    crate::time::DateTime::now_local().hms()
 }
 
 fn push(shared: &Mutex<Shared>, kind: LiveKind, path: String) {

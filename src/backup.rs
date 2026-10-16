@@ -506,7 +506,7 @@ mod tests {
 
     #[test]
     fn backup_and_restore_roundtrip() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::util::tempdir().unwrap();
         let broot = tmp.path().join("backups");
         let work = tmp.path().join("work");
         std::fs::create_dir_all(work.join("sub")).unwrap();
@@ -559,7 +559,7 @@ mod tests {
 
     #[test]
     fn an_interrupted_removal_can_be_found_and_undone() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::util::tempdir().unwrap();
         let broot = tmp.path().join("backups");
         let work = tmp.path().join("work");
         std::fs::create_dir_all(&work).unwrap();
@@ -607,7 +607,7 @@ mod tests {
 
     #[test]
     fn keeping_an_interrupted_removal_stops_the_question() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::util::tempdir().unwrap();
         let broot = tmp.path().join("backups");
         let w = BackupWriter::new(&broot, "x").unwrap();
         let id = w.id().to_string();
@@ -624,7 +624,7 @@ mod tests {
 
     #[test]
     fn finished_and_dropped_writers_are_complete() {
-        let tmp = tempfile::tempdir().unwrap();
+        let tmp = crate::util::tempdir().unwrap();
         let broot = tmp.path().join("backups");
         let w = BackupWriter::new(&broot, "finished").unwrap();
         w.finish().unwrap();

@@ -173,9 +173,10 @@ impl App {
                 ui.add_enabled_ui(self.lab.snap_job.is_none(), |ui| {
                     if theme::primary_button(ui, format!("📷 {}", t("Take snapshot"))).clicked() {
                         let name = if self.lab.snap_name.trim().is_empty() {
-                            chrono::Local::now()
-                                .format("snapshot-%Y%m%d-%H%M%S")
-                                .to_string()
+                            format!(
+                                "snapshot-{}",
+                                expunge_core::time::DateTime::now_local().compact()
+                            )
                         } else {
                             expunge_core::util::safe_file_name(self.lab.snap_name.trim())
                         };
