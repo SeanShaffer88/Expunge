@@ -781,7 +781,7 @@ fn run_action(
                 Err(e) => {
                     // Something is locked: remove what we can, schedule the rest.
                     let mut scheduled: Vec<std::path::PathBuf> = Vec::new();
-                    for f in walkdir::WalkDir::new(p)
+                    for f in crate::fswalk::WalkDir::new(p)
                         .contents_first(true)
                         .into_iter()
                         .flatten()

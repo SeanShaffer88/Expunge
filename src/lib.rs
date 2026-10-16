@@ -19,6 +19,7 @@ pub mod debloat;
 pub mod decrap;
 pub mod difftree;
 pub mod features;
+pub mod fswalk;
 pub mod i18n;
 pub mod leftovers;
 pub mod live;

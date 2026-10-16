@@ -288,8 +288,8 @@ pub struct ScanResult {
     pub bytes: u64,
 }
 
-fn walk_files(p: &Path) -> impl Iterator<Item = walkdir::DirEntry> {
-    walkdir::WalkDir::new(p)
+fn walk_files(p: &Path) -> impl Iterator<Item = crate::fswalk::DirEntry> {
+    crate::fswalk::WalkDir::new(p)
         .follow_links(false)
         .into_iter()
         .flatten()
@@ -333,7 +333,7 @@ pub fn clean(cat: &Category) -> ScanResult {
                 }
                 continue;
             }
-            for e in walkdir::WalkDir::new(&target)
+            for e in crate::fswalk::WalkDir::new(&target)
                 .min_depth(1)
                 .contents_first(true)
                 .follow_links(false)

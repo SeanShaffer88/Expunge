@@ -146,7 +146,7 @@ fn files_matching<'a>(
                 if crate::util::is_link(p) {
                     continue; // only the link is removed
                 }
-                for e in walkdir::WalkDir::new(p).into_iter().flatten() {
+                for e in crate::fswalk::WalkDir::new(p).into_iter().flatten() {
                     seen += 1;
                     if seen > MODULE_SCAN_LIMIT {
                         return out;

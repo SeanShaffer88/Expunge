@@ -425,7 +425,7 @@ pub fn list_tasks() -> Vec<TaskEntry> {
 
 pub fn list_tasks_in(root: &str) -> Vec<TaskEntry> {
     let mut out = Vec::new();
-    for e in walkdir::WalkDir::new(root)
+    for e in crate::fswalk::WalkDir::new(root)
         .min_depth(1)
         .into_iter()
         .flatten()

@@ -281,7 +281,7 @@ pub fn program_for_path(
 
 /// Total size of the files under a folder, in bytes.
 pub fn dir_size(path: &str) -> u64 {
-    walkdir::WalkDir::new(path)
+    crate::fswalk::WalkDir::new(path)
         .follow_links(false)
         .into_iter()
         .flatten()
@@ -549,7 +549,7 @@ pub fn add_manual(
     } else {
         String::new()
     };
-    for e in walkdir::WalkDir::new(dir)
+    for e in crate::fswalk::WalkDir::new(dir)
         .into_iter()
         .filter_map(|e| e.ok())
     {

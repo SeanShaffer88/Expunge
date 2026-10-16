@@ -182,7 +182,7 @@ impl BackupWriter {
 
     /// Back up a whole folder: the folder entries and every file inside.
     pub fn add_dir_tree(&mut self, path: &Path) -> Result<()> {
-        for e in walkdir::WalkDir::new(path)
+        for e in crate::fswalk::WalkDir::new(path)
             .follow_links(false)
             .into_iter()
             .flatten()

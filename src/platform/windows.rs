@@ -6,8 +6,13 @@ use anyhow::{anyhow, Context, Result};
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
-use winreg::enums::*;
-use winreg::RegKey;
+use windows_sys::Win32::System::Registry::{
+    RegCloseKey, RegCreateKeyExW, RegDeleteTreeW, RegDeleteValueW, RegEnumKeyExW, RegEnumValueW,
+    RegOpenKeyExW, RegQueryInfoKeyW, HKEY, HKEY_CLASSES_ROOT, HKEY_CURRENT_CONFIG,
+    HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, HKEY_USERS, KEY_ALL_ACCESS, KEY_ENUMERATE_SUB_KEYS,
+    KEY_NOTIFY, KEY_QUERY_VALUE, KEY_READ, KEY_SET_VALUE, KEY_WOW64_64KEY,
+    REG_OPTION_NON_VOLATILE,
+};
 
 use windows_sys::Win32::Foundation::{
     CloseHandle, GetLastError, HANDLE, WAIT_FAILED, WAIT_OBJECT_0,
@@ -57,25 +62,184 @@ pub fn wide(s: &str) -> Vec<u16> {
         .collect()
 }
 
-fn hive(short: &str) -> RegKey {
-    let h = match short {
+fn hive(short: &str) -> HKEY {
+    match short {
         "HKLM" => HKEY_LOCAL_MACHINE,
         "HKCU" => HKEY_CURRENT_USER,
         "HKU" => HKEY_USERS,
         "HKCR" => HKEY_CLASSES_ROOT,
         _ => HKEY_CURRENT_CONFIG,
-    };
-    RegKey::predef(h)
+    }
 }
 
-fn open(path: &str, access: u32) -> std::io::Result<RegKey> {
+/// An open registry key, closed when dropped (hive roots are never closed).
+struct Key {
+    h: HKEY,
+    owned: bool,
+}
+
+impl Drop for Key {
+    fn drop(&mut self) {
+        if self.owned {
+            unsafe { RegCloseKey(self.h) };
+        }
+    }
+}
+
+fn os_err(rc: u32) -> std::io::Error {
+    std::io::Error::from_raw_os_error(rc as i32)
+}
+
+impl Key {
+    fn raw_handle(&self) -> HKEY {
+        self.h
+    }
+
+    /// Size the buffers for enumerating this key: (longest subkey name,
+    /// longest value name, largest value data), in characters / bytes.
+    fn sizes(&self) -> (usize, usize, usize) {
+        let (mut sub, mut name, mut data) = (0u32, 0u32, 0u32);
+        unsafe {
+            RegQueryInfoKeyW(
+                self.h,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                &mut sub,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &mut name,
+                &mut data,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        (sub as usize + 1, name as usize + 1, data as usize)
+    }
+
+    fn values(&self) -> Vec<RegValue> {
+        const ERROR_MORE_DATA: u32 = 234;
+        let (_, n, d) = self.sizes();
+        let mut name = vec![0u16; n.max(256)];
+        let mut data = vec![0u8; d.max(256)];
+        let mut out = Vec::new();
+        let mut i = 0u32;
+        loop {
+            let mut nlen = name.len() as u32;
+            let mut dlen = data.len() as u32;
+            let mut kind = 0u32;
+            let rc = unsafe {
+                RegEnumValueW(
+                    self.h,
+                    i,
+                    name.as_mut_ptr(),
+                    &mut nlen,
+                    std::ptr::null(),
+                    &mut kind,
+                    data.as_mut_ptr(),
+                    &mut dlen,
+                )
+            };
+            if rc == ERROR_MORE_DATA {
+                let grow = (name.len() * 2).max(nlen as usize + 1);
+                name.resize(grow, 0);
+                let grow = (data.len() * 2).max(dlen as usize);
+                data.resize(grow, 0);
+                continue;
+            }
+            if rc != 0 {
+                break;
+            }
+            out.push(RegValue {
+                name: String::from_utf16_lossy(&name[..nlen as usize]),
+                kind,
+                data: data[..dlen as usize].to_vec(),
+            });
+            i += 1;
+        }
+        out
+    }
+
+    fn subkey_names(&self) -> Vec<String> {
+        const ERROR_MORE_DATA: u32 = 234;
+        let (s, _, _) = self.sizes();
+        let mut name = vec![0u16; s.max(256)];
+        let mut out = Vec::new();
+        let mut i = 0u32;
+        loop {
+            let mut len = name.len() as u32;
+            let rc = unsafe {
+                RegEnumKeyExW(
+                    self.h,
+                    i,
+                    name.as_mut_ptr(),
+                    &mut len,
+                    std::ptr::null(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                )
+            };
+            if rc == ERROR_MORE_DATA {
+                let grow = name.len() * 2;
+                name.resize(grow, 0);
+                continue;
+            }
+            if rc != 0 {
+                break;
+            }
+            out.push(String::from_utf16_lossy(&name[..len as usize]));
+            i += 1;
+        }
+        out
+    }
+}
+
+/// Open `HIVE\sub\key` in the 64-bit view.
+fn open(path: &str, access: u32) -> std::io::Result<Key> {
     let (h, rest) = super::split_hive(path)
         .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "unknown hive"))?;
     let root = hive(h);
     if rest.is_empty() {
-        return Ok(root);
+        return Ok(Key { h: root, owned: false });
     }
-    root.open_subkey_with_flags(rest, access | KEY_WOW64_64KEY)
+    let sub = wide(rest);
+    let mut k: HKEY = std::ptr::null_mut();
+    let rc = unsafe { RegOpenKeyExW(root, sub.as_ptr(), 0, access | KEY_WOW64_64KEY, &mut k) };
+    if rc != 0 {
+        return Err(os_err(rc));
+    }
+    Ok(Key { h: k, owned: true })
+}
+
+/// Create (or open) `HIVE\sub\key` and any missing parents.
+fn create(path: &str, access: u32) -> std::io::Result<Key> {
+    let (h, rest) = super::split_hive(path)
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "unknown hive"))?;
+    let root = hive(h);
+    if rest.is_empty() {
+        return Ok(Key { h: root, owned: false });
+    }
+    let sub = wide(rest);
+    let mut k: HKEY = std::ptr::null_mut();
+    let rc = unsafe {
+        RegCreateKeyExW(
+            root,
+            sub.as_ptr(),
+            0,
+            std::ptr::null(),
+            REG_OPTION_NON_VOLATILE,
+            access | KEY_WOW64_64KEY,
+            std::ptr::null(),
+            &mut k,
+            std::ptr::null_mut(),
+        )
+    };
+    if rc != 0 {
+        return Err(os_err(rc));
+    }
+    Ok(Key { h: k, owned: true })
 }
 
 /// The real Windows registry (64-bit view).
@@ -99,32 +263,22 @@ impl Registry for WinRegistry {
     fn read_key(&self, path: &str) -> Option<KeyData> {
         let key = open(path, KEY_QUERY_VALUE).ok()?;
         let mut kd = KeyData::new(path);
-        for (name, v) in key.enum_values().flatten() {
-            let rv = RegValue {
-                name: name.clone(),
-                kind: v.vtype.clone() as u32,
-                data: v.bytes.to_vec(),
-            };
-            kd.values.insert(fold(&name), rv);
+        for rv in key.values() {
+            kd.values.insert(fold(&rv.name), rv);
         }
         Some(kd)
     }
 
     fn subkeys(&self, path: &str) -> Vec<String> {
         match open(path, KEY_ENUMERATE_SUB_KEYS) {
-            Ok(k) => k.enum_keys().flatten().collect(),
+            Ok(k) => k.subkey_names(),
             Err(_) => Vec::new(),
         }
     }
 
     fn create_key(&self, path: &str) -> Result<()> {
-        let (h, rest) = super::split_hive(path).ok_or_else(|| anyhow!("unknown hive: {path}"))?;
-        if rest.is_empty() {
-            return Ok(());
-        }
-        hive(h)
-            .create_subkey_with_flags(rest, KEY_ALL_ACCESS | KEY_WOW64_64KEY)
-            .with_context(|| format!("create {path}"))?;
+        super::split_hive(path).ok_or_else(|| anyhow!("unknown hive: {path}"))?;
+        create(path, KEY_ALL_ACCESS).with_context(|| format!("create {path}"))?;
         Ok(())
     }
 
@@ -155,8 +309,11 @@ impl Registry for WinRegistry {
 
     fn delete_value(&self, key: &str, name: &str) -> Result<()> {
         let k = open(key, KEY_SET_VALUE).with_context(|| format!("open {key}"))?;
-        k.delete_value(name)
-            .with_context(|| format!("delete value {key}\\{name}"))?;
+        let w = wide(name);
+        let rc = unsafe { RegDeleteValueW(k.raw_handle(), w.as_ptr()) };
+        if rc != 0 {
+            return Err(os_err(rc)).with_context(|| format!("delete value {key}\\{name}"));
+        }
         Ok(())
     }
 
@@ -174,8 +331,11 @@ impl Registry for WinRegistry {
             None => (h.to_string(), rest.to_string()),
         };
         let pk = open(&parent, KEY_ALL_ACCESS).with_context(|| format!("open {parent}"))?;
-        pk.delete_subkey_all(&leaf)
-            .with_context(|| format!("delete {path}"))?;
+        let w = wide(&leaf);
+        let rc = unsafe { RegDeleteTreeW(pk.raw_handle(), w.as_ptr()) };
+        if rc != 0 {
+            return Err(os_err(rc)).with_context(|| format!("delete {path}"));
+        }
         Ok(())
     }
 }
@@ -387,10 +547,10 @@ pub fn open_in_regedit(path: &str) -> Result<()> {
     } else {
         format!("Computer\\{long}\\{rest}")
     };
-    let applet = RegKey::predef(HKEY_CURRENT_USER)
-        .create_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Applets\\Regedit")?
-        .0;
-    applet.set_value("LastKey", &target)?;
+    WinRegistry.set_value(
+        "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Applets\\Regedit",
+        &RegValue::string("LastKey", &target),
+    )?;
     // Regedit is single-instance; /m opens a new window that honours LastKey.
     shell_execute_wait("regedit.exe", "/m", false)?;
     Ok(())
@@ -880,60 +1040,222 @@ pub fn background_priority() {
 
 /// Block until `stop` is set, calling `on_change` whenever anything under the
 /// registry key `path` changes (keys added or removed, values written).
+/// A manual-reset kernel event that can be shared between threads.
+pub struct ManualEvent(HANDLE);
+
+unsafe impl Send for ManualEvent {}
+unsafe impl Sync for ManualEvent {}
+
+impl ManualEvent {
+    pub fn new() -> Self {
+        use windows_sys::Win32::System::Threading::CreateEventW;
+        ManualEvent(unsafe { CreateEventW(std::ptr::null(), 1, 0, std::ptr::null()) })
+    }
+    pub fn set(&self) {
+        use windows_sys::Win32::System::Threading::SetEvent;
+        if !self.0.is_null() {
+            unsafe { SetEvent(self.0) };
+        }
+    }
+    pub fn raw(&self) -> HANDLE {
+        self.0
+    }
+}
+
+impl Default for ManualEvent {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Drop for ManualEvent {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            unsafe { CloseHandle(self.0) };
+        }
+    }
+}
+
+/// Wait for `event` or the stop signal, with no timeout. True if `event`
+/// fired; false if stopped (or the wait failed).
+fn wait_or_stop(event: HANDLE, stop: &super::StopSignal) -> bool {
+    use windows_sys::Win32::System::Threading::{WaitForMultipleObjects, INFINITE};
+    if stop.is_stopped() {
+        return false;
+    }
+    let handles = [event, stop.event.raw()];
+    let rc = unsafe { WaitForMultipleObjects(2, handles.as_ptr(), 0, INFINITE) };
+    rc == WAIT_OBJECT_0 && !stop.is_stopped()
+}
+
+/// Call `on_change` whenever something under `path` changes, until stopped.
+/// Blocks in the kernel between changes.
 pub fn watch_registry(
     path: &str,
-    stop: &std::sync::atomic::AtomicBool,
+    stop: &super::StopSignal,
     mut on_change: impl FnMut(),
 ) -> Result<()> {
-    use std::sync::atomic::Ordering;
     use windows_sys::Win32::System::Registry::{
         RegNotifyChangeKeyValue, REG_NOTIFY_CHANGE_LAST_SET, REG_NOTIFY_CHANGE_NAME,
     };
-    use windows_sys::Win32::System::Threading::{CreateEventW, WaitForSingleObject};
+    use windows_sys::Win32::System::Threading::CreateEventW;
     let key = open(path, KEY_NOTIFY)?;
     let raw = key.raw_handle() as windows_sys::Win32::System::Registry::HKEY;
-    unsafe {
-        let Some(owned) = OwnedHandle::new(CreateEventW(std::ptr::null(), 0, 0, std::ptr::null()))
-        else {
-            return Err(anyhow!("could not create an event"));
-        };
-        let event = owned.get();
-        while !stop.load(Ordering::Relaxed) {
-            let rc = RegNotifyChangeKeyValue(
+    let Some(owned) =
+        OwnedHandle::new(unsafe { CreateEventW(std::ptr::null(), 0, 0, std::ptr::null()) })
+    else {
+        return Err(anyhow!("could not create an event"));
+    };
+    loop {
+        let rc = unsafe {
+            RegNotifyChangeKeyValue(
                 raw,
                 1,
                 REG_NOTIFY_CHANGE_NAME | REG_NOTIFY_CHANGE_LAST_SET,
-                event,
+                owned.get(),
                 1,
+            )
+        };
+        if rc != 0 {
+            return Err(anyhow!(
+                "registry notifications unavailable for {path} ({rc})"
+            ));
+        }
+        if !wait_or_stop(owned.get(), stop) {
+            return Ok(());
+        }
+        on_change();
+    }
+}
+
+/// What happened to a file, from `ReadDirectoryChangesW`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FolderEvent {
+    Added,
+    Removed,
+    Modified,
+    Renamed,
+}
+
+/// Report every change under `dir` until stopped, through one 64 KB
+/// buffer and one path buffer reused for every notification. Blocks in
+/// the kernel between changes.
+pub fn watch_folder(
+    dir: &Path,
+    recursive: bool,
+    stop: &super::StopSignal,
+    on_event: &mut dyn FnMut(FolderEvent, &str),
+) -> Result<()> {
+    use windows_sys::Win32::Storage::FileSystem::{
+        CreateFileW, ReadDirectoryChangesW, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OVERLAPPED,
+        FILE_LIST_DIRECTORY, FILE_NOTIFY_CHANGE_CREATION, FILE_NOTIFY_CHANGE_DIR_NAME,
+        FILE_NOTIFY_CHANGE_FILE_NAME, FILE_NOTIFY_CHANGE_LAST_WRITE, FILE_NOTIFY_CHANGE_SIZE,
+        FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
+    };
+    use windows_sys::Win32::System::Threading::CreateEventW;
+    use windows_sys::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
+    let root = dir.to_string_lossy().trim_end_matches('\\').to_string();
+    let w = wide(&root);
+    let Some(h) = OwnedHandle::new(unsafe {
+        CreateFileW(
+            w.as_ptr(),
+            FILE_LIST_DIRECTORY,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            std::ptr::null(),
+            OPEN_EXISTING,
+            FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED,
+            std::ptr::null_mut(),
+        )
+    }) else {
+        return Err(anyhow!(
+            "cannot watch {root}: {}",
+            std::io::Error::last_os_error()
+        ));
+    };
+    let Some(ev) =
+        OwnedHandle::new(unsafe { CreateEventW(std::ptr::null(), 1, 0, std::ptr::null()) })
+    else {
+        return Err(anyhow!("could not create an event"));
+    };
+    // DWORD-aligned, as the API requires.
+    let mut buf = vec![0u32; 16 * 1024];
+    let mut path = String::with_capacity(512);
+    let filter = FILE_NOTIFY_CHANGE_FILE_NAME
+        | FILE_NOTIFY_CHANGE_DIR_NAME
+        | FILE_NOTIFY_CHANGE_SIZE
+        | FILE_NOTIFY_CHANGE_LAST_WRITE
+        | FILE_NOTIFY_CHANGE_CREATION;
+    loop {
+        let mut ov: OVERLAPPED = unsafe { std::mem::zeroed() };
+        ov.hEvent = ev.get();
+        let ok = unsafe {
+            ReadDirectoryChangesW(
+                h.get(),
+                buf.as_mut_ptr() as *mut core::ffi::c_void,
+                (buf.len() * 4) as u32,
+                recursive as i32,
+                filter,
+                std::ptr::null_mut(),
+                &mut ov,
+                None,
+            )
+        };
+        if ok == 0 {
+            return Err(anyhow!(
+                "watching {root} failed: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+        if !wait_or_stop(ev.get(), stop) {
+            unsafe {
+                CancelIoEx(h.get(), &ov);
+                let mut n = 0u32;
+                GetOverlappedResult(h.get(), &ov, &mut n, 1);
+            }
+            return Ok(());
+        }
+        let mut n = 0u32;
+        if unsafe { GetOverlappedResult(h.get(), &ov, &mut n, 0) } == 0 {
+            return Err(anyhow!(
+                "watching {root} failed: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+        // n == 0: too many changes at once for the buffer; they're lost
+        // from the live view only (the final comparison has them all).
+        let bytes = unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const u8, n as usize) };
+        let mut at = 0usize;
+        while at + 12 <= bytes.len() {
+            let rd = |o: usize| u32::from_le_bytes(bytes[at + o..at + o + 4].try_into().unwrap());
+            let (next, action, len) = (rd(0) as usize, rd(4), rd(8) as usize);
+            let name_end = (at + 12 + len).min(bytes.len());
+            let name = &bytes[at + 12..name_end];
+            path.clear();
+            path.push_str(&root);
+            path.push('\\');
+            path.extend(
+                char::decode_utf16(
+                    name.chunks_exact(2)
+                        .map(|c| u16::from_le_bytes([c[0], c[1]])),
+                )
+                .map(|r| r.unwrap_or('\u{FFFD}')),
             );
-            if rc != 0 {
-                return Err(anyhow!(
-                    "registry notifications unavailable for {path} ({rc})"
-                ));
+            let kind = match action {
+                1 => Some(FolderEvent::Added),
+                2 => Some(FolderEvent::Removed),
+                3 => Some(FolderEvent::Modified),
+                4 | 5 => Some(FolderEvent::Renamed),
+                _ => None,
+            };
+            if let Some(k) = kind {
+                on_event(k, &path);
             }
-            loop {
-                if stop.load(Ordering::Relaxed) {
-                    break;
-                }
-                match WaitForSingleObject(event, 400) {
-                    WAIT_OBJECT_0 => {
-                        on_change();
-                        break;
-                    }
-                    // Never spin on a wait that can't succeed.
-                    WAIT_FAILED => {
-                        return Err(anyhow!(
-                            "waiting for registry changes failed for {path}: {}",
-                            std::io::Error::last_os_error()
-                        ))
-                    }
-                    _ => {}
-                }
+            if next == 0 {
+                break;
             }
+            at += next;
         }
     }
-    drop(key);
-    Ok(())
 }
 
 /// Stop Windows showing "There is no disk in the drive" and similar
@@ -1383,10 +1705,11 @@ pub fn stop_service(name: &str, timeout: std::time::Duration) -> Result<crate::l
         let err = unsafe { GetLastError() };
         // A service exists exactly when its key does; don't depend on which
         // error code this Windows build reports for a missing one.
-        let key = format!("SYSTEM\\CurrentControlSet\\Services\\{name}");
-        let exists = RegKey::predef(HKEY_LOCAL_MACHINE)
-            .open_subkey_with_flags(&key, KEY_READ)
-            .is_ok();
+        let exists = open(
+            &format!("HKLM\\SYSTEM\\CurrentControlSet\\Services\\{name}"),
+            KEY_READ,
+        )
+        .is_ok();
         if err == ERROR_SERVICE_DOES_NOT_EXIST || !exists {
             return Ok(ServiceStop::NotFound);
         }

@@ -241,7 +241,7 @@ pub fn unmovable_reason(p: &InstalledProgram) -> Option<&'static str> {
 }
 
 fn walk_into(dir: &str, c: &mut Collected) {
-    for e in walkdir::WalkDir::new(dir)
+    for e in crate::fswalk::WalkDir::new(dir)
         .follow_links(false)
         .into_iter()
         .flatten()

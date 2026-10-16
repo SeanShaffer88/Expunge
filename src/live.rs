@@ -4,7 +4,6 @@
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -25,6 +24,7 @@ pub struct LiveEvent {
 }
 
 /// Events kept in memory (oldest dropped first).
+#[cfg_attr(not(windows), allow(dead_code))]
 const KEEP: usize = 2000;
 
 #[derive(Default)]
@@ -42,14 +42,15 @@ struct Shared {
 
 pub struct LiveWatcher {
     shared: Arc<Mutex<Shared>>,
-    stop: Arc<AtomicBool>,
-    _files: Option<notify::RecommendedWatcher>,
+    stop: Arc<crate::platform::StopSignal>,
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
 fn now() -> String {
     crate::time::DateTime::now_local().hms()
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
 fn push(shared: &Mutex<Shared>, kind: LiveKind, path: String) {
     let mut s = shared.lock().unwrap();
     match kind {
@@ -82,62 +83,61 @@ impl LiveWatcher {
         registry: &[String],
         exclusions: crate::util::Exclusions,
     ) -> Self {
-        use notify::{EventKind, RecursiveMode, Watcher};
         let shared = Arc::new(Mutex::new(Shared {
             events: VecDeque::new(),
             counts: Counts::default(),
         }));
-        let stop = Arc::new(AtomicBool::new(false));
-        let sh = shared.clone();
-        let files = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-            let Ok(ev) = res else { return };
-            let kind = match ev.kind {
-                EventKind::Create(_) => LiveKind::Added,
-                EventKind::Remove(_) => LiveKind::Removed,
-                EventKind::Modify(notify::event::ModifyKind::Name(_)) => LiveKind::Renamed,
-                EventKind::Modify(_) => LiveKind::Changed,
-                _ => return,
-            };
-            for p in ev.paths {
-                let p = p.to_string_lossy().to_string();
-                if !exclusions.matches(&p) {
-                    push(&sh, kind, p);
-                }
-            }
-        })
-        .ok()
-        .map(|mut w| {
-            for (dir, recursive) in folders {
-                let mode = if *recursive {
-                    RecursiveMode::Recursive
-                } else {
-                    RecursiveMode::NonRecursive
-                };
-                let _ = w.watch(dir, mode);
-            }
-            w
-        });
+        let stop = Arc::new(crate::platform::StopSignal::new());
         #[cfg(windows)]
-        for root in registry {
-            let (sh, st, root) = (shared.clone(), stop.clone(), root.clone());
-            std::thread::spawn(move || {
-                let mut last = std::time::Instant::now() - std::time::Duration::from_secs(5);
-                let _ = crate::platform::windows::watch_registry(&root, &st, || {
-                    // At most one notice per second per area.
-                    if last.elapsed() >= std::time::Duration::from_secs(1) {
-                        last = std::time::Instant::now();
-                        push(&sh, LiveKind::Registry, root.clone());
-                    }
+        {
+            use crate::platform::windows::FolderEvent;
+            let exclusions = Arc::new(exclusions);
+            // One thread per folder, each blocked in the kernel until
+            // something changes there or the watcher is dropped.
+            for (dir, recursive) in folders {
+                let (sh, st, ex) = (shared.clone(), stop.clone(), exclusions.clone());
+                let (dir, recursive) = (dir.clone(), *recursive);
+                std::thread::spawn(move || {
+                    let mut folded = String::new();
+                    let mut chars = Vec::new();
+                    let _ = crate::platform::windows::watch_folder(
+                        &dir,
+                        recursive,
+                        &st,
+                        &mut |ev, path| {
+                            crate::util::fold_into(path, &mut folded);
+                            if ex.matches_folded(&folded, &mut chars) {
+                                return;
+                            }
+                            let kind = match ev {
+                                FolderEvent::Added => LiveKind::Added,
+                                FolderEvent::Removed => LiveKind::Removed,
+                                FolderEvent::Modified => LiveKind::Changed,
+                                FolderEvent::Renamed => LiveKind::Renamed,
+                            };
+                            push(&sh, kind, path.to_string());
+                        },
+                    );
                 });
-            });
+            }
+            for root in registry {
+                let (sh, st, root) = (shared.clone(), stop.clone(), root.clone());
+                std::thread::spawn(move || {
+                    let mut last = std::time::Instant::now() - std::time::Duration::from_secs(5);
+                    let _ = crate::platform::windows::watch_registry(&root, &st, || {
+                        // At most one notice per second per area.
+                        if last.elapsed() >= std::time::Duration::from_secs(1) {
+                            last = std::time::Instant::now();
+                            push(&sh, LiveKind::Registry, root.clone());
+                        }
+                    });
+                });
+            }
         }
+        // Development builds off Windows have no live view.
         #[cfg(not(windows))]
-        let _ = registry;
-        LiveWatcher {
-            shared,
-            stop,
-            _files: files,
-        }
+        let _ = (folders, registry, exclusions);
+        LiveWatcher { shared, stop }
     }
 
     /// The most recent events, newest last.
@@ -159,11 +159,12 @@ impl LiveWatcher {
 
 impl Drop for LiveWatcher {
     fn drop(&mut self) {
-        self.stop.store(true, Ordering::Relaxed);
+        // Wakes every watcher thread at once.
+        self.stop.stop();
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, windows))]
 mod tests {
     use super::*;
 

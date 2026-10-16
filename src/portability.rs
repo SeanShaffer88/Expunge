@@ -150,7 +150,7 @@ const VC_RUNTIME: [&str; 6] = ["vcruntime", "msvcp", "concrt", "vccorlib", "vcom
 /// Look at the program's folder and the captured changes.
 pub fn analyze(cs: &ChangeSet, program_dir: &Path, main_exe: &Path) -> Report {
     let mut r = Report::default();
-    let files: Vec<PathBuf> = walkdir::WalkDir::new(program_dir)
+    let files: Vec<PathBuf> = crate::fswalk::WalkDir::new(program_dir)
         .follow_links(false)
         .into_iter()
         .filter_map(|e| e.ok())

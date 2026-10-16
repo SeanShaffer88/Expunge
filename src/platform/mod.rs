@@ -12,6 +12,39 @@ pub mod windows;
 #[cfg(windows)]
 pub use windows::{RegistryWatch, WatchEvent};
 
+/// Tells watcher threads to finish. On Windows it is also a kernel event,
+/// so a thread blocked waiting for changes wakes the moment it is set
+/// instead of checking a flag on a timer.
+pub struct StopSignal {
+    flag: std::sync::atomic::AtomicBool,
+    #[cfg(windows)]
+    pub(crate) event: windows::ManualEvent,
+}
+
+impl Default for StopSignal {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl StopSignal {
+    pub fn new() -> Self {
+        StopSignal {
+            flag: std::sync::atomic::AtomicBool::new(false),
+            #[cfg(windows)]
+            event: windows::ManualEvent::new(),
+        }
+    }
+    pub fn stop(&self) {
+        self.flag.store(true, std::sync::atomic::Ordering::SeqCst);
+        #[cfg(windows)]
+        self.event.set();
+    }
+    pub fn is_stopped(&self) -> bool {
+        self.flag.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
 /// Off Windows there is no registry to watch: every wait just times out.
 #[cfg(not(windows))]
 mod watch_stub {

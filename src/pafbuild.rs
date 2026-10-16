@@ -446,7 +446,7 @@ pub fn find_main_exe(cs: &ChangeSet, program_dir: &str, app_name: &str) -> Optio
         .collect();
     if candidates.is_empty() {
         // The folder came from InstallLocation: look at what is on disk.
-        for e in walkdir::WalkDir::new(program_dir)
+        for e in crate::fswalk::WalkDir::new(program_dir)
             .max_depth(3)
             .into_iter()
             .filter_map(|e| e.ok())
@@ -484,7 +484,7 @@ pub fn find_main_exe(cs: &ChangeSet, program_dir: &str, app_name: &str) -> Optio
 
 fn copy_tree(from: &Path, to: &Path) -> Result<(u64, u64)> {
     let (mut files, mut bytes) = (0, 0);
-    for e in walkdir::WalkDir::new(from).follow_links(false) {
+    for e in crate::fswalk::WalkDir::new(from).follow_links(false) {
         let e = e?;
         let rel = e.path().strip_prefix(from)?;
         let dest = to.join(rel);
