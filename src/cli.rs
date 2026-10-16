@@ -476,6 +476,15 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
             let child = platform::spawn_command_line(&cmdline)?;
             let code = child.wait();
             eprintln!("Installer exited with code {code}.");
+            // Bootstrappers (WiX Burn and others) can exit while Windows
+            // Installer is still working for them; wait until it's done.
+            let settle = std::time::Instant::now();
+            if platform::installer_busy() {
+                eprintln!("Waiting for Windows Installer to finish…");
+            }
+            while platform::installer_busy() && settle.elapsed().as_secs() < 1800 {
+                std::thread::sleep(std::time::Duration::from_secs(2));
+            }
             if !has(&args, "--no-prompt") {
                 eprintln!("If the installer is still working in another window, finish it, then press Enter.");
                 let mut s = String::new();
