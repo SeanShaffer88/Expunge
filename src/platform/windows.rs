@@ -1279,7 +1279,27 @@ pub fn close_programs(exes: &[&Path]) -> crate::locks::Closed {
             out.closed.push(name);
         }
     }
+    // A process is reported gone a moment before Windows unmaps its
+    // program file; wait (briefly) until the files can really be changed.
+    if !out.closed.is_empty() {
+        let until = Instant::now() + Duration::from_secs(5);
+        for exe in exes {
+            while Instant::now() < until && image_in_use(exe) {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        }
+    }
     out
+}
+
+/// Whether a program file is still mapped by a process (it then refuses
+/// to be opened for writing).
+fn image_in_use(path: &Path) -> bool {
+    const ERROR_SHARING_VIOLATION: i32 = 32;
+    match std::fs::OpenOptions::new().write(true).open(path) {
+        Ok(_) => false,
+        Err(e) => e.raw_os_error() == Some(ERROR_SHARING_VIOLATION),
+    }
 }
 
 // ---------------------------------------------------------------------------
