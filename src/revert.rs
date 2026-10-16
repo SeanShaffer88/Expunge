@@ -641,6 +641,16 @@ pub fn execute_plan_with(
     results
 }
 
+/// ERROR_CHILD_MUST_BE_VOLATILE: a lasting key can't be created under a
+/// volatile (memory-only) one.
+fn is_volatile_parent_error(e: &anyhow::Error) -> bool {
+    e.chain().any(|c| {
+        c.downcast_ref::<std::io::Error>()
+            .and_then(|io| io.raw_os_error())
+            == Some(1021)
+    })
+}
+
 fn run_action(
     action: &Action,
     reg: &dyn Registry,
@@ -850,8 +860,15 @@ fn run_action(
                     b.add_key_absent(&key.path)?;
                 }
             }
-            platform::write_tree(reg, std::slice::from_ref(key))?;
-            Ok("recreated".into())
+            match platform::write_tree(reg, std::slice::from_ref(key)) {
+                Ok(()) => Ok("recreated".into()),
+                // Under a key Windows keeps only in memory: it recreates
+                // such keys itself, and a lasting copy can't be made there.
+                Err(e) if is_volatile_parent_error(&e) => {
+                    Ok("skipped: Windows keeps this key in memory and recreates it itself".into())
+                }
+                Err(e) => Err(e),
+            }
         }
         Action::EditList {
             key,
@@ -1642,5 +1659,19 @@ mod windows_component_tests {
         );
         assert_eq!(sel.iter().filter(|(_, s)| !*s).count(), 3, "{sel:?}");
         assert_eq!(owner_root(&format!("{clsid}\\InprocServer32")), fold(clsid));
+    }
+}
+
+#[cfg(test)]
+mod volatile_tests {
+    use super::is_volatile_parent_error;
+
+    #[test]
+    fn a_volatile_parent_is_recognised_through_context() {
+        let io = std::io::Error::from_raw_os_error(1021);
+        let e = anyhow::Error::new(io).context("create HKLM\\SOFTWARE\\X");
+        assert!(is_volatile_parent_error(&e));
+        let other = anyhow::Error::new(std::io::Error::from_raw_os_error(5)).context("create");
+        assert!(!is_volatile_parent_error(&other));
     }
 }
