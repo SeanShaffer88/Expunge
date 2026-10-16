@@ -39,10 +39,7 @@ pub fn job_progress(ui: &mut egui::Ui, phase: &str, count: u64) {
 pub fn pick_file(title: &str, filter_name: &str, exts: &[&str]) -> Option<PathBuf> {
     #[cfg(windows)]
     {
-        rfd::FileDialog::new()
-            .set_title(title)
-            .add_filter(filter_name, exts)
-            .pick_file()
+        super::filedialog::pick_file(title, filter_name, exts)
     }
     #[cfg(not(windows))]
     {
@@ -55,7 +52,7 @@ pub fn pick_file(title: &str, filter_name: &str, exts: &[&str]) -> Option<PathBu
 pub fn pick_folder(title: &str) -> Option<PathBuf> {
     #[cfg(windows)]
     {
-        rfd::FileDialog::new().set_title(title).pick_folder()
+        super::filedialog::pick_folder(title)
     }
     #[cfg(not(windows))]
     {
@@ -67,11 +64,7 @@ pub fn pick_folder(title: &str) -> Option<PathBuf> {
 pub fn save_file(title: &str, default_name: &str, filter_name: &str, ext: &str) -> Option<PathBuf> {
     #[cfg(windows)]
     {
-        rfd::FileDialog::new()
-            .set_title(title)
-            .set_file_name(default_name)
-            .add_filter(filter_name, &[ext])
-            .save_file()
+        super::filedialog::save_file(title, default_name, filter_name, ext)
     }
     #[cfg(not(windows))]
     {

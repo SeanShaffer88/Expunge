@@ -175,10 +175,14 @@ mod tests {
         assert_eq!(best_match("ko-KR", &langs), "ko");
         assert_eq!(best_match("pl-PL", &langs), "pl");
         assert_eq!(best_match("nl-NL", &langs), "en");
-        set_language("de");
-        assert_eq!(t("Uninstall"), "Deinstallieren");
-        assert_eq!(t("No such string"), "No such string");
-        set_language("en");
+        // Looked up directly: switching the global language here would
+        // change the text other tests see while they run in parallel.
+        let de = &langs.iter().find(|l| l.code == "de").unwrap().data;
+        assert_eq!(
+            de.get("Uninstall").map(String::as_str),
+            Some("Deinstallieren")
+        );
+        assert!(!de.contains_key("No such string"));
         assert_eq!(tf("{n} items", &[("n", "3".into())]), "3 items");
     }
 }

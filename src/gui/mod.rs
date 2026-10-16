@@ -10,6 +10,8 @@ mod cleaner;
 mod dashboard;
 mod debloat_ui;
 mod difftree_ui;
+#[cfg(windows)]
+mod filedialog;
 mod lab;
 mod logs;
 mod monitor;
@@ -104,14 +106,11 @@ impl<T: Send + 'static> Job<T> {
 /// stays legible at taskbar size.
 fn load_icon() -> Option<egui::IconData> {
     let bytes = include_bytes!("../../assets/icon-taskbar.png");
-    let img = image::load_from_memory_with_format(bytes, image::ImageFormat::Png)
-        .ok()?
-        .into_rgba8();
-    let (w, h) = img.dimensions();
+    let img = expunge_core::png::decode(bytes).ok()?;
     Some(egui::IconData {
-        rgba: img.into_raw(),
-        width: w,
-        height: h,
+        rgba: img.pixels,
+        width: img.width,
+        height: img.height,
     })
 }
 

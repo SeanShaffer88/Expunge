@@ -502,10 +502,7 @@ fn copy_tree(from: &Path, to: &Path) -> Result<(u64, u64)> {
 }
 
 fn png(w: u32, h: u32, rgba: Vec<u8>) -> Option<Vec<u8>> {
-    let img = image::RgbaImage::from_raw(w, h, rgba)?;
-    let mut out = std::io::Cursor::new(Vec::new());
-    img.write_to(&mut out, image::ImageFormat::Png).ok()?;
-    Some(out.into_inner())
+    crate::png::encode_rgba(w, h, &rgba)
 }
 
 /// An .ico file holding PNG images (supported by every Windows since Vista).

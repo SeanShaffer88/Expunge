@@ -955,11 +955,10 @@ pub fn logo_small_image() -> egui::ColorImage {
 }
 
 fn decode_png(bytes: &[u8]) -> egui::ColorImage {
-    match image::load_from_memory_with_format(bytes, image::ImageFormat::Png) {
+    match expunge_core::png::decode(bytes) {
         Ok(img) => {
-            let img = img.into_rgba8();
-            let size = [img.width() as usize, img.height() as usize];
-            egui::ColorImage::from_rgba_unmultiplied(size, img.as_raw())
+            let size = [img.width as usize, img.height as usize];
+            egui::ColorImage::from_rgba_unmultiplied(size, &img.pixels)
         }
         Err(_) => egui::ColorImage::new([1, 1], vec![theme::ACCENT]),
     }

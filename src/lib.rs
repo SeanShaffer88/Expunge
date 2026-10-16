@@ -35,6 +35,7 @@ pub mod orphans;
 pub mod pafbuild;
 pub mod patools;
 pub mod platform;
+pub mod png;
 pub mod portability;
 pub mod portable;
 pub mod prescreen;
