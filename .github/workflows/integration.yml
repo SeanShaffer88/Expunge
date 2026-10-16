@@ -9,12 +9,18 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      only:
+        description: Run only installers whose name contains this (empty = all)
+        default: ''
 
 jobs:
   installer:
     name: ${{ matrix.name }}
     runs-on: windows-latest
     timeout-minutes: 45
+    env:
+      SELECTED: ${{ inputs.only == '' || inputs.only == null || contains(matrix.name, inputs.only) }}
     strategy:
       fail-fast: false
       matrix:
@@ -68,11 +74,16 @@ jobs:
             needs_var: WISE_URL
     steps:
       - uses: actions/checkout@v4
+        if: env.SELECTED == 'true'
       - uses: dtolnay/rust-toolchain@stable
+        if: env.SELECTED == 'true'
       - uses: Swatinem/rust-cache@v2
+        if: env.SELECTED == 'true'
       - name: Build
+        if: env.SELECTED == 'true'
         run: cargo build --release --locked
       - name: Portable Expunge with a focused monitoring scope
+        if: env.SELECTED == 'true'
         shell: pwsh
         run: |
           New-Item -ItemType Directory it, it/ExpungeData | Out-Null
@@ -94,6 +105,7 @@ jobs:
             )
           } | ConvertTo-Json -Depth 5 | Set-Content it/ExpungeData/settings.json
       - name: Download installer
+        if: env.SELECTED == 'true'
         id: download
         shell: pwsh
         run: |
@@ -114,7 +126,7 @@ jobs:
           }
           throw "could not download the installer"
       - name: Install under monitoring
-        if: steps.download.outputs.skip != 'true'
+        if: env.SELECTED == 'true' && steps.download.outputs.skip != 'true'
         id: monitor
         shell: pwsh
         run: |
@@ -148,7 +160,7 @@ jobs:
           "id=$($log.id)" >> $env:GITHUB_OUTPUT
           "name=$($log.name)" >> $env:GITHUB_OUTPUT
       - name: Make a silent installer from the log
-        if: steps.download.outputs.skip != 'true'
+        if: env.SELECTED == 'true' && steps.download.outputs.skip != 'true'
         shell: pwsh
         run: |
           $p = Start-Process ./it/Expunge.exe -ArgumentList 'repackage', '${{ steps.monitor.outputs.id }}', "$PWD\silent" -Wait -PassThru -NoNewWindow -RedirectStandardOutput out.txt -RedirectStandardError err.txt
@@ -158,26 +170,42 @@ jobs:
           if (-not $setup) { throw "no Setup.exe" }
           Write-Host "Silent setup: $($setup.Name) ($([math]::Round($setup.Length / 1MB, 1)) MB)"
       - name: Remove with Expunge
-        if: steps.download.outputs.skip != 'true'
+        if: env.SELECTED == 'true' && steps.download.outputs.skip != 'true'
         shell: pwsh
         run: |
           $p = Start-Process ./it/Expunge.exe -ArgumentList 'revert', '${{ steps.monitor.outputs.id }}', '--close-programs', '--restart-explorer', '--keep-log' -Wait -PassThru -NoNewWindow -RedirectStandardOutput out.txt -RedirectStandardError err.txt
           $out = (Get-Content out.txt) + (Get-Content err.txt)
+          $out | Set-Content revert.txt
           $out | ForEach-Object { Write-Host $_ }
           if ($p.ExitCode -ne 0) { $out | Select-String 'FAIL' | Select-Object -First 20 | ForEach-Object { Write-Output "::error::$_" }; throw "revert reported failures" }
       - name: Verify nothing is left
-        if: steps.download.outputs.skip != 'true'
+        if: env.SELECTED == 'true' && steps.download.outputs.skip != 'true'
         shell: pwsh
         run: |
           $p = Start-Process ./it/Expunge.exe -ArgumentList 'check-clean', '${{ steps.monitor.outputs.id }}' -Wait -PassThru -NoNewWindow -RedirectStandardOutput out.txt -RedirectStandardError err.txt
           $out = (Get-Content out.txt) + (Get-Content err.txt)
           $out | ForEach-Object { Write-Host $_ }
-          if ($p.ExitCode -ne 0) { $out | Select-Object -First 25 | ForEach-Object { Write-Output "::error::$_" }; throw "leftovers remain" }
+          if ($p.ExitCode -ne 0) {
+            $out | Select-Object -First 25 | ForEach-Object { Write-Output "::error::$_" }
+            # Why: what the removal said about each leftover, and what is inside.
+            $left = $out | Select-String -Pattern '^- Delete (folder|file) (.+)$' | ForEach-Object { $_.Matches[0].Groups[2].Value }
+            foreach ($l in $left | Select-Object -First 8) {
+              Get-Content revert.txt | Select-String -SimpleMatch $l | Select-Object -First 2 | ForEach-Object { Write-Output "::error title=Removal said::$($_.Line)" }
+              if (Test-Path $l -PathType Container) {
+                Get-ChildItem $l -Recurse -Force | Select-Object -First 6 | ForEach-Object { Write-Output "::error title=Still inside::$($_.FullName) ($($_.Length) bytes, $($_.LastWriteTime))" }
+              }
+            }
+            $dirs = @($left | Where-Object { Test-Path $_ -PathType Container })
+            Get-Process | Where-Object { $p = $_.Path; $p -and ($dirs | Where-Object { $p.StartsWith($_, 'OrdinalIgnoreCase') }) } |
+              ForEach-Object { Write-Output "::error title=Still running::$($_.ProcessName) ($($_.Id)) $($_.Path)" }
+            throw "leftovers remain"
+          }
           $still = ./it/Expunge.exe programs | Out-String -Stream | Select-String -SimpleMatch "${{ steps.monitor.outputs.name }}"
           if ($still) { throw "the program is still listed: $still" }
 
   portable:
     name: Portable App Builder (${{ matrix.name }})
+    if: ${{ !inputs.only }}
     runs-on: windows-latest
     timeout-minutes: 45
     strategy:
