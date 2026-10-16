@@ -1424,3 +1424,133 @@ pub fn stop_service(name: &str, timeout: std::time::Duration) -> Result<crate::l
     }
     Ok(ServiceStop::Stopped)
 }
+
+// ---------------------------------------------------------------------------
+// Registry change notification for several keys at once
+// ---------------------------------------------------------------------------
+
+/// What [`RegistryWatch::wait`] saw.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WatchEvent {
+    /// Something under one of the keys changed.
+    Changed,
+    /// The timeout passed with no change.
+    Timeout,
+}
+
+struct OwnedKey(windows_sys::Win32::System::Registry::HKEY);
+
+impl Drop for OwnedKey {
+    fn drop(&mut self) {
+        unsafe { windows_sys::Win32::System::Registry::RegCloseKey(self.0) };
+    }
+}
+
+/// Keys watched by the kernel: waiting costs nothing until one changes.
+pub struct RegistryWatch {
+    keys: Vec<OwnedKey>,
+    events: Vec<OwnedHandle>,
+}
+
+impl RegistryWatch {
+    /// Watch these keys and everything beneath them (64-bit view; reach
+    /// the 32-bit view through `WOW6432Node`). Keys that don't exist are
+    /// skipped; fails only if none could be watched.
+    pub fn new(paths: &[&str]) -> Result<Self> {
+        use windows_sys::Win32::System::Registry::{
+            RegOpenKeyExW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, HKEY_USERS, KEY_NOTIFY,
+            KEY_WOW64_64KEY,
+        };
+        use windows_sys::Win32::System::Threading::CreateEventW;
+        let mut w = RegistryWatch {
+            keys: Vec::with_capacity(paths.len()),
+            events: Vec::with_capacity(paths.len()),
+        };
+        for path in paths {
+            let Some((hive, rest)) = super::split_hive(path) else {
+                continue;
+            };
+            let root: HKEY = match hive {
+                "HKLM" => HKEY_LOCAL_MACHINE,
+                "HKCU" => HKEY_CURRENT_USER,
+                "HKU" => HKEY_USERS,
+                _ => continue,
+            };
+            let sub = wide(rest);
+            let mut key: HKEY = std::ptr::null_mut();
+            let rc = unsafe {
+                RegOpenKeyExW(
+                    root,
+                    sub.as_ptr(),
+                    0,
+                    KEY_NOTIFY | KEY_WOW64_64KEY,
+                    &mut key,
+                )
+            };
+            if rc != 0 {
+                continue;
+            }
+            let key = OwnedKey(key);
+            let Some(event) =
+                OwnedHandle::new(unsafe { CreateEventW(std::ptr::null(), 0, 0, std::ptr::null()) })
+            else {
+                continue;
+            };
+            if Self::arm(&key, &event) {
+                w.keys.push(key);
+                w.events.push(event);
+            }
+        }
+        if w.keys.is_empty() {
+            return Err(anyhow!("none of the registry keys could be watched"));
+        }
+        Ok(w)
+    }
+
+    fn arm(key: &OwnedKey, event: &OwnedHandle) -> bool {
+        use windows_sys::Win32::System::Registry::{
+            RegNotifyChangeKeyValue, REG_NOTIFY_CHANGE_LAST_SET, REG_NOTIFY_CHANGE_NAME,
+        };
+        unsafe {
+            RegNotifyChangeKeyValue(
+                key.0,
+                1,
+                REG_NOTIFY_CHANGE_NAME | REG_NOTIFY_CHANGE_LAST_SET,
+                event.get(),
+                1,
+            ) == 0
+        }
+    }
+
+    /// Block until a watched key changes or `timeout` passes (`None` waits
+    /// for ever). The key that fired is watched again before returning.
+    pub fn wait(&self, timeout: Option<std::time::Duration>) -> Result<WatchEvent> {
+        use windows_sys::Win32::System::Threading::{WaitForMultipleObjects, INFINITE};
+        const WAIT_TIMEOUT: u32 = 258;
+        const MAX: usize = 64; // MAXIMUM_WAIT_OBJECTS
+        let mut handles: [HANDLE; MAX] = [std::ptr::null_mut(); MAX];
+        let n = self.events.len().min(MAX);
+        for (slot, e) in handles.iter_mut().zip(&self.events) {
+            *slot = e.get();
+        }
+        let ms = timeout
+            .map(|t| t.as_millis().min(u128::from(INFINITE - 1)) as u32)
+            .unwrap_or(INFINITE);
+        let rc = unsafe { WaitForMultipleObjects(n as u32, handles.as_ptr(), 0, ms) };
+        match rc {
+            WAIT_TIMEOUT => Ok(WatchEvent::Timeout),
+            WAIT_FAILED => Err(anyhow!(
+                "waiting for registry changes failed: {}",
+                std::io::Error::last_os_error()
+            )),
+            i if (i as usize) < n => {
+                let i = i as usize;
+                if !Self::arm(&self.keys[i], &self.events[i]) {
+                    return Err(anyhow!("registry notifications stopped"));
+                }
+                Ok(WatchEvent::Changed)
+            }
+            other => Err(anyhow!("unexpected wait result {other}")),
+        }
+    }
+}

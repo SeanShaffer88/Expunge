@@ -9,6 +9,31 @@ use std::sync::Mutex;
 #[cfg(windows)]
 pub mod windows;
 
+#[cfg(windows)]
+pub use windows::{RegistryWatch, WatchEvent};
+
+/// Off Windows there is no registry to watch: every wait just times out.
+#[cfg(not(windows))]
+mod watch_stub {
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum WatchEvent {
+        Changed,
+        Timeout,
+    }
+    pub struct RegistryWatch;
+    impl RegistryWatch {
+        pub fn new(_paths: &[&str]) -> anyhow::Result<Self> {
+            Ok(RegistryWatch)
+        }
+        pub fn wait(&self, timeout: Option<std::time::Duration>) -> anyhow::Result<WatchEvent> {
+            std::thread::sleep(timeout.unwrap_or(std::time::Duration::from_secs(30)));
+            Ok(WatchEvent::Timeout)
+        }
+    }
+}
+#[cfg(not(windows))]
+pub use watch_stub::{RegistryWatch, WatchEvent};
+
 /// Minimal registry API used by snapshots, uninstall and repair code.
 /// Paths look like `HKLM\SOFTWARE\Vendor` and are case-insensitive.
 /// Implementations always use the 64-bit view; the 32-bit view is reached

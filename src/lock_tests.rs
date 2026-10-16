@@ -364,3 +364,43 @@ fn a_program_that_only_loaded_one_of_the_files_is_not_closed() {
     assert!(!app.join("App.exe").exists());
     assert!(dll.exists());
 }
+
+#[test]
+fn registry_watch_reports_changes_and_stays_quiet_otherwise() {
+    let key = format!("HKCU\\Software\\ExpungeWatchTest{}", std::process::id());
+    let (code, out) = platform::run_hidden("reg.exe", &["add", &key, "/f"]).unwrap();
+    assert_eq!(code, 0, "{out}");
+    struct Cleanup(String);
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            let _ = platform::run_hidden("reg.exe", &["delete", &self.0, "/f"]);
+        }
+    }
+    let _c = Cleanup(key.clone());
+    let w = platform::RegistryWatch::new(&[&key, "HKCU\\Software\\NoSuchKeyForExpunge"]).unwrap();
+    // Nothing changes: the wait ends by timing out.
+    assert_eq!(
+        w.wait(Some(Duration::from_millis(300))).unwrap(),
+        platform::WatchEvent::Timeout
+    );
+    // A value set from elsewhere wakes it, and it is armed again afterwards.
+    for round in 0..2 {
+        let k = key.clone();
+        let t = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(200));
+            platform::run_hidden(
+                "reg.exe",
+                &["add", &k, "/v", "v", "/d", &round.to_string(), "/f"],
+            )
+            .unwrap()
+        });
+        let started = Instant::now();
+        assert_eq!(
+            w.wait(Some(Duration::from_secs(10))).unwrap(),
+            platform::WatchEvent::Changed,
+            "round {round}"
+        );
+        assert!(started.elapsed() < Duration::from_secs(9));
+        assert_eq!(t.join().unwrap().0, 0);
+    }
+}

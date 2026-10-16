@@ -995,17 +995,44 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                 std::thread::sleep(poll);
             }
             take_baseline(&st)?;
+            // The kernel signals changes to these keys; nothing runs between
+            // them except the five-minute resource-use sample.
+            const UNINSTALL_ROOTS: [&str; 3] = [
+                "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+                "HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+                "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+            ];
+            let watch = platform::RegistryWatch::new(&UNINSTALL_ROOTS)?;
+            let usage_every = std::time::Duration::from_secs(300);
+            let rebaseline_every = std::time::Duration::from_secs(24 * 3600);
+            let mut next_usage = std::time::Instant::now() + usage_every;
             let mut keys = expunge_core::autowatch::uninstall_keys(reg.as_ref());
             let mut base_time = std::time::Instant::now();
             let mut stale = false;
             loop {
-                std::thread::sleep(poll);
-                // Resource-use history, every five minutes.
-                expunge_core::usage::sample_and_save(&st.root, 290);
+                // Short checks only while something is in progress (manual
+                // monitoring, or a baseline waiting for an installer).
+                let until_usage = next_usage.saturating_duration_since(std::time::Instant::now());
+                let timeout = if stale || st.pending().is_some() {
+                    until_usage.min(poll)
+                } else {
+                    until_usage
+                };
+                let event = watch.wait(Some(timeout))?;
+                if std::time::Instant::now() >= next_usage {
+                    expunge_core::usage::sample_and_save(&st.root, 290);
+                    next_usage = std::time::Instant::now() + usage_every;
+                }
                 // Manual monitoring records this installation itself.
                 if st.pending().is_some() {
                     stale = true;
                     keys = expunge_core::autowatch::uninstall_keys(reg.as_ref());
+                    continue;
+                }
+                if event == platform::WatchEvent::Timeout
+                    && !stale
+                    && base_time.elapsed() < rebaseline_every
+                {
                     continue;
                 }
                 let now = expunge_core::autowatch::uninstall_keys(reg.as_ref());
@@ -1016,7 +1043,7 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                         keys = now;
                         stale = true;
                     }
-                    if (stale || base_time.elapsed() > std::time::Duration::from_secs(24 * 3600))
+                    if (stale || base_time.elapsed() > rebaseline_every)
                         && !platform::installer_busy()
                     {
                         take_baseline(&st)?;
@@ -1027,13 +1054,15 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                     continue;
                 }
                 // Wait for the installation to settle: no installer running
-                // and the program list unchanged for two checks (max. 30 min).
+                // and no change to the program list for 20 seconds (max. 30 min).
                 let started = std::time::Instant::now();
                 let mut last = now;
                 loop {
-                    std::thread::sleep(std::time::Duration::from_secs(20));
+                    let ev = watch.wait(Some(std::time::Duration::from_secs(20)))?;
                     let again = expunge_core::autowatch::uninstall_keys(reg.as_ref());
-                    let settled = again == last && !platform::installer_busy();
+                    let settled = ev == platform::WatchEvent::Timeout
+                        && again == last
+                        && !platform::installer_busy();
                     last = again;
                     if settled || started.elapsed() > std::time::Duration::from_secs(1800) {
                         break;
