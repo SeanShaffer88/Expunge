@@ -30,6 +30,8 @@ type Raw = *mut c_void;
 
 /// IFileDialog's vtable (IUnknown, IModalWindow, then its own methods in
 /// declaration order). Methods not called are kept as plain slots.
+// Layout only: unused slots keep the used ones at the right offsets.
+#[allow(dead_code)]
 #[repr(C)]
 struct FileDialogVtbl {
     query_interface: usize,
@@ -58,6 +60,7 @@ struct FileDialogVtbl {
 }
 
 /// IShellItem's vtable.
+#[allow(dead_code)]
 #[repr(C)]
 struct ShellItemVtbl {
     query_interface: usize,
@@ -69,12 +72,12 @@ struct ShellItemVtbl {
 }
 
 /// A COM pointer released when dropped.
-struct Com<V> {
+struct Com<V: Release> {
     ptr: Raw,
     _v: std::marker::PhantomData<V>,
 }
 
-impl<V> Com<V> {
+impl<V: Release> Com<V> {
     fn vtbl(&self) -> &V {
         // SAFETY: a COM object starts with a pointer to its vtable, and `V`
         // matches the interface this pointer was obtained for.
@@ -213,7 +216,7 @@ fn run(title: &str, kind: Kind) -> Option<PathBuf> {
         (v.set_title)(dlg.ptr, title_w.as_ptr());
         // The window in front owns the dialog, so it stays on top of it.
         let owner = windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow();
-        if (v.show)(dlg.ptr, owner as *mut c_void) < 0 {
+        if (v.show)(dlg.ptr, owner) < 0 {
             return None; // cancelled
         }
         let mut item: Raw = std::ptr::null_mut();
