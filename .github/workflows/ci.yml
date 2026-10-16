@@ -42,7 +42,18 @@ jobs:
             exit $code
           }
       - name: Clippy
-        run: cargo clippy --all-targets --locked
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          cargo clippy --all-targets --locked 2>&1 | Tee-Object -FilePath clippy.log
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            Get-Content clippy.log | Select-String -Pattern '^error' -Context 0,12 | Select-Object -First 8 | ForEach-Object {
+              Write-Output "::error::$($_.Line)"
+              $_.Context.PostContext | ForEach-Object { Write-Output "::error::  $_" }
+            }
+            exit $code
+          }
       - name: Release build
         run: cargo build --release --locked
       - name: Smoke test the CLI
