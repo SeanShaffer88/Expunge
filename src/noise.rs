@@ -116,6 +116,8 @@ pub const REGISTRY_PATTERNS: &[&str] = &[
     // Windows Search's own bookkeeping (indexer state, removed Store apps).
     "HKLM\\SOFTWARE\\Microsoft\\Windows Search",
     "HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows Search",
+    // Windows' own update and feature-delivery client state.
+    "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Wosc",
     // WMI provider registrations, kept in memory and rewritten as WMI runs.
     "HKLM\\SOFTWARE\\Microsoft\\Wbem\\Transports\\Decoupled",
     // Windows text input statistics (typing insights, input personalization).
