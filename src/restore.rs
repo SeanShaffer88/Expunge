@@ -71,7 +71,6 @@ struct RawPoint {
 
 impl crate::json::FromJson for RawPoint {
     fn from_json(v: &crate::json::Value) -> Result<Self, crate::json::Error> {
-        use crate::json::FromJson;
         let Some(obj) = v.as_object() else {
             return crate::json::type_error("a restore point");
         };

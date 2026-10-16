@@ -12,8 +12,9 @@ use std::fmt::Write as _;
 /// Deepest nesting accepted when reading (guards the stack).
 pub const MAX_DEPTH: usize = 256;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Default)]
 pub enum Value {
+    #[default]
     Null,
     Bool(bool),
     /// Integers that fit keep their exact value.
@@ -84,12 +85,6 @@ impl Value {
     }
     pub fn is_null(&self) -> bool {
         matches!(self, Value::Null)
-    }
-}
-
-impl Default for Value {
-    fn default() -> Self {
-        Value::Null
     }
 }
 
@@ -1052,6 +1047,7 @@ macro_rules! json_struct {
     // Only written, never read (fields borrowed from static tables).
     ($ty:ident, write_only, { $($f:ident $([$($m:tt)*])?),* $(,)? }) => {
         impl $crate::json::ToJson for $ty {
+            #[allow(clippy::vec_init_then_push)]
             fn to_json(&self) -> $crate::json::Value {
                 let mut __o: Vec<(String, $crate::json::Value)> = Vec::new();
                 $( $crate::json_struct!(@put __o, self, $f $(, $($m)*)?); )*
@@ -1061,6 +1057,7 @@ macro_rules! json_struct {
     };
     (@impl $ty:ident, $mode:ident, $bind:ident, { $($f:ident $([$($m:tt)*])?),* }) => {
         impl $crate::json::ToJson for $ty {
+            #[allow(clippy::vec_init_then_push)]
             fn to_json(&self) -> $crate::json::Value {
                 let mut __o: Vec<(String, $crate::json::Value)> = Vec::new();
                 $( $crate::json_struct!(@put __o, self, $f $(, $($m)*)?); )*
@@ -1152,7 +1149,7 @@ macro_rules! json_struct {
 macro_rules! json_enum {
     ($ty:ident { $($var:ident $({ $($f:ident $([$($m:tt)*])?),* $(,)? })?),* $(,)? }) => {
         impl $crate::json::ToJson for $ty {
-            #[allow(unused_variables)]
+            #[allow(unused_variables, clippy::vec_init_then_push)]
             fn to_json(&self) -> $crate::json::Value {
                 match self {
                     $( $crate::json_enum!(@pat $ty, $var $({ $($f),* })?) =>

@@ -612,7 +612,6 @@ fn parse_binary(b: &[u8]) -> Result<Snapshot> {
 }
 
 /// The JSON layout earlier versions saved.
-
 struct LegacySnapshot {
     created: String,
     computer: String,
