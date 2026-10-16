@@ -17,6 +17,7 @@ pub mod cache;
 pub mod cleaner;
 pub mod debloat;
 pub mod decrap;
+pub mod deflate;
 pub mod difftree;
 pub mod features;
 pub mod fswalk;
@@ -56,6 +57,7 @@ pub mod transfer;
 pub mod trust;
 pub mod usage;
 pub mod util;
+pub mod zip;
 
 #[cfg(test)]
 mod json_compat_tests;

@@ -140,7 +140,7 @@ fn skip_entry(rel: &str) -> bool {
 /// Unpack the GitHub source archive (one top folder) into `dest`.
 pub fn extract(zip_path: &Path, dest: &Path) -> Result<()> {
     let f = std::fs::File::open(zip_path)?;
-    let mut z = zip::ZipArchive::new(f).context("the download isn't a valid archive")?;
+    let mut z = crate::zip::ZipArchive::new(f).context("the download isn't a valid archive")?;
     for i in 0..z.len() {
         let mut e = z.by_index(i)?;
         let Some(name) = e.enclosed_name() else {
@@ -444,8 +444,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let zp = dir.join("l.zip");
         {
-            let mut z = zip::ZipWriter::new(std::fs::File::create(&zp).unwrap());
-            let o = zip::write::SimpleFileOptions::default();
+            let mut z = crate::zip::ZipWriter::new(std::fs::File::create(&zp).unwrap()).unwrap();
             for (name, data) in [
                 (
                     "Launcher-abc/App/NSIS/makensis.exe",
@@ -458,7 +457,7 @@ mod tests {
                 ),
                 ("Launcher-abc/Other/Source/Manual/index.rst", b"manual"),
             ] {
-                z.start_file(name, o).unwrap();
+                z.start_file(name).unwrap();
                 z.write_all(data).unwrap();
             }
             z.finish().unwrap();

@@ -2108,13 +2108,13 @@ impl WinRegistry {
         let mut stack: Vec<Level> = Vec::with_capacity(32);
 
         // Record one opened key (its values), returning whether it was recorded.
-        let mut record = |key: &OwnedKey,
-                          path: &str,
-                          snap: &mut crate::model::Snapshot,
-                          name_buf: &mut Vec<u16>,
-                          sub_buf: &mut Vec<u16>,
-                          data_buf: &mut Vec<u8>,
-                          text: &mut String| {
+        let record = |key: &OwnedKey,
+                      path: &str,
+                      snap: &mut crate::model::Snapshot,
+                      name_buf: &mut Vec<u16>,
+                      sub_buf: &mut Vec<u16>,
+                      data_buf: &mut Vec<u8>,
+                      text: &mut String| {
             let (mut max_sub, mut max_name, mut max_data) = (0u32, 0u32, 0u32);
             unsafe {
                 RegQueryInfoKeyW(

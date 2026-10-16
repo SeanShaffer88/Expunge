@@ -1,0 +1,2 @@
+# Test data must reach the tests byte for byte on every platform.
+src/testdata/** -text

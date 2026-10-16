@@ -117,6 +117,7 @@ pub fn capture_registry(
     reg.capture(root, &Exclusions::new(excl), snap, progress);
 }
 
+#[cfg(not(windows))]
 fn mtime_of(meta: &std::fs::Metadata) -> i64 {
     meta.modified()
         .ok()
@@ -421,8 +422,7 @@ pub fn save_snapshot(path: &Path, snap: &Snapshot) -> Result<()> {
     let tmp = path.with_extension("snap.tmp");
     {
         let f = std::fs::File::create(&tmp).with_context(|| format!("create {}", tmp.display()))?;
-        let mut gz =
-            flate2::write::GzEncoder::new(std::io::BufWriter::new(f), flate2::Compression::fast());
+        let mut gz = crate::deflate::GzWriter::fast(f)?;
         let mut head = Vec::with_capacity(4096);
         head.extend_from_slice(MAGIC);
         put_str(&mut head, &s.created);
@@ -440,7 +440,7 @@ pub fn save_snapshot(path: &Path, snap: &Snapshot) -> Result<()> {
         gz.write_all(&buf)?;
         gz.write_all(&s.bytes)?;
         // Records go out through one reused buffer.
-        let flush = |gz: &mut flate2::write::GzEncoder<_>, buf: &mut Vec<u8>| -> Result<()> {
+        let flush = |gz: &mut crate::deflate::GzWriter<_>, buf: &mut Vec<u8>| -> Result<()> {
             gz.write_all(buf)?;
             buf.clear();
             Ok(())
@@ -479,7 +479,7 @@ pub fn save_snapshot(path: &Path, snap: &Snapshot) -> Result<()> {
             }
         }
         flush(&mut gz, &mut buf)?;
-        gz.finish()?.flush()?;
+        gz.finish()?.sync_all()?;
     }
     std::fs::rename(&tmp, path).with_context(|| format!("save {}", path.display()))?;
     Ok(())
@@ -625,7 +625,8 @@ crate::json_struct!(LegacySnapshot, { created [default], computer [default], use
 pub fn load_snapshot(path: &Path) -> Result<Snapshot> {
     let f = std::fs::File::open(path).with_context(|| format!("open {}", path.display()))?;
     let mut raw = Vec::new();
-    flate2::read::GzDecoder::new(std::io::BufReader::new(f))
+    crate::deflate::GzReader::new(f)
+        .with_context(|| format!("read {}", path.display()))?
         .read_to_end(&mut raw)
         .with_context(|| format!("read {}", path.display()))?;
     if raw.starts_with(MAGIC) {
@@ -795,7 +796,7 @@ mod tests {
             "registry":{"hkcu\\software\\a":{"path":"HKCU\\Software\\A","values":{"x":{"name":"x","kind":1,"data":"790000"}}}},
             "files":{"c:\\a.txt":{"path":"C:\\a.txt","is_dir":false,"size":3,"mtime":9}}}"#;
         let f = std::fs::File::create(&p).unwrap();
-        let mut gz = flate2::write::GzEncoder::new(f, flate2::Compression::fast());
+        let mut gz = crate::deflate::GzWriter::new(f).unwrap();
         gz.write_all(json.as_bytes()).unwrap();
         gz.finish().unwrap();
         let l = load_snapshot(&p).unwrap();
@@ -810,7 +811,8 @@ mod tests {
         let p = tmp.path().join("a.snap");
         save_snapshot(&p, &sample()).unwrap();
         let mut raw = Vec::new();
-        flate2::read::GzDecoder::new(std::fs::File::open(&p).unwrap())
+        crate::deflate::GzReader::new(std::fs::File::open(&p).unwrap())
+            .unwrap()
             .read_to_end(&mut raw)
             .unwrap();
         for cut in [raw.len() - 3, raw.len() / 2, 12] {

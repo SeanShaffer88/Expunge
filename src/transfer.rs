@@ -412,10 +412,7 @@ pub fn export_with(
     };
     let file =
         std::fs::File::create(out).with_context(|| format!("can't create {}", out.display()))?;
-    let mut zip = zip::ZipWriter::new(file);
-    let opts = zip::write::SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated)
-        .large_file(true);
+    let mut zip = crate::zip::ZipWriter::new(file)?;
     for (n, path) in c.files.iter().enumerate() {
         let Ok(mut f) = std::fs::File::open(path) else {
             m.warnings
@@ -426,7 +423,7 @@ pub fn export_with(
             progress(path.clone());
         }
         let entry = format!("files/{n}");
-        zip.start_file(entry.as_str(), opts)?;
+        zip.start_file(&entry)?;
         let size = std::io::copy(&mut f, &mut zip)?;
         m.files.push(FileItem {
             path: vars.to_placeholder(path),
@@ -459,7 +456,7 @@ pub fn export_with(
         let file = format!("{tasks_dir}{}", name.replace('/', "\\"));
         if let Ok(bytes) = std::fs::read(&file) {
             let entry = format!("tasks/{n}.xml");
-            zip.start_file(entry.as_str(), opts)?;
+            zip.start_file(&entry)?;
             zip.write_all(&bytes)?;
             m.tasks.push(TaskItem {
                 name: name.clone(),
@@ -468,14 +465,14 @@ pub fn export_with(
         }
     }
     progress("manifest".into());
-    zip.start_file("manifest.json", opts)?;
+    zip.start_file("manifest.json")?;
     zip.write_all(crate::json::compat::to_string(&m)?.as_bytes())?;
     zip.finish()?;
     Ok(m)
 }
 
 pub fn read_manifest(pkg: &Path) -> Result<Manifest> {
-    let mut zip = zip::ZipArchive::new(std::fs::File::open(pkg)?)
+    let mut zip = crate::zip::ZipArchive::new(std::fs::File::open(pkg)?)
         .context("not an Expunge transfer package")?;
     let mut s = String::new();
     zip.by_name("manifest.json")
@@ -603,7 +600,7 @@ pub fn restore_with(
     to: &Vars,
     progress: &dyn Fn(String),
 ) -> Result<Vec<ActionResult>> {
-    let mut zip = zip::ZipArchive::new(std::fs::File::open(pkg)?)?;
+    let mut zip = crate::zip::ZipArchive::new(std::fs::File::open(pkg)?)?;
     let mut results = Vec::new();
     let from = &m.vars;
 
