@@ -113,6 +113,9 @@ pub const FILE_PATTERNS: &[&str] = &[
 /// Registry areas Windows rewrites constantly (most-recently-used lists,
 /// folder views, usage statistics, caches).
 pub const REGISTRY_PATTERNS: &[&str] = &[
+    // Windows Search's own bookkeeping (indexer state, removed Store apps).
+    "HKLM\\SOFTWARE\\Microsoft\\Windows Search",
+    "HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows Search",
     // WMI provider registrations, kept in memory and rewritten as WMI runs.
     "HKLM\\SOFTWARE\\Microsoft\\Wbem\\Transports\\Decoupled",
     // Windows text input statistics (typing insights, input personalization).

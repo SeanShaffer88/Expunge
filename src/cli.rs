@@ -401,7 +401,15 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
             let before = load_snapshot(&PathBuf::from(a))?;
             let after = load_snapshot(&PathBuf::from(b))?;
             let name = arg_value(&args, "--name").unwrap_or_default();
-            let log = save_new_log(&store()?, &name, "", diff(&before, &after))?;
+            let st = store()?;
+            let mut log = save_new_log(&st, &name, "", diff(&before, &after))?;
+            // Used by background monitoring (`watch`), which records here.
+            if has(&args, "--auto") {
+                log.tags = vec![expunge_core::autowatch::TAG.to_string()];
+                log.notes = "Recorded automatically by background monitoring.".into();
+                st.save_log(&log)?;
+                eprintln!("Recorded {}", log.name);
+            }
             if has(&args, "--json") {
                 println!("{}", log_summary_json(&log));
             }
@@ -416,7 +424,35 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
             }
             let name = arg_value(&args[..sep], "--name").unwrap_or_default();
             let st = store()?;
+            if let Some(p) = st.pending() {
+                anyhow::bail!(
+                    "monitoring of {} is already in progress; finish it in Expunge first",
+                    if p.name.is_empty() {
+                        "an installation".to_string()
+                    } else {
+                        p.name
+                    }
+                );
+            }
             let before = snapshot_now(reg.as_ref(), &st)?;
+            // Marks the installation as monitored, so background monitoring
+            // leaves it alone; cleared however this command ends.
+            st.save_pending(
+                &expunge_core::store::PendingSession {
+                    name: name.clone(),
+                    started: expunge_core::util::now_string(),
+                    installer: installer[0].clone(),
+                    trial: false,
+                },
+                &before,
+            )?;
+            struct ClearPending<'a>(&'a Store);
+            impl Drop for ClearPending<'_> {
+                fn drop(&mut self) {
+                    self.0.clear_pending();
+                }
+            }
+            let _pending = ClearPending(&st);
             let cmdline = installer
                 .iter()
                 .map(|a| {
@@ -914,11 +950,29 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
             platform::windows::background_priority();
             let st = store()?;
             let base_path = st.snapshots_dir().join("auto-baseline.snap");
+            let after_path = st.snapshots_dir().join("auto-after.snap");
             let poll = std::time::Duration::from_secs(30);
-            let take_baseline = |st: &Store| -> anyhow::Result<()> {
-                let s = snapshot_now(reg.as_ref(), st)?;
-                save_snapshot(&base_path, &s)?;
+            // Snapshots and comparisons run in a short-lived copy of Expunge:
+            // building a snapshot of every monitored place can take a
+            // gigabyte or more, and this process stays running for days.
+            // The memory goes back to Windows when the copy exits.
+            let exe = std::env::current_exe()?.to_string_lossy().into_owned();
+            let in_child = |what: &str, argv: &[&str]| -> anyhow::Result<()> {
+                let (code, out) = platform::run_hidden(&exe, argv)?;
+                if code != 0 {
+                    let last = out
+                        .lines()
+                        .rev()
+                        .find(|l| !l.trim().is_empty())
+                        .unwrap_or("");
+                    anyhow::bail!("{what} failed ({code}): {last}");
+                }
                 Ok(())
+            };
+            let base_arg = base_path.to_string_lossy().into_owned();
+            let after_arg = after_path.to_string_lossy().into_owned();
+            let take_baseline = |_st: &Store| -> anyhow::Result<()> {
+                in_child("baseline snapshot", &["snapshot", &base_arg])
             };
             while platform::installer_busy() {
                 std::thread::sleep(poll);
@@ -968,14 +1022,12 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                         break;
                     }
                 }
-                let before = load_snapshot(&base_path)?;
-                let after = snapshot_now(reg.as_ref(), &st)?;
-                let mut log = save_new_log(&st, "", "", diff(&before, &after))?;
-                log.tags = vec![expunge_core::autowatch::TAG.to_string()];
-                log.notes = "Recorded automatically by background monitoring.".into();
-                st.save_log(&log)?;
-                eprintln!("Recorded {}", log.name);
-                save_snapshot(&base_path, &after)?;
+                in_child("snapshot", &["snapshot", &after_arg])?;
+                // Monitoring may have started while it settled.
+                if st.pending().is_none() {
+                    in_child("comparison", &["diff", &base_arg, &after_arg, "--auto"])?;
+                }
+                std::fs::rename(&after_path, &base_path)?;
                 keys = last;
                 base_time = std::time::Instant::now();
                 stale = false;
