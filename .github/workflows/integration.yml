@@ -188,13 +188,17 @@ jobs:
           if ($p.ExitCode -ne 0) {
             # GitHub keeps only 10 annotations per step: explanations first.
             $left = @($out | Select-String -Pattern '^- Delete (folder|file) (.+)$' | ForEach-Object { $_.Matches[0].Groups[2].Value })
-            $why = @(Get-Content revert.txt | Select-String -Pattern 'restart|in use|kept|held by|still running|Close' | Select-Object -First 4)
+            $why = @(Get-Content revert.txt | Select-String -Pattern ' — .*(next restart|in use|kept|held by|kept running)' | Select-Object -First 3)
             $why | ForEach-Object { Write-Output "::error title=Removal said::$($_.Line)" }
             $dirs = @($left | Where-Object { Test-Path $_ -PathType Container })
             $running = @(Get-Process | Where-Object { $pp = $_.Path; $pp -and ($dirs | Where-Object { $pp.StartsWith($_, 'OrdinalIgnoreCase') }) })
             $running | Select-Object -First 2 | ForEach-Object { Write-Output "::error title=Still running::$($_.ProcessName) ($($_.Id)) $($_.Path)" }
             $inside = @($dirs | ForEach-Object { Get-ChildItem $_ -Recurse -Force -File -ErrorAction SilentlyContinue } | Select-Object -First 2)
-            $inside | ForEach-Object { Write-Output "::error title=Still inside::$($_.FullName) ($($_.Length) bytes, $($_.LastWriteTime))" }
+            $inside | ForEach-Object {
+              $said = Get-Content revert.txt | Select-String -SimpleMatch $_.FullName | Select-Object -First 1
+              $note = if ($said) { "removal said: $($said.Line)" } else { 'not in the install log' }
+              Write-Output "::error title=Still inside::$($_.FullName) ($($_.Length) bytes, $($_.LastWriteTime)); $note"
+            }
             if (-not $inside) { Write-Output "::error title=Still inside::nothing: the leftover folders are empty ($($dirs.Count) exist)" }
             $out | Where-Object { $_ -match '^- ' } | Select-Object -First 2 | ForEach-Object { Write-Output "::error::$_" }
             throw "leftovers remain"
