@@ -9,11 +9,10 @@ use crate::model::*;
 use crate::platform::{self, expand_env, Registry};
 use crate::util::{is_protected_dir, is_protected_key, protected_dirs};
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::path::Path;
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Action {
     /// Stop and delete a Windows service the installation registered.
     StopDeleteService {
@@ -58,6 +57,7 @@ pub enum Action {
         add_back: Vec<String>,
     },
 }
+crate::json_enum!(Action { StopDeleteService { name }, DeleteTask { name }, DeleteFile { path }, DeleteDir { path }, DeleteTree { path }, DeleteKey { path }, DeleteValue { key, name }, SetValue { key, value }, RestoreKey { key }, EditList { key, name, remove, add_back } });
 
 impl Action {
     pub fn category(&self) -> &'static str {
@@ -130,7 +130,7 @@ impl Action {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PlanItem {
     pub action: Action,
     pub selected: bool,
@@ -139,13 +139,15 @@ pub struct PlanItem {
     /// Why an item is unselected or needs attention.
     pub note: String,
 }
+crate::json_struct!(PlanItem, { action, selected, exists, note });
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Plan {
     pub items: Vec<PlanItem>,
     /// Things that cannot be undone automatically (shown to the user).
     pub info: Vec<String>,
 }
+crate::json_struct!(Plan, { items, info });
 
 impl Plan {
     pub fn selected(&self) -> usize {
@@ -910,12 +912,17 @@ fn run_action(
 }
 
 /// How careful the user should be with a plan item (shown as a label).
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Risk {
     Safe,
     Review,
     Careful,
 }
+crate::json_enum!(Risk {
+    Safe,
+    Review,
+    Careful
+});
 
 impl Risk {
     pub fn label(&self) -> &'static str {

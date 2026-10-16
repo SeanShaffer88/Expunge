@@ -9,9 +9,8 @@ use crate::leftovers::DeepIndex;
 use crate::model::{fold, RegValue};
 use crate::platform::{expand_env, Registry};
 use crate::revert::Action;
-use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct AutoEntry {
     /// What kind of autostart this is (translation key).
     pub kind: &'static str,
@@ -26,6 +25,7 @@ pub struct AutoEntry {
     /// How to remove it; None for entries Expunge only shows.
     pub removal: Option<Action>,
 }
+crate::json_struct!(AutoEntry, write_only, { kind, name, target, location, windows, removal });
 
 const WINLOGON: &str = "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon";
 const IFEO: &str =

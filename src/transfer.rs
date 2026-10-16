@@ -20,7 +20,6 @@ use crate::programs::{InstalledProgram, Source};
 use crate::revert::{build_plan, Action};
 use crate::util::{is_protected_dir, is_protected_key, protected_dirs};
 use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -29,8 +28,20 @@ pub const FORMAT: u32 = 1;
 pub const EXTENSION: &str = "expunge";
 
 /// Folder variables used to make paths portable, longest value first.
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Vars(pub Vec<(String, String)>);
+
+// A newtype is written as what it wraps: a list of [name, value] pairs.
+impl crate::json::ToJson for Vars {
+    fn to_json(&self) -> crate::json::Value {
+        crate::json::ToJson::to_json(&self.0)
+    }
+}
+impl crate::json::FromJson for Vars {
+    fn from_json(v: &crate::json::Value) -> Result<Self, crate::json::Error> {
+        crate::json::FromJson::from_json(v).map(Vars)
+    }
+}
 
 impl Vars {
     const NAMES: [&'static str; 10] = [
@@ -139,14 +150,15 @@ fn rewrite_value(v: &RegValue, from: &Vars, to: &Vars) -> RegValue {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct ProgramInfo {
     pub name: String,
     pub publisher: String,
     pub version: String,
 }
+crate::json_struct!(ProgramInfo, { name, publisher, version });
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FileItem {
     /// Destination with `%VARIABLES%`.
     pub path: String,
@@ -154,21 +166,24 @@ pub struct FileItem {
     pub entry: String,
     pub size: u64,
 }
+crate::json_struct!(FileItem, { path, entry, size });
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PathEntry {
     pub key: String,
     pub name: String,
     pub entries: Vec<String>,
 }
+crate::json_struct!(PathEntry, { key, name, entries });
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TaskItem {
     pub name: String,
     pub entry: String,
 }
+crate::json_struct!(TaskItem, { name, entry });
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Manifest {
     pub format: u32,
     pub created: String,
@@ -188,6 +203,7 @@ pub struct Manifest {
     pub services: Vec<String>,
     pub warnings: Vec<String>,
 }
+crate::json_struct!(Manifest, { format, created, computer, user, windows_build, arch, vars, programs, files, dirs, keys, values, path_entries, tasks, services, warnings });
 
 impl Manifest {
     pub fn bytes(&self) -> u64 {
@@ -453,7 +469,7 @@ pub fn export_with(
     }
     progress("manifest".into());
     zip.start_file("manifest.json", opts)?;
-    zip.write_all(serde_json::to_string(&m)?.as_bytes())?;
+    zip.write_all(crate::json::compat::to_string(&m)?.as_bytes())?;
     zip.finish()?;
     Ok(m)
 }
@@ -465,7 +481,7 @@ pub fn read_manifest(pkg: &Path) -> Result<Manifest> {
     zip.by_name("manifest.json")
         .context("not an Expunge transfer package")?
         .read_to_string(&mut s)?;
-    let m: Manifest = serde_json::from_str(&s)?;
+    let m: Manifest = crate::json::compat::from_str(&s)?;
     if m.format > FORMAT {
         anyhow::bail!("This package was made by a newer version of Expunge; please update.");
     }

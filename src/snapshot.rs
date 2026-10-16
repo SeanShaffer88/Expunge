@@ -612,21 +612,16 @@ fn parse_binary(b: &[u8]) -> Result<Snapshot> {
 }
 
 /// The JSON layout earlier versions saved.
-#[derive(serde::Deserialize)]
+
 struct LegacySnapshot {
-    #[serde(default)]
     created: String,
-    #[serde(default)]
     computer: String,
-    #[serde(default)]
     user: String,
-    #[serde(default)]
     registry: std::collections::BTreeMap<String, KeyData>,
-    #[serde(default)]
     files: std::collections::BTreeMap<String, FileEntry>,
-    #[serde(default)]
     warnings: Vec<String>,
 }
+crate::json_struct!(LegacySnapshot, { created [default], computer [default], user [default], registry [default], files [default], warnings [default] });
 
 pub fn load_snapshot(path: &Path) -> Result<Snapshot> {
     let f = std::fs::File::open(path).with_context(|| format!("open {}", path.display()))?;
@@ -638,7 +633,7 @@ pub fn load_snapshot(path: &Path) -> Result<Snapshot> {
         return parse_binary(&raw).with_context(|| format!("read {}", path.display()));
     }
     // Saved by an earlier version.
-    let old: LegacySnapshot = serde_json::from_slice(&raw)?;
+    let old: LegacySnapshot = crate::json::compat::from_slice(&raw)?;
     drop(raw);
     let mut s = Snapshot {
         created: old.created,

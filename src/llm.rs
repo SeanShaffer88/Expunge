@@ -158,11 +158,11 @@ If unsure, answer \"optional\".";
 
 /// The request body asking about these components (by index into `asked`).
 pub fn request_body(model: &str, app: &str, publisher: &str, asked: &[&Component]) -> String {
-    let items: Vec<serde_json::Value> = asked
+    let items: Vec<crate::json::Value> = asked
         .iter()
         .enumerate()
         .map(|(i, c)| {
-            serde_json::json!({
+            crate::json!({
                 "id": i,
                 "type": c.kind.label(),
                 "name": c.name,
@@ -171,12 +171,12 @@ pub fn request_body(model: &str, app: &str, publisher: &str, asked: &[&Component
             })
         })
         .collect();
-    let user = serde_json::json!({
+    let user = crate::json!({
         "program": app,
         "publisher": publisher,
         "components": items,
     });
-    serde_json::json!({
+    crate::json!({
         "model": model,
         "temperature": 0,
         "stream": false,
@@ -199,7 +199,7 @@ pub struct Judgement {
 /// Read the model's answer out of a chat-completions response. Only
 /// well-formed entries for ids that were asked about are kept.
 pub fn parse_answer(response: &str, asked: usize) -> Vec<Judgement> {
-    let Ok(v) = serde_json::from_str::<serde_json::Value>(response) else {
+    let Ok(v) = crate::json::compat::from_str::<crate::json::Value>(response) else {
         return Vec::new();
     };
     let content = v["choices"][0]["message"]["content"].as_str().unwrap_or("");
@@ -210,7 +210,8 @@ pub fn parse_answer(response: &str, asked: usize) -> Vec<Judgement> {
     if b < a {
         return Vec::new();
     }
-    let Ok(serde_json::Value::Array(items)) = serde_json::from_str(&content[a..=b]) else {
+    let Ok(crate::json::Value::Array(items)) = crate::json::compat::from_str(&content[a..=b])
+    else {
         return Vec::new();
     };
     let mut out: Vec<Judgement> = Vec::new();
@@ -310,7 +311,7 @@ mod tests {
     #[test]
     fn answers_are_checked() {
         let content = "Sure!\n```json\n[{\"id\":0,\"verdict\":\"bloat\",\"reason\":\"phones home\"},{\"id\":0,\"verdict\":\"required\"},{\"id\":7,\"verdict\":\"bloat\"},{\"id\":1,\"verdict\":\"maybe\"},{\"id\":1,\"verdict\":\"Optional\",\"reason\":\"tray\\u0007icon\"}]\n```";
-        let resp = serde_json::json!({"choices":[{"message":{"content": content}}]}).to_string();
+        let resp = crate::json!({"choices":[{"message":{"content": content}}]}).to_string();
         let got = parse_answer(&resp, 2);
         assert_eq!(
             got,
@@ -364,11 +365,10 @@ mod tests {
             }
             let mut body = vec![0; len];
             r.read_exact(&mut body).unwrap();
-            let req: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            let req: crate::json::Value = crate::json::compat::from_slice(&body).unwrap();
             let user = req["messages"][1]["content"].as_str().unwrap().to_string();
             let content = "[{\"id\":0,\"verdict\":\"bloat\",\"reason\":\"usage reporting\"}]";
-            let reply =
-                serde_json::json!({"choices":[{"message":{"content":content}}]}).to_string();
+            let reply = crate::json!({"choices":[{"message":{"content":content}}]}).to_string();
             // Chunked, as Ollama sends it.
             let (a, b) = reply.split_at(reply.len() / 2);
             write!(

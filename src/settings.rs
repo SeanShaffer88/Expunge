@@ -1,12 +1,11 @@
 //! User settings, persisted as JSON in the data folder.
 
-use serde::{Deserialize, Serialize};
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FileRoot {
     pub path: String,
     pub recursive: bool,
 }
+crate::json_struct!(FileRoot, { path, recursive });
 
 impl FileRoot {
     fn new(path: &str, recursive: bool) -> Self {
@@ -17,8 +16,7 @@ impl FileRoot {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-#[serde(default)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Settings {
     /// Interface language code ("" = follow Windows).
     pub language: String,
@@ -79,10 +77,10 @@ pub struct Settings {
     /// The profile the current scope came from ("" = none).
     pub active_profile: String,
 }
+crate::json_struct!(Settings, default, { language, zoom, registry_roots, file_roots, registry_exclusions, file_exclusions, auto_exclusions, backup_before_removal, create_restore_point, remove_unlogged_files, confirm_actions, use_recycle_bin, restart_explorer, close_programs, local_model_url, local_model_name, show_system_components, show_store_apps, advanced_mode, high_contrast, first_run_done, portableapps_dir, packager_name, portable_out_dir, profiles, active_profile });
 
 /// A named monitoring scope: what snapshots capture and ignore.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
-#[serde(default)]
+#[derive(Clone, Debug, PartialEq, Default)]
 pub struct ScanProfile {
     pub name: String,
     pub registry_roots: Vec<String>,
@@ -90,6 +88,7 @@ pub struct ScanProfile {
     pub registry_exclusions: Vec<String>,
     pub file_exclusions: Vec<String>,
 }
+crate::json_struct!(ScanProfile, default, { name, registry_roots, file_roots, registry_exclusions, file_exclusions });
 
 /// In Simple mode the safety switches are locked to their safe values,
 /// whatever was chosen in Advanced mode.

@@ -3,9 +3,7 @@
 //! (winget) or Scoop with one click. The list is curated and kept in
 //! Expunge; nothing is looked up online until you choose to install.
 
-use serde::{Deserialize, Serialize};
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Alternative {
     pub name: &'static str,
     /// What it is, in a few words.
@@ -16,6 +14,7 @@ pub struct Alternative {
     /// Scoop app, with its bucket ("extras/qbittorrent").
     pub scoop: Option<&'static str>,
 }
+crate::json_struct!(Alternative, write_only, { name, what, open_source, winget, scoop });
 
 const fn a(
     name: &'static str,

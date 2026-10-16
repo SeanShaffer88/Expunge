@@ -78,7 +78,7 @@ impl App {
                 } else {
                     match std::fs::read(work.join("install-log.json"))
                         .ok()
-                        .and_then(|b| serde_json::from_slice::<InstallLog>(&b).ok())
+                        .and_then(|b| expunge_core::json::compat::from_slice::<InstallLog>(&b).ok())
                     {
                         Some(mut log) => {
                             log.tags = vec!["sandbox-preview".into()];

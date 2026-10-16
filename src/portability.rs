@@ -4,11 +4,10 @@
 //! shell extensions, machine-wide settings and administrator rights.
 
 use crate::model::{ChangeSet, FileEntry};
-use serde::{Deserialize, Serialize};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Severity {
     /// Worth knowing; nothing to do.
     Info,
@@ -17,6 +16,11 @@ pub enum Severity {
     /// Part of the program can't work portably.
     Problem,
 }
+crate::json_enum!(Severity {
+    Info,
+    Warning,
+    Problem
+});
 
 impl Severity {
     pub fn label(self) -> &'static str {
@@ -28,15 +32,16 @@ impl Severity {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Issue {
     pub severity: Severity,
     pub title: String,
     pub detail: String,
 }
+crate::json_struct!(Issue, { severity, title, detail });
 
 /// What the package should declare because of what was found.
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Needs {
     /// appinfo.ini [Dependencies] UsesJava=yes and [Activate] Java=require.
     pub java: bool,
@@ -48,12 +53,14 @@ pub struct Needs {
     /// to the program (app-local deployment).
     pub runtime_dlls: Vec<String>,
 }
+crate::json_struct!(Needs, { java, x64_only, admin, runtime_dlls });
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Report {
     pub issues: Vec<Issue>,
     pub needs: Needs,
 }
+crate::json_struct!(Report, { issues, needs });
 
 impl Report {
     fn add(&mut self, severity: Severity, title: &str, detail: impl Into<String>) {
@@ -132,7 +139,7 @@ fn lower(p: &Path) -> String {
 /// The .NET runtime a framework-dependent app asks for, from its
 /// *.runtimeconfig.json: ("Microsoft.WindowsDesktop.App", "8.0.0").
 fn runtime_config(json: &str) -> Option<(String, String)> {
-    let v: serde_json::Value = serde_json::from_str(json).ok()?;
+    let v: crate::json::Value = crate::json::compat::from_str(json).ok()?;
     let opts = v.get("runtimeOptions")?;
     let fw = opts.get("framework").cloned().or_else(|| {
         opts.get("frameworks")

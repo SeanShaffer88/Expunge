@@ -4,10 +4,9 @@
 use crate::model::{KeyData, RegValue};
 use crate::platform::{self, Registry};
 use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum BackupItem {
     /// A file copied into the backup before deletion.
     File {
@@ -33,25 +32,24 @@ pub enum BackupItem {
     /// A folder the operation created (restoring removes it if empty).
     DirAbsent { path: String },
 }
+crate::json_enum!(BackupItem { File { original, stored, size }, Dir { original }, RegTree { keys }, RegValue { key, name, previous }, KeyAbsent { path }, FileAbsent { path }, DirAbsent { path } });
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Backup {
     pub id: String,
     pub title: String,
     pub created: String,
     pub items: Vec<BackupItem>,
-    #[serde(default)]
     pub restored: bool,
     /// False while the operation runs. A backup left unfinished means the
     /// operation was interrupted (a crash or power loss); everything it had
     /// changed so far is recorded here, so it can be undone.
-    #[serde(default = "finished_by_default")]
     pub complete: bool,
     /// The process that made it, to tell a running operation from one that
     /// was interrupted.
-    #[serde(default)]
     pub pid: u32,
 }
+crate::json_struct!(Backup, { id, title, created, items, restored [default], complete [or = finished_by_default], pid [default] });
 
 fn finished_by_default() -> bool {
     true
@@ -89,12 +87,13 @@ impl Backup {
 }
 
 /// Result of one step of an operation, shown to the user afterwards.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ActionResult {
     pub description: String,
     pub ok: bool,
     pub message: String,
 }
+crate::json_struct!(ActionResult, { description, ok, message });
 
 impl ActionResult {
     pub fn ok(desc: impl Into<String>, msg: impl Into<String>) -> Self {
@@ -295,7 +294,7 @@ impl Drop for BackupWriter {
 /// over the old one.
 fn write_manifest(path: &Path, b: &Backup) -> Result<()> {
     use std::io::Write;
-    let json = serde_json::to_string_pretty(b)?;
+    let json = crate::json::compat::to_string_pretty(b)?;
     let tmp = path.with_extension("json.tmp");
     {
         let mut f =
@@ -323,7 +322,7 @@ pub fn interrupted(list: &[Backup]) -> Vec<&Backup> {
 /// Keep what an interrupted operation did and stop asking about it.
 pub fn mark_complete(root: &Path, id: &str) -> Result<()> {
     let manifest = root.join(id).join("manifest.json");
-    let mut b: Backup = serde_json::from_str(&std::fs::read_to_string(&manifest)?)?;
+    let mut b: Backup = crate::json::compat::from_str(&std::fs::read_to_string(&manifest)?)?;
     b.complete = true;
     write_manifest(&manifest, &b)
 }
@@ -379,7 +378,7 @@ pub fn list_backups(root: &Path) -> Vec<Backup> {
         .flatten()
         .flatten()
         .filter_map(|e| std::fs::read_to_string(e.path().join("manifest.json")).ok())
-        .filter_map(|s| serde_json::from_str(&s).ok())
+        .filter_map(|s| crate::json::compat::from_str(&s).ok())
         .collect();
     out.sort_by(|a, b| b.created.cmp(&a.created));
     out
@@ -397,7 +396,7 @@ pub fn delete_backup(root: &Path, id: &str) -> Result<()> {
 pub fn restore_backup(root: &Path, id: &str, reg: &dyn Registry) -> Result<Vec<ActionResult>> {
     let dir = root.join(id);
     let manifest = dir.join("manifest.json");
-    let mut backup: Backup = serde_json::from_str(&std::fs::read_to_string(&manifest)?)?;
+    let mut backup: Backup = crate::json::compat::from_str(&std::fs::read_to_string(&manifest)?)?;
     let mut results = Vec::new();
 
     // Folders first so files have somewhere to go.
@@ -588,7 +587,7 @@ mod tests {
         // As seen after a restart (the process is gone).
         let manifest = broot.join(&id).join("manifest.json");
         let mut b: Backup =
-            serde_json::from_str(&std::fs::read_to_string(&manifest).unwrap()).unwrap();
+            crate::json::compat::from_str(&std::fs::read_to_string(&manifest).unwrap()).unwrap();
         b.pid = 0;
         write_manifest(&manifest, &b).unwrap();
         let list = list_backups(&broot);
@@ -614,7 +613,7 @@ mod tests {
         std::mem::forget(w);
         let manifest = broot.join(&id).join("manifest.json");
         let mut b: Backup =
-            serde_json::from_str(&std::fs::read_to_string(&manifest).unwrap()).unwrap();
+            crate::json::compat::from_str(&std::fs::read_to_string(&manifest).unwrap()).unwrap();
         b.pid = 0;
         write_manifest(&manifest, &b).unwrap();
         assert_eq!(interrupted(&list_backups(&broot)).len(), 1);
@@ -634,7 +633,8 @@ mod tests {
         assert!(list_backups(&broot).iter().all(|b| b.complete));
         // Backups made by older versions have no flag and count as complete.
         let old: Backup =
-            serde_json::from_str(r#"{"id":"1","title":"t","created":"c","items":[]}"#).unwrap();
+            crate::json::compat::from_str(r#"{"id":"1","title":"t","created":"c","items":[]}"#)
+                .unwrap();
         assert!(old.complete);
     }
 }

@@ -11,15 +11,20 @@
 use crate::model::{fold, ChangeSet, KeyData};
 use crate::platform::expand_env;
 use crate::revert::Action;
-use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Kind {
     Service,
     Task,
     Autorun,
     StartupShortcut,
 }
+crate::json_enum!(Kind {
+    Service,
+    Task,
+    Autorun,
+    StartupShortcut
+});
 
 impl Kind {
     pub fn label(self) -> &'static str {
@@ -32,7 +37,7 @@ impl Kind {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Verdict {
     /// The program needs it to work.
     Required,
@@ -43,6 +48,12 @@ pub enum Verdict {
     /// The rules couldn't tell.
     Unknown,
 }
+crate::json_enum!(Verdict {
+    Required,
+    Optional,
+    Bloat,
+    Unknown
+});
 
 impl Verdict {
     pub fn label(self) -> &'static str {
@@ -59,7 +70,7 @@ impl Verdict {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Category {
     Telemetry,
     Updater,
@@ -70,16 +81,31 @@ pub enum Category {
     ProgramService,
     Other,
 }
+crate::json_enum!(Category {
+    Telemetry,
+    Updater,
+    Advertising,
+    Autostart,
+    Helper,
+    Driver,
+    ProgramService,
+    Other
+});
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DecidedBy {
     Rules,
     Model,
     /// The live guard disabled it during installation.
     Guard,
 }
+crate::json_enum!(DecidedBy {
+    Rules,
+    Model,
+    Guard
+});
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Component {
     pub kind: Kind,
     /// Service name, task path (`\Vendor\Task`), value name or file name.
@@ -93,6 +119,7 @@ pub struct Component {
     pub reasons: Vec<String>,
     pub decided_by: DecidedBy,
 }
+crate::json_struct!(Component, { kind, name, command, location, verdict, category, reasons, decided_by });
 
 /// What the installation is, to tell its own parts from passengers.
 #[derive(Clone, Debug, Default)]

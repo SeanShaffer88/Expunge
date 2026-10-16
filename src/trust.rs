@@ -4,9 +4,8 @@
 
 use crate::platform::{expand_env, Registry};
 use crate::programs::{InstalledProgram, Source};
-use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Trust {
     /// Valid signature from a trusted publisher.
     Signed { signer: String },
@@ -20,6 +19,7 @@ pub enum Trust {
     /// Not checked (non-Windows build, Store app, nothing to check).
     Unknown,
 }
+crate::json_enum!(Trust { Signed { signer }, Unsigned, Invalid { signer, reason }, Missing, Unknown });
 
 impl Trust {
     pub fn signer(&self) -> Option<&str> {

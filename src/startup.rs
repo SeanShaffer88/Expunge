@@ -7,20 +7,20 @@ use crate::backup::BackupWriter;
 use crate::model::{fold, RegValue};
 use crate::platform::{self, expand_env, Registry};
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 const APPROVED: &str = "Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved";
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StartupSource {
     /// A value in a Run/RunOnce key.
     Registry { key: String },
     /// A file in a Startup folder.
     Folder { dir: String },
 }
+crate::json_enum!(StartupSource { Registry { key }, Folder { dir } });
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StartupEntry {
     pub name: String,
     pub command: String,
@@ -33,6 +33,7 @@ pub struct StartupEntry {
     /// The target program could not be found (a broken entry).
     pub missing: bool,
 }
+crate::json_struct!(StartupEntry, { name, command, location, source, enabled, approved, all_users, missing });
 
 struct RunLoc {
     key: &'static str,
@@ -269,7 +270,7 @@ pub fn delete_entry(
 // Services
 // ---------------------------------------------------------------------------
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ServiceEntry {
     pub name: String,
     pub display_name: String,
@@ -281,6 +282,7 @@ pub struct ServiceEntry {
     pub windows: bool,
     pub is_driver: bool,
 }
+crate::json_struct!(ServiceEntry, { name, display_name, image_path, start, delayed, windows, is_driver });
 
 impl ServiceEntry {
     pub fn start_label(&self) -> &'static str {
@@ -360,7 +362,7 @@ pub fn set_service_start(
 // Scheduled tasks
 // ---------------------------------------------------------------------------
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TaskEntry {
     /// Task path like `\Vendor\Updater`.
     pub name: String,
@@ -370,6 +372,7 @@ pub struct TaskEntry {
     pub enabled: bool,
     pub microsoft: bool,
 }
+crate::json_struct!(TaskEntry, { name, file, command, author, enabled, microsoft });
 
 fn decode_task_xml(bytes: &[u8]) -> String {
     if bytes.starts_with(&[0xFF, 0xFE]) {

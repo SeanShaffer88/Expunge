@@ -2,15 +2,14 @@
 //! Execution Aliases (the `python.exe`, `winget.exe`… commands that Store
 //! apps add to `%LOCALAPPDATA%\Microsoft\WindowsApps`).
 
-use serde::{Deserialize, Serialize};
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Feature {
     pub name: String,
     pub enabled: bool,
     /// "Enable Pending", "Disable Pending" (waiting for a restart), etc.
     pub state: String,
 }
+crate::json_struct!(Feature, { name, enabled, state });
 
 impl Feature {
     pub fn pending(&self) -> bool {
@@ -143,13 +142,14 @@ pub fn set_feature(name: &str, enable: bool) -> anyhow::Result<bool> {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Alias {
     /// The command, e.g. `python.exe`.
     pub command: String,
     /// The app package that provides it, when known.
     pub package: String,
 }
+crate::json_struct!(Alias, { command, package });
 
 /// List App Execution Aliases that are switched on. Each one is a small
 /// link file in the WindowsApps folder; the app it belongs to keeps a copy

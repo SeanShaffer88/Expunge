@@ -57,6 +57,8 @@ pub mod trust;
 pub mod usage;
 pub mod util;
 
+#[cfg(test)]
+mod json_compat_tests;
 #[cfg(all(test, windows))]
 mod lock_tests;
 #[cfg(test)]

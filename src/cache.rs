@@ -7,14 +7,13 @@
 //! modification time are unchanged.
 
 use crate::trust::Trust;
-use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 /// How long a measured folder size is trusted.
 const SIZE_MAX_AGE_SECS: i64 = 7 * 24 * 3600;
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct SizeEntry {
     pub location: String,
     pub version: String,
@@ -22,22 +21,23 @@ pub struct SizeEntry {
     /// Unix time it was measured.
     pub measured: i64,
 }
+crate::json_struct!(SizeEntry, { location, version, bytes, measured });
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TrustEntry {
     pub path: String,
     pub len: u64,
     pub mtime: i64,
     pub trust: Trust,
 }
+crate::json_struct!(TrustEntry, { path, len, mtime, trust });
 
-#[derive(Serialize, Deserialize, Default, Clone, Debug)]
+#[derive(Default, Clone, Debug)]
 pub struct Cache {
-    #[serde(default)]
     pub sizes: HashMap<String, SizeEntry>,
-    #[serde(default)]
     pub trust: HashMap<String, TrustEntry>,
 }
+crate::json_struct!(Cache, { sizes [default], trust [default] });
 
 pub fn now() -> i64 {
     std::time::SystemTime::now()
@@ -63,13 +63,13 @@ impl Cache {
     pub fn load(path: &Path) -> Self {
         std::fs::read_to_string(path)
             .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
+            .and_then(|s| crate::json::compat::from_str(&s).ok())
             .unwrap_or_default()
     }
 
     pub fn save(&self, path: &Path) -> anyhow::Result<()> {
         let tmp = path.with_extension("tmp");
-        std::fs::write(&tmp, serde_json::to_string(self)?)?;
+        std::fs::write(&tmp, crate::json::compat::to_string(self)?)?;
         std::fs::rename(&tmp, path)?;
         Ok(())
     }

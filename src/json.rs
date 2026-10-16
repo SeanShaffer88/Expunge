@@ -87,6 +87,25 @@ impl Value {
     }
 }
 
+impl Default for Value {
+    fn default() -> Self {
+        Value::Null
+    }
+}
+
+impl Value {
+    /// Set `key` on an object (replacing it, or adding it at the end).
+    /// Does nothing to a value that isn't an object.
+    pub fn set(&mut self, key: &str, v: Value) {
+        if let Value::Object(m) = self {
+            match m.iter_mut().find(|(k, _)| k == key) {
+                Some(slot) => slot.1 = v,
+                None => m.push((key.to_string(), v)),
+            }
+        }
+    }
+}
+
 impl std::ops::Index<&str> for Value {
     type Output = Value;
     /// `v["key"]`: [`Value::Null`] when absent, as in JavaScript.
@@ -617,55 +636,58 @@ mod tests {
         );
     }
 
-    #[test]
-    fn matches_serde_json_byte_for_byte() {
-        // Cross-check against the library this replaces, while it's still here.
-        // serde_json's Value sorts keys (derived structs keep field order,
-        // which ours does too): keep this sample sorted.
-        let sample = r#"{"a":[[],{},[1,[2]],{"k":null}],"big":18446744073709551615,"created":"2026-10-16 05:07:09",
+    /// A document using every feature, keys sorted (as serde_json wrote them).
+    const SAMPLE: &str = r#"{"a":[[],{},[1,[2]],{"k":null}],"big":18446744073709551615,"created":"2026-10-16 05:07:09",
             "f":1.5,"id":"x1","n":42,"neg":-7,"s":"tab\there \u00e9 \ud83d\ude00 \u0007","t":true,"tiny":1e-7,"whole":3.0}"#;
-        let ours = parse(sample).unwrap();
-        let theirs: serde_json::Value = serde_json::from_str(sample).unwrap();
-        assert_eq!(to_string(&ours), serde_json::to_string(&theirs).unwrap());
+
+    /// Floats around every layout boundary.
+    const FLOATS: &[f64] = &[
+        0.0,
+        -0.0,
+        1.0,
+        3.0,
+        0.5,
+        0.1,
+        1e-7,
+        1.5e-7,
+        0.001,
+        0.0001,
+        0.00001,
+        123456.789,
+        1e15,
+        1e16,
+        1e17,
+        1.2345e20,
+        9007199254740993.0,
+        f64::MIN_POSITIVE,
+        f64::MAX,
+        -2.5e-300,
+        std::f64::consts::PI,
+    ];
+
+    #[test]
+    fn matches_what_earlier_versions_wrote_byte_for_byte() {
+        // The golden files hold serde_json's output for the same input.
+        let ours = parse(SAMPLE).unwrap();
+        assert_eq!(to_string(&ours), include_str!("testdata/json/sample.json"));
         assert_eq!(
             to_string_pretty(&ours),
-            serde_json::to_string_pretty(&theirs).unwrap()
+            include_str!("testdata/json/sample.pretty.json")
         );
-        // And each reads the other's output.
         assert_eq!(
-            parse(&serde_json::to_string_pretty(&theirs).unwrap()).unwrap(),
+            parse(include_str!("testdata/json/sample.pretty.json")).unwrap(),
             ours
         );
-        for f in [
-            0.0,
-            -0.0,
-            1.0,
-            3.0,
-            0.5,
-            0.1,
-            1e-7,
-            1.5e-7,
-            0.001,
-            0.0001,
-            0.00001,
-            123456.789,
-            1e15,
-            1e16,
-            1e17,
-            1.2345e20,
-            9007199254740993.0,
-            f64::MIN_POSITIVE,
-            f64::MAX,
-            -2.5e-300,
-            std::f64::consts::PI,
-        ] {
-            let mut ours = String::new();
-            write_f64(&mut ours, f);
-            assert_eq!(ours, serde_json::to_string(&f).unwrap(), "{f:e}");
+        let golden: Vec<&str> = include_str!("testdata/json/floats.txt").lines().collect();
+        assert_eq!(golden.len(), FLOATS.len());
+        for (&f, want) in FLOATS.iter().zip(golden) {
+            let mut got = String::new();
+            write_f64(&mut got, f);
+            assert_eq!(got, want, "{f:e}");
             assert_eq!(
-                parse(&ours).unwrap().as_f64().unwrap().to_bits(),
+                parse(&got).unwrap().as_f64().unwrap().to_bits(),
                 f.to_bits(),
-                "{ours}"
+                "{got}"
             );
         }
     }
@@ -709,6 +731,15 @@ pub fn in_field(e: Error, field: &str) -> Error {
             format!("{} in `{field}`", e.msg)
         },
         at: e.at,
+    }
+}
+
+impl<T: ToJson + ?Sized> ToJson for &T {
+    fn to_json(&self) -> Value {
+        (**self).to_json()
+    }
+    fn is_empty_json(&self) -> bool {
+        (**self).is_empty_json()
     }
 }
 
@@ -1006,7 +1037,8 @@ pub fn from_json_slice<T: FromJson>(b: &[u8]) -> Result<T, Error> {
 ///
 /// `default` takes absent fields from `Type::default()`; without it absent
 /// fields are an error (except `Option`s, which become `None`). Per field:
-/// `[default]` (absent: the type's default), `[or = path]` (absent: the
+/// `write_only` implements only writing. `[default]` (absent: the type's
+/// default), `[or = path]` (absent: the
 /// function's result), `[skip_empty]` (not written when empty, absent:
 /// default) and `[hex]` (bytes as hex text). Unknown fields are ignored.
 #[macro_export]
@@ -1016,6 +1048,16 @@ macro_rules! json_struct {
     };
     ($ty:ident, { $($f:ident $([$($m:tt)*])?),* $(,)? }) => {
         $crate::json_struct!(@impl $ty, strict, __base, { $($f $([$($m)*])?),* });
+    };
+    // Only written, never read (fields borrowed from static tables).
+    ($ty:ident, write_only, { $($f:ident $([$($m:tt)*])?),* $(,)? }) => {
+        impl $crate::json::ToJson for $ty {
+            fn to_json(&self) -> $crate::json::Value {
+                let mut __o: Vec<(String, $crate::json::Value)> = Vec::new();
+                $( $crate::json_struct!(@put __o, self, $f $(, $($m)*)?); )*
+                $crate::json::Value::Object(__o)
+            }
+        }
     };
     (@impl $ty:ident, $mode:ident, $bind:ident, { $($f:ident $([$($m:tt)*])?),* }) => {
         impl $crate::json::ToJson for $ty {
@@ -1169,8 +1211,7 @@ mod typed_tests {
     use super::*;
     use std::collections::BTreeMap;
 
-    #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Clone)]
-    #[serde(default)]
+    #[derive(Default, Debug, PartialEq, Clone)]
     struct Loose {
         name: String,
         n: u32,
@@ -1182,7 +1223,6 @@ mod typed_tests {
         opt: Option<String>,
         list: Vec<u64>,
         map: BTreeMap<String, Vec<String>>,
-        #[serde(skip_serializing_if = "Vec::is_empty")]
         tags: Vec<String>,
         inner: Strict,
         kinds: Vec<Kind>,
@@ -1191,13 +1231,11 @@ mod typed_tests {
         name, n, big, neg, zoom, ratio, on, opt, list, map, tags [skip_empty], inner, kinds
     });
 
-    #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Clone)]
+    #[derive(Default, Debug, PartialEq, Clone)]
     struct Strict {
         id: String,
-        #[serde(with = "crate::model::hexbytes")]
         data: Vec<u8>,
         maybe: Option<u32>,
-        #[serde(default = "seven")]
         seven: u32,
     }
     fn seven() -> u32 {
@@ -1205,7 +1243,7 @@ mod typed_tests {
     }
     crate::json_struct!(Strict, { id, data [hex], maybe, seven [or = seven] });
 
-    #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Clone)]
+    #[derive(Debug, PartialEq, Clone)]
     enum Kind {
         Plain,
         WithFields { path: String, size: Option<u64> },
@@ -1250,28 +1288,29 @@ mod typed_tests {
 
     #[test]
     fn writes_exactly_what_serde_wrote() {
+        // Golden files: serde's output for the same types, before the switch.
         let s = sample();
-        assert_eq!(to_json_string(&s), serde_json::to_string(&s).unwrap());
+        assert_eq!(to_json_string(&s), include_str!("testdata/json/loose.json"));
         assert_eq!(
             to_json_string_pretty(&s),
-            serde_json::to_string_pretty(&s).unwrap()
+            include_str!("testdata/json/loose.pretty.json")
         );
         let mut t = s.clone();
         t.tags = vec!["kept".into()];
         t.opt = Some("o".into());
         assert_eq!(
             to_json_string_pretty(&t),
-            serde_json::to_string_pretty(&t).unwrap()
+            include_str!("testdata/json/loose_tags.pretty.json")
         );
     }
 
     #[test]
-    fn reads_what_serde_wrote_and_the_other_way_round() {
+    fn reads_what_serde_wrote() {
         let s = sample();
-        let ours: Loose = from_json_str(&serde_json::to_string_pretty(&s).unwrap()).unwrap();
+        let ours: Loose = from_json_str(include_str!("testdata/json/loose.pretty.json")).unwrap();
         assert_eq!(ours, s);
-        let theirs: Loose = serde_json::from_str(&to_json_string(&s)).unwrap();
-        assert_eq!(theirs, s);
+        let ours: Loose = from_json_str(include_str!("testdata/json/loose.json")).unwrap();
+        assert_eq!(ours, s);
     }
 
     #[test]
@@ -1297,5 +1336,97 @@ mod typed_tests {
         assert!(from_json_str::<Strict>(r#"{"id":"a","data":"0g"}"#).is_err());
         assert!(from_json_str::<Kind>(r#""Nope""#).is_err());
         assert!(from_json_str::<Kind>(r#"{"Plain":{},"WithFields":{}}"#).is_err());
+    }
+}
+
+impl std::fmt::Display for Value {
+    /// One-line JSON.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&to_string(self))
+    }
+}
+
+/// The same calls under the names and `Result` shapes used before.
+pub mod compat {
+    use super::*;
+
+    pub fn to_string<T: ToJson + ?Sized>(v: &T) -> Result<String, Error> {
+        Ok(to_json_string(v))
+    }
+    pub fn to_string_pretty<T: ToJson + ?Sized>(v: &T) -> Result<String, Error> {
+        Ok(to_json_string_pretty(v))
+    }
+    pub fn to_vec<T: ToJson + ?Sized>(v: &T) -> Result<Vec<u8>, Error> {
+        Ok(to_json_string(v).into_bytes())
+    }
+    pub fn to_vec_pretty<T: ToJson + ?Sized>(v: &T) -> Result<Vec<u8>, Error> {
+        Ok(to_json_string_pretty(v).into_bytes())
+    }
+    pub fn to_value<T: ToJson + ?Sized>(v: &T) -> Result<Value, Error> {
+        Ok(v.to_json())
+    }
+    pub fn from_str<T: FromJson>(s: &str) -> Result<T, Error> {
+        from_json_str(s)
+    }
+    pub fn from_slice<T: FromJson>(b: &[u8]) -> Result<T, Error> {
+        from_json_slice(b)
+    }
+}
+
+/// Build a [`Value`] from JSON-like syntax: `json!({"a": x, "b": [1, {"c": y}]})`.
+/// Keys are string literals; values are nested literals or any [`ToJson`]
+/// expression.
+#[macro_export]
+macro_rules! json {
+    ([ $($tt:tt)* ]) => { $crate::json::Value::Array($crate::json!(@array [] $($tt)*)) };
+    ({ $($tt:tt)* }) => { $crate::json::Value::Object($crate::json!(@object [] $($tt)*)) };
+    ($e:expr) => { $crate::json::ToJson::to_json(&$e) };
+
+    (@array [$($done:expr,)*]) => { vec![$($done,)*] };
+    (@array [$($done:expr,)*] { $($o:tt)* } $(, $($rest:tt)*)?) => {
+        $crate::json!(@array [$($done,)* $crate::json!({ $($o)* }),] $($($rest)*)?)
+    };
+    (@array [$($done:expr,)*] [ $($a:tt)* ] $(, $($rest:tt)*)?) => {
+        $crate::json!(@array [$($done,)* $crate::json!([ $($a)* ]),] $($($rest)*)?)
+    };
+    (@array [$($done:expr,)*] $e:expr $(, $($rest:tt)*)?) => {
+        $crate::json!(@array [$($done,)* $crate::json!($e),] $($($rest)*)?)
+    };
+
+    (@object [$($done:expr,)*]) => { vec![$($done,)*] };
+    (@object [$($done:expr,)*] $k:literal : { $($o:tt)* } $(, $($rest:tt)*)?) => {
+        $crate::json!(@object [$($done,)* ($k.to_string(), $crate::json!({ $($o)* })),] $($($rest)*)?)
+    };
+    (@object [$($done:expr,)*] $k:literal : [ $($a:tt)* ] $(, $($rest:tt)*)?) => {
+        $crate::json!(@object [$($done,)* ($k.to_string(), $crate::json!([ $($a)* ])),] $($($rest)*)?)
+    };
+    (@object [$($done:expr,)*] $k:literal : $e:expr $(, $($rest:tt)*)?) => {
+        $crate::json!(@object [$($done,)* ($k.to_string(), $crate::json!($e)),] $($($rest)*)?)
+    };
+}
+
+#[cfg(test)]
+mod macro_tests {
+    #[test]
+    fn json_macro_builds_the_same_document_as_before() {
+        let name = "x";
+        let items = vec![1u32, 2];
+        let ours = crate::json!({
+            "model": name,
+            "temperature": 0,
+            "stream": false,
+            "messages": [
+                {"role": "system", "content": "s"},
+                {"role": "user", "content": items.len()},
+            ],
+            "items": items,
+            "nested": {"a": [], "b": {}},
+        });
+        assert_eq!(ours["model"].as_str(), Some("x"));
+        assert_eq!(ours["items"][1].as_u64(), Some(2));
+        assert_eq!(
+            ours.to_string(),
+            r#"{"model":"x","temperature":0,"stream":false,"messages":[{"role":"system","content":"s"},{"role":"user","content":2}],"items":[1,2],"nested":{"a":[],"b":{}}}"#
+        );
     }
 }

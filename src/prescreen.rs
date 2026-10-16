@@ -6,25 +6,30 @@
 //! see inside compressed payloads or what a web installer downloads later,
 //! and says so; it is a warning system, not an antivirus.
 
-use serde::{Deserialize, Serialize};
 use std::io::Read;
 use std::path::Path;
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Level {
     Info,
     Caution,
     Danger,
 }
+crate::json_enum!(Level {
+    Info,
+    Caution,
+    Danger
+});
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Finding {
     pub level: Level,
     pub title: String,
     pub detail: String,
 }
+crate::json_struct!(Finding, { level, title, detail });
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Screening {
     pub findings: Vec<Finding>,
     /// Where the file came from (Mark of the Web), when Windows recorded it.
@@ -32,6 +37,7 @@ pub struct Screening {
     pub signer: Option<String>,
     pub installer: String,
 }
+crate::json_struct!(Screening, { findings, source, signer, installer });
 
 impl Screening {
     pub fn worst(&self) -> Level {

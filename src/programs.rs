@@ -2,7 +2,6 @@
 
 use crate::model::KeyData;
 use crate::platform::Registry;
-use serde::{Deserialize, Serialize};
 
 pub const UNINSTALL_ROOTS: [(&str, Source); 3] = [
     (
@@ -19,7 +18,7 @@ pub const UNINSTALL_ROOTS: [(&str, Source); 3] = [
     ),
 ];
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Source {
     #[default]
     Machine64,
@@ -30,6 +29,13 @@ pub enum Source {
     /// isn't registered with Windows).
     Manual,
 }
+crate::json_enum!(Source {
+    Machine64,
+    Machine32,
+    User,
+    Store,
+    Manual
+});
 
 impl Source {
     pub fn label(&self) -> &'static str {
@@ -43,7 +49,7 @@ impl Source {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct InstalledProgram {
     /// Uninstall registry key (or package full name for Store apps).
     pub key: String,
@@ -66,6 +72,7 @@ pub struct InstalledProgram {
     pub product_code: String,
     pub no_remove: bool,
 }
+crate::json_struct!(InstalledProgram, { key, name, publisher, version, install_date, install_location, uninstall_string, quiet_uninstall_string, modify_path, display_icon, url, comments, size_kb, source, system_component, is_msi, product_code, no_remove });
 
 impl InstalledProgram {
     pub fn from_key(k: &KeyData, source: Source) -> Option<Self> {
@@ -419,16 +426,16 @@ pub fn list_store_apps() -> Vec<InstalledProgram> {
 }
 
 pub fn parse_store_json(json: &str) -> Vec<InstalledProgram> {
-    let v: serde_json::Value = match serde_json::from_str(json.trim()) {
+    let v: crate::json::Value = match crate::json::compat::from_str(json.trim()) {
         Ok(v) => v,
         Err(_) => return Vec::new(),
     };
     let items = match v {
-        serde_json::Value::Array(a) => a,
-        o @ serde_json::Value::Object(_) => vec![o],
+        crate::json::Value::Array(a) => a,
+        o @ crate::json::Value::Object(_) => vec![o],
         _ => return Vec::new(),
     };
-    let s = |o: &serde_json::Value, k: &str| {
+    let s = |o: &crate::json::Value, k: &str| {
         o.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string()
     };
     let mut out: Vec<InstalledProgram> = items
@@ -507,7 +514,7 @@ fn manual_file(root: &std::path::Path) -> std::path::PathBuf {
 pub fn load_manual(root: &std::path::Path) -> Vec<InstalledProgram> {
     let list: Vec<InstalledProgram> = std::fs::read(manual_file(root))
         .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok())
+        .and_then(|b| crate::json::compat::from_slice(&b).ok())
         .unwrap_or_default();
     list.into_iter()
         .filter(|p| std::path::Path::new(&p.install_location).exists())
@@ -515,7 +522,7 @@ pub fn load_manual(root: &std::path::Path) -> Vec<InstalledProgram> {
 }
 
 fn save_manual(root: &std::path::Path, list: &[InstalledProgram]) -> anyhow::Result<()> {
-    std::fs::write(manual_file(root), serde_json::to_vec_pretty(list)?)?;
+    std::fs::write(manual_file(root), crate::json::compat::to_vec_pretty(list)?)?;
     Ok(())
 }
 

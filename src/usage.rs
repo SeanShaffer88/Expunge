@@ -5,7 +5,6 @@
 
 use crate::platform::Registry;
 use crate::programs::InstalledProgram;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -126,7 +125,7 @@ pub fn prefetch() -> HashMap<String, i64> {
 
 // ---- Memory and CPU over time ------------------------------------------
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct ExeStats {
     pub samples: u32,
     /// Sum of working sets (bytes) over samples, for the average.
@@ -135,17 +134,18 @@ pub struct ExeStats {
     /// CPU time used while sampled, and the wall time covered.
     pub cpu_ms: u64,
     pub wall_ms: u64,
-    #[serde(default)]
     pub last_cpu_ms: u64,
     pub last_seen: i64,
 }
+crate::json_struct!(ExeStats, { samples, ws_sum, ws_peak, cpu_ms, wall_ms, last_cpu_ms [default], last_seen });
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct UsageDb {
     /// By lower-case program file path.
     pub exes: HashMap<String, ExeStats>,
     pub last_sample: i64,
 }
+crate::json_struct!(UsageDb, { exes, last_sample });
 
 /// One running process.
 #[derive(Clone, Debug, PartialEq)]
@@ -163,12 +163,12 @@ impl UsageDb {
     pub fn load(root: &Path) -> Self {
         std::fs::read(Self::path(root))
             .ok()
-            .and_then(|b| serde_json::from_slice(&b).ok())
+            .and_then(|b| crate::json::compat::from_slice(&b).ok())
             .unwrap_or_default()
     }
 
     pub fn save(&self, root: &Path) {
-        if let Ok(b) = serde_json::to_vec(self) {
+        if let Ok(b) = crate::json::compat::to_vec(self) {
             let tmp = root.join("usage.json.tmp");
             if std::fs::write(&tmp, b).is_ok() {
                 let _ = std::fs::rename(&tmp, Self::path(root));

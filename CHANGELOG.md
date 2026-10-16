@@ -25,7 +25,7 @@ All notable changes to Expunge are documented here. The format follows
 - **Soak test**: `scripts/soak.ps1` installs and removes real programs in a loop with background monitoring running, failing on leftovers, background-monitoring misfires and growing handle or memory use; it runs for five hours weekly in CI and can run for days on a test VM.
 
 ### Changed
-- Seven fewer third-party libraries: dates and times (with Windows' own daylight-saving rules), SHA-256, byte search, folder walking, file-change watching, registry access and test folders are now Expunge's own code, straight on the Windows API.
+- Nine fewer third-party libraries: dates and times (with Windows' own daylight-saving rules), SHA-256, byte search, folder walking, file-change watching, registry access, JSON reading and writing and test folders are now Expunge's own code, straight on the Windows API. Install logs, settings, backups and transfer packages are written byte for byte as before, and files from earlier versions open unchanged (checked against saved copies of the previous output).
 - Live activity during monitoring waits on Windows' change notifications (`ReadDirectoryChangesW`, registry notifications) and wakes the moment monitoring ends, instead of checking a flag several times a second.
 
 ### Fixed

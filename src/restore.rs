@@ -2,7 +2,6 @@
 //! manage System Protection (on/off and how much disk space it may use).
 
 use anyhow::{anyhow, Result};
-use serde::Deserialize;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct RestorePoint {
@@ -61,16 +60,41 @@ fn powershell(script: &str) -> Result<String> {
     Ok(out)
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "PascalCase")]
+/// One restore point as PowerShell's `ConvertTo-Json` writes it
+/// (PascalCase names).
 struct RawPoint {
     sequence_number: u32,
-    #[serde(default)]
     description: String,
-    #[serde(default)]
     creation_time: String,
-    #[serde(default)]
     restore_point_type: u32,
+}
+
+impl crate::json::FromJson for RawPoint {
+    fn from_json(v: &crate::json::Value) -> Result<Self, crate::json::Error> {
+        use crate::json::FromJson;
+        let Some(obj) = v.as_object() else {
+            return crate::json::type_error("a restore point");
+        };
+        let opt = |name: &str| crate::json::field(obj, name);
+        Ok(RawPoint {
+            sequence_number: match opt("SequenceNumber") {
+                Some(x) => u32::from_json(x)?,
+                None => return crate::json::type_error("SequenceNumber"),
+            },
+            description: opt("Description")
+                .map(String::from_json)
+                .transpose()?
+                .unwrap_or_default(),
+            creation_time: opt("CreationTime")
+                .map(String::from_json)
+                .transpose()?
+                .unwrap_or_default(),
+            restore_point_type: opt("RestorePointType")
+                .map(u32::from_json)
+                .transpose()?
+                .unwrap_or_default(),
+        })
+    }
 }
 
 /// `20261015083012.000000-000` → `2026-10-15 08:30`.
@@ -96,9 +120,9 @@ pub fn parse_points(json: &str) -> Vec<RestorePoint> {
         return Vec::new();
     }
     let raw: Vec<RawPoint> = if json.starts_with('[') {
-        serde_json::from_str(json).unwrap_or_default()
+        crate::json::compat::from_str(json).unwrap_or_default()
     } else {
-        serde_json::from_str::<RawPoint>(json)
+        crate::json::compat::from_str::<RawPoint>(json)
             .map(|p| vec![p])
             .unwrap_or_default()
     };

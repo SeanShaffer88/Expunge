@@ -244,7 +244,7 @@ fn portable_build(args: &[String], reg: &dyn Registry) -> anyhow::Result<i32> {
             eprintln!("note: {w}");
         }
         if let Ok(b) = std::fs::read(work.join("install-log.json")) {
-            if let Ok(log) = serde_json::from_slice::<InstallLog>(&b) {
+            if let Ok(log) = expunge_core::json::compat::from_slice::<InstallLog>(&b) {
                 let _ = st.save_log(&log);
             }
         }
@@ -363,8 +363,8 @@ fn snapshot_now(
     Ok(s)
 }
 
-fn log_summary_json(l: &InstallLog) -> serde_json::Value {
-    serde_json::json!({
+fn log_summary_json(l: &InstallLog) -> expunge_core::json::Value {
+    expunge_core::json!({
         "id": l.id,
         "name": l.name,
         "publisher": l.publisher,
@@ -522,7 +522,7 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                     .iter()
                     .map(|l| {
                         let st = l.changes.stats();
-                        serde_json::json!({
+                        expunge_core::json!({
                             "id": l.id, "name": l.name, "publisher": l.publisher,
                             "version": l.version, "created": l.created,
                             "group": l.group, "tags": l.tags,
@@ -530,7 +530,7 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                         })
                     })
                     .collect();
-                println!("{}", serde_json::to_string_pretty(&items)?);
+                println!("{}", expunge_core::json::compat::to_string_pretty(&items)?);
             } else {
                 for l in &logs {
                     let st = l.changes.stats();
@@ -936,12 +936,12 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                     if has(&args, "--json") {
                         let items: Vec<_> = entries
                             .iter()
-                            .map(|e| serde_json::json!({
+                            .map(|e| expunge_core::json!({
                                 "name": e.name, "command": e.command, "location": e.location,
                                 "enabled": e.enabled, "all_users": e.all_users, "missing": e.missing,
                             }))
                             .collect();
-                        println!("{}", serde_json::to_string_pretty(&items)?);
+                        println!("{}", expunge_core::json::compat::to_string_pretty(&items)?);
                     } else {
                         let boot = expunge_core::boot::read();
                         if let Some(ms) = boot.as_ref().and_then(|b| b.last_boot_ms) {
@@ -1114,7 +1114,7 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                 eprintln!("The local model judged {n} component(s).");
             }
             if has(&args, "--json") {
-                println!("{}", serde_json::to_string_pretty(&comps)?);
+                println!("{}", expunge_core::json::compat::to_string_pretty(&comps)?);
             } else {
                 println!("{}", expunge_core::decrap::summary(&log.name, &comps));
                 for c in &comps {
@@ -1185,7 +1185,7 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                     .items
                     .iter()
                     .map(|i| {
-                        serde_json::json!({
+                        expunge_core::json!({
                             "category": i.action.category(),
                             "kind": i.note,
                             "action": i.action.describe(),
@@ -1193,7 +1193,7 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                         })
                     })
                     .collect();
-                println!("{}", serde_json::Value::Array(items));
+                println!("{}", expunge_core::json::Value::Array(items));
             } else if plan.items.is_empty() {
                 println!("No leftovers of removed programs found.");
             } else {
@@ -1343,7 +1343,7 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
             if has(&args, "--json") {
                 println!(
                     "{}",
-                    serde_json::json!({ "registry": l.registry, "files": l.files })
+                    expunge_core::json!({ "registry": l.registry, "files": l.files })
                 );
             } else if l.is_empty() {
                 println!("Nothing changed on its own.");
@@ -1385,20 +1385,21 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
         "programs" if has(&args, "--json") => {
             let list = programs::list_programs(reg.as_ref(), has(&args, "--all"));
             if has(&args, "--trust") {
-                let v: Vec<serde_json::Value> =
-                    list.iter()
-                        .map(|p| {
-                            let mut j = serde_json::to_value(p).unwrap_or_default();
-                            j["signature"] = serde_json::to_value(
-                                expunge_core::trust::check_program(p, reg.as_ref()),
-                            )
-                            .unwrap_or_default();
-                            j
-                        })
-                        .collect();
-                println!("{}", serde_json::to_string_pretty(&v)?);
+                let v: Vec<expunge_core::json::Value> = list
+                    .iter()
+                    .map(|p| {
+                        use expunge_core::json::ToJson;
+                        let mut j = p.to_json();
+                        j.set(
+                            "signature",
+                            expunge_core::trust::check_program(p, reg.as_ref()).to_json(),
+                        );
+                        j
+                    })
+                    .collect();
+                println!("{}", expunge_core::json::compat::to_string_pretty(&v)?);
             } else {
-                println!("{}", serde_json::to_string_pretty(&list)?);
+                println!("{}", expunge_core::json::compat::to_string_pretty(&list)?);
             }
         }
         "add-program" => {
@@ -1494,7 +1495,7 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                 "html" => report::to_html(&log),
                 "reg" => report::to_reg_undo(&log),
                 "ps1" => report::to_ps1(&log),
-                "json" => serde_json::to_string_pretty(&log)?,
+                "json" => expunge_core::json::compat::to_string_pretty(&log)?,
                 "xml" => report::to_xml(&log),
                 "portable" | "ini" => {
                     expunge_core::portable::launcher_ini(

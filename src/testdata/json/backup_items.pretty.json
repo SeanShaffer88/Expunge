@@ -1,0 +1,57 @@
+[
+  {
+    "File": {
+      "original": "C:\\a",
+      "stored": "files/1",
+      "size": 9
+    }
+  },
+  {
+    "Dir": {
+      "original": "C:\\d"
+    }
+  },
+  {
+    "RegTree": {
+      "keys": [
+        {
+          "path": "HKCU\\Software\\Z",
+          "values": {}
+        }
+      ]
+    }
+  },
+  {
+    "RegValue": {
+      "key": "HKCU\\X",
+      "name": "v",
+      "previous": {
+        "name": "v",
+        "kind": 1,
+        "data": "31000000"
+      }
+    }
+  },
+  {
+    "RegValue": {
+      "key": "HKCU\\X",
+      "name": "w",
+      "previous": null
+    }
+  },
+  {
+    "KeyAbsent": {
+      "path": "HKCU\\K"
+    }
+  },
+  {
+    "FileAbsent": {
+      "path": "C:\\f"
+    }
+  },
+  {
+    "DirAbsent": {
+      "path": "C:\\g"
+    }
+  }
+]

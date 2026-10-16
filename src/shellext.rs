@@ -9,7 +9,6 @@ use crate::model::{fold, reg_type, RegValue};
 use crate::platform::{expand_env, Registry};
 use crate::revert::{Action, Plan, PlanItem};
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
 
 /// Where a menu entry appears.
 pub const SCOPES: [(&str, &str); 8] = [
@@ -29,15 +28,16 @@ pub const BLOCKED_HKLM: &str =
 pub const BLOCKED_HKCU: &str =
     "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Blocked";
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
     /// A shell extension (COM class) that adds its own items.
     Handler,
     /// A plain command (verb) that runs a program.
     Command,
 }
+crate::json_enum!(Kind { Handler, Command });
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct MenuEntry {
     pub kind: Kind,
     /// Display name of the scope, e.g. "Files".
@@ -54,6 +54,7 @@ pub struct MenuEntry {
     /// Part of Windows.
     pub windows: bool,
 }
+crate::json_struct!(MenuEntry, write_only, { kind, scope, name, key, clsid, target, enabled, orphaned, windows });
 
 fn is_guid(s: &str) -> bool {
     s.len() == 38 && s.starts_with('{') && s.ends_with('}')

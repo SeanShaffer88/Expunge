@@ -31,7 +31,7 @@ static CURRENT: RwLock<Option<HashMap<String, String>>> = RwLock::new(None);
 static CURRENT_CODE: RwLock<String> = RwLock::new(String::new());
 
 fn parse(code: &str, json: &str) -> Option<Language> {
-    let mut data: HashMap<String, String> = serde_json::from_str(json).ok()?;
+    let mut data: HashMap<String, String> = crate::json::compat::from_str(json).ok()?;
     let name = data.remove("_language").unwrap_or_else(|| code.to_string());
     data.retain(|k, v| !k.starts_with('_') && !v.trim().is_empty());
     Some(Language {

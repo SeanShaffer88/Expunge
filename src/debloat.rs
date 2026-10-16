@@ -9,15 +9,18 @@
 //! security that protects the PC, and Windows' own parts are never listed.
 
 use crate::programs::{InstalledProgram, Source};
-use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Class {
     /// Safe to remove for almost everyone.
     Recommended,
     /// Useful to some people; unticked by default.
     Optional,
 }
+crate::json_enum!(Class {
+    Recommended,
+    Optional
+});
 
 impl Class {
     pub fn label(self) -> &'static str {
@@ -302,7 +305,7 @@ const NEVER: &[&str] = &[
     "microsoft.windows.shellexperiencehost",
 ];
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct BloatItem {
     pub program: InstalledProgram,
     pub class: Class,
@@ -310,6 +313,7 @@ pub struct BloatItem {
     /// Also kept by Windows for new user accounts (Store apps only).
     pub provisioned: bool,
 }
+crate::json_struct!(BloatItem, { program, class, why, provisioned });
 
 fn matches(rule: &Rule, p: &InstalledProgram) -> bool {
     let name = p.name.to_lowercase();

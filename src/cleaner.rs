@@ -5,10 +5,9 @@
 
 use crate::platform::expand_env;
 use crate::util::glob_match;
-use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Category {
     /// Stable id, also the translation key (`clean.<id>`).
     pub id: &'static str,
@@ -16,6 +15,7 @@ pub struct Category {
     pub needs_admin: bool,
     pub default_on: bool,
 }
+crate::json_struct!(Category, write_only, { id, patterns, needs_admin, default_on });
 
 pub fn categories() -> Vec<Category> {
     let c = |id, patterns: Vec<&'static str>, needs_admin, default_on| Category {

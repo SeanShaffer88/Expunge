@@ -4,7 +4,6 @@
 //! so every map is keyed by a *folded* (lower-cased) path while the entry itself
 //! keeps the original spelling for display and for writing back.
 
-use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 /// Raw registry value types (winnt.h).
@@ -25,19 +24,8 @@ pub fn fold(s: &str) -> String {
     s.to_lowercase()
 }
 
-/// Serialize byte vectors as compact hex strings instead of JSON number arrays.
+/// Byte vectors as compact hex text (how registry data is stored).
 pub mod hexbytes {
-    use serde::{Deserialize, Deserializer, Serializer};
-
-    pub fn serialize<S: Serializer>(data: &[u8], s: S) -> Result<S::Ok, S::Error> {
-        s.serialize_str(&to_hex(data))
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
-        let s = String::deserialize(d)?;
-        from_hex(&s).map_err(serde::de::Error::custom)
-    }
-
     pub fn to_hex(data: &[u8]) -> String {
         const HEX: &[u8; 16] = b"0123456789abcdef";
         let mut out = String::with_capacity(data.len() * 2);
@@ -60,14 +48,14 @@ pub mod hexbytes {
 }
 
 /// A single registry value with its raw type and bytes.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RegValue {
     /// Value name; the empty string is the key's "(Default)" value.
     pub name: String,
     pub kind: u32,
-    #[serde(with = "hexbytes")]
     pub data: Vec<u8>,
 }
+crate::json_struct!(RegValue, { name, kind, data [hex] });
 
 impl RegValue {
     pub fn string(name: &str, s: &str) -> Self {
@@ -208,13 +196,14 @@ pub fn decode_multi_sz(data: &[u8]) -> Vec<String> {
 }
 
 /// One registry key and its values (not its subkeys).
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct KeyData {
     /// Full path in original case, e.g. `HKLM\SOFTWARE\Vendor\App`.
     pub path: String,
     /// Values keyed by folded name.
     pub values: BTreeMap<String, RegValue>,
 }
+crate::json_struct!(KeyData, { path, values });
 
 impl KeyData {
     pub fn new(path: &str) -> Self {
@@ -245,7 +234,7 @@ impl KeyData {
 }
 
 /// Metadata for a file or directory captured in a snapshot.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FileEntry {
     pub path: String,
     pub is_dir: bool,
@@ -253,6 +242,7 @@ pub struct FileEntry {
     /// Last-write time, seconds since the Unix epoch.
     pub mtime: i64,
 }
+crate::json_struct!(FileEntry, { path, is_dir, size, mtime });
 
 /// A run of text or bytes in one of a [`Snapshot`]'s pools.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -596,27 +586,30 @@ fn dedup_keep_last<T: Copy>(v: &mut Vec<T>, same: impl Fn(&T, &T) -> bool) {
 }
 
 /// A registry value located in a specific key.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ValueRef {
     pub key: String,
     pub value: RegValue,
 }
+crate::json_struct!(ValueRef, { key, value });
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ValueChange {
     pub key: String,
     pub before: RegValue,
     pub after: RegValue,
 }
+crate::json_struct!(ValueChange, { key, before, after });
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FileChange {
     pub before: FileEntry,
     pub after: FileEntry,
 }
+crate::json_struct!(FileChange, { before, after });
 
 /// Everything that differs between two snapshots.
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ChangeSet {
     /// New keys, with the values they contain.
     pub keys_added: Vec<KeyData>,
@@ -631,6 +624,7 @@ pub struct ChangeSet {
     pub files_removed: Vec<FileEntry>,
     pub files_modified: Vec<FileChange>,
 }
+crate::json_struct!(ChangeSet, { keys_added, keys_removed, values_added, values_removed, values_modified, files_added, files_removed, files_modified });
 
 impl ChangeSet {
     pub fn is_empty(&self) -> bool {
@@ -669,7 +663,7 @@ impl ChangeSet {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ChangeStats {
     pub keys_added: usize,
     pub keys_removed: usize,
@@ -682,32 +676,27 @@ pub struct ChangeStats {
     pub files_modified: usize,
     pub bytes_added: u64,
 }
+crate::json_struct!(ChangeStats, { keys_added, keys_removed, values_added, values_removed, values_modified, files_added, dirs_added, files_removed, files_modified, bytes_added });
 
 /// A saved record of everything one installation changed: the heart of a
 /// monitored program. Reverting it is how Expunge uninstalls precisely.
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct InstallLog {
     pub id: String,
     pub name: String,
-    #[serde(default)]
     pub publisher: String,
-    #[serde(default)]
     pub version: String,
     pub created: String,
     /// Installer that was run under monitoring, if any.
-    #[serde(default)]
     pub installer: String,
     /// The program's own Uninstall registry key, if one was created.
-    #[serde(default)]
     pub uninstall_key: String,
-    #[serde(default)]
     pub notes: String,
-    #[serde(default)]
     pub group: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
     pub changes: ChangeSet,
 }
+crate::json_struct!(InstallLog, { id, name, publisher [default], version [default], created, installer [default], uninstall_key [default], notes [default], group [default], tags [skip_empty], changes });
 
 impl InstallLog {
     /// Whether the log matches a search: name, publisher, group or a tag.

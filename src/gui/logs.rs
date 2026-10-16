@@ -362,7 +362,7 @@ impl App {
                 "PortableApps.com Launcher settings",
             ),
             _ => (
-                serde_json::to_string_pretty(log).unwrap_or_default(),
+                expunge_core::json::compat::to_string_pretty(log).unwrap_or_default(),
                 "Expunge log",
             ),
         };

@@ -12,15 +12,19 @@
 //! Windows.old you can't go back to the previous Windows version), so the
 //! app explains and confirms each one separately, in Advanced mode only.
 
-use serde::{Deserialize, Serialize};
-
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DeepItem {
     PreviousWindows,
     ComponentStore,
     FeaturePayloads,
     RestorePoints,
 }
+crate::json_enum!(DeepItem {
+    PreviousWindows,
+    ComponentStore,
+    FeaturePayloads,
+    RestorePoints
+});
 
 impl DeepItem {
     pub const ALL: [DeepItem; 4] = [
@@ -50,7 +54,7 @@ impl DeepItem {
 }
 
 /// What an analysis found.
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Analysis {
     /// Space that can be freed, when Windows can tell.
     pub bytes: Option<u64>,
@@ -59,6 +63,7 @@ pub struct Analysis {
     /// Whether there is anything to clean.
     pub applicable: bool,
 }
+crate::json_struct!(Analysis, { bytes, count, applicable });
 
 /// Parse sizes such as "2.03 GB", "205.84 MB", "512 KB" or "1,234 bytes".
 pub fn parse_size(s: &str) -> Option<u64> {

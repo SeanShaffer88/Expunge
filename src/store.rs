@@ -9,20 +9,18 @@ use crate::model::InstallLog;
 use crate::settings::Settings;
 use crate::snapshot::{load_snapshot, save_snapshot};
 use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 /// A monitoring session waiting for the user to finish installing.
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct PendingSession {
     pub name: String,
     pub started: String,
-    #[serde(default)]
     pub installer: String,
     /// A trial install ("Try it, then undo"): removed again after review.
-    #[serde(default)]
     pub trial: bool,
 }
+crate::json_struct!(PendingSession, { name, started, installer [default], trial [default] });
 
 #[derive(Clone, Debug)]
 pub struct Store {
@@ -114,12 +112,15 @@ impl Store {
     pub fn load_settings(&self) -> Settings {
         std::fs::read_to_string(self.settings_path())
             .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
+            .and_then(|s| crate::json::compat::from_str(&s).ok())
             .unwrap_or_default()
     }
 
     pub fn save_settings(&self, s: &Settings) -> Result<()> {
-        std::fs::write(self.settings_path(), serde_json::to_string_pretty(s)?)?;
+        std::fs::write(
+            self.settings_path(),
+            crate::json::compat::to_string_pretty(s)?,
+        )?;
         Ok(())
     }
 
@@ -129,7 +130,7 @@ impl Store {
 
     pub fn save_log(&self, log: &InstallLog) -> Result<()> {
         // Compact JSON: large logs are much smaller and faster to write.
-        let json = serde_json::to_string(log)?;
+        let json = crate::json::compat::to_string(log)?;
         let tmp = self.logs_dir().join(format!("{}.tmp", log.id));
         std::fs::write(&tmp, json)?;
         std::fs::rename(&tmp, self.log_path(&log.id))?;
@@ -138,7 +139,7 @@ impl Store {
 
     pub fn load_log(&self, id: &str) -> Result<InstallLog> {
         let s = std::fs::read_to_string(self.log_path(id)).with_context(|| format!("log {id}"))?;
-        Ok(serde_json::from_str(&s)?)
+        Ok(crate::json::compat::from_str(&s)?)
     }
 
     pub fn delete_log(&self, id: &str) -> Result<()> {
@@ -153,7 +154,7 @@ impl Store {
             .flatten()
             .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
             .filter_map(|e| std::fs::read_to_string(e.path()).ok())
-            .filter_map(|s| serde_json::from_str(&s).ok())
+            .filter_map(|s| crate::json::compat::from_str(&s).ok())
             .collect();
         logs.sort_by(|a, b| b.created.cmp(&a.created));
         logs
@@ -161,7 +162,7 @@ impl Store {
 
     /// Import a log exported from another machine or an older install.
     pub fn import_log(&self, path: &Path) -> Result<InstallLog> {
-        let mut log: InstallLog = serde_json::from_str(&std::fs::read_to_string(path)?)
+        let mut log: InstallLog = crate::json::compat::from_str(&std::fs::read_to_string(path)?)
             .context("not an Expunge install log")?;
         if log.id.is_empty() || self.log_path(&log.id).exists() {
             log.id = crate::util::new_id();
@@ -180,14 +181,14 @@ impl Store {
         save_snapshot(&self.pending_dir().join("before.snap"), before)?;
         std::fs::write(
             self.pending_dir().join("session.json"),
-            serde_json::to_string_pretty(session)?,
+            crate::json::compat::to_string_pretty(session)?,
         )?;
         Ok(())
     }
 
     pub fn pending(&self) -> Option<PendingSession> {
         let s = std::fs::read_to_string(self.pending_dir().join("session.json")).ok()?;
-        serde_json::from_str(&s).ok()
+        crate::json::compat::from_str(&s).ok()
     }
 
     pub fn pending_snapshot(&self) -> Result<crate::model::Snapshot> {

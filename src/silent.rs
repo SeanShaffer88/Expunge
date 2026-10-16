@@ -16,9 +16,8 @@ use crate::model::fold;
 use crate::platform::{expand_env, Registry};
 use crate::programs::{InstalledProgram, Source};
 use crate::util::split_command_line;
-use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Engine {
     Msi,
     Vendor,
@@ -31,6 +30,16 @@ pub enum Engine {
     /// Unknown technology: its uninstaller has to be shown.
     Manual,
 }
+crate::json_enum!(Engine {
+    Msi,
+    Vendor,
+    Inno,
+    Nsis,
+    Burn,
+    Squirrel,
+    Store,
+    Manual
+});
 
 impl Engine {
     pub fn label(self) -> &'static str {

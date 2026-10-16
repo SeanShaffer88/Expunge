@@ -20,7 +20,6 @@ use crate::portable::{launcher_ini_for, Folders};
 use crate::settings::Settings;
 use crate::snapshot::{diff, filter_changes, take_snapshot, Progress};
 use anyhow::{anyhow, Context, Result};
-use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 /// Categories allowed in appinfo.ini.
@@ -37,8 +36,7 @@ pub const CATEGORIES: [&str; 10] = [
     "Utilities",
 ];
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-#[serde(default)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct AppDetails {
     /// The program's name, e.g. "Notepad++". The package is "Notepad++ Portable".
     pub name: String,
@@ -56,6 +54,7 @@ pub struct AppDetails {
     pub commercial_use: bool,
     pub shareable: bool,
 }
+crate::json_struct!(AppDetails, default, { name, publisher, packager, version, category, description, homepage, language, open_source, freeware, commercial_use, shareable });
 
 impl Default for AppDetails {
     fn default() -> Self {
@@ -610,7 +609,7 @@ fn help_html(d: &AppDetails) -> String {
 }
 
 /// What `build_package` made.
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Package {
     pub dir: String,
     pub app_id: String,
@@ -622,9 +621,9 @@ pub struct Package {
     /// Things the user should check before publishing.
     pub warnings: Vec<String>,
     /// What could stop the program from working portably.
-    #[serde(default)]
     pub portability: crate::portability::Report,
 }
+crate::json_struct!(Package, { dir, app_id, program_dir, main_exe, files, bytes, launcher_ini, warnings, portability [default] });
 
 /// Build a PortableApps.com Format folder in `out_dir\<AppID>` from a
 /// captured installation. The program's files must still be on disk.
@@ -802,8 +801,7 @@ pub fn build_package(
 
 /// Everything a capture needs, saved as job.json (so the same run works
 /// inside Windows Sandbox, where it is started by Windows, not by Expunge).
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
-#[serde(default)]
+#[derive(Clone, Debug, Default)]
 pub struct Job {
     pub details: AppDetails,
     pub installer: String,
@@ -819,16 +817,17 @@ pub struct Job {
     /// The host's capture settings (roots and exclusions).
     pub settings: Settings,
 }
+crate::json_struct!(Job, default, { details, installer, silent, out_dir, include_defaults, learn_seconds, sandbox, preview_only, settings });
 
 /// Progress of a capture, written to status.json next to job.json.
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
-#[serde(default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Status {
     pub phase: String,
     pub done: bool,
     pub error: Option<String>,
     pub package: Option<Package>,
 }
+crate::json_struct!(Status, default, { phase, done, error, package });
 
 /// Snapshot, install, snapshot, build. `ask_done` blocks until the user has
 /// finished installing and has run and closed the program once.
@@ -918,13 +917,13 @@ pub fn capture(
 /// (or on this PC from the command line). Writes status.json and
 /// install-log.json next to job.json.
 pub fn run_job_file(job_path: &Path) -> Result<()> {
-    let job: Job = serde_json::from_slice(&std::fs::read(job_path)?)?;
+    let job: Job = crate::json::compat::from_slice(&std::fs::read(job_path)?)?;
     let dir = job_path.parent().unwrap_or(Path::new(".")).to_path_buf();
     let status_path = dir.join("status.json");
     let write = |s: &Status| {
         let _ = std::fs::write(
             &status_path,
-            serde_json::to_vec_pretty(s).unwrap_or_default(),
+            crate::json::compat::to_vec_pretty(s).unwrap_or_default(),
         );
     };
     let report = |phase: &str| {
@@ -943,7 +942,10 @@ pub fn run_job_file(job_path: &Path) -> Result<()> {
     let result = capture(&job, reg.as_ref(), &report, &ask, &progress);
     match result {
         Ok((log, pkg)) => {
-            let _ = std::fs::write(dir.join("install-log.json"), serde_json::to_vec(&log)?);
+            let _ = std::fs::write(
+                dir.join("install-log.json"),
+                crate::json::compat::to_vec(&log)?,
+            );
             write(&Status {
                 phase: "Done".into(),
                 done: true,
@@ -1047,7 +1049,7 @@ pub fn start_sandbox(job: &Job, work_dir: &Path) -> Result<()> {
     }
     std::fs::write(
         work_dir.join("job.json"),
-        serde_json::to_vec_pretty(&inside_job)?,
+        crate::json::compat::to_vec_pretty(&inside_job)?,
     )?;
     let _ = std::fs::remove_file(work_dir.join("status.json"));
     let wsb = work_dir.join("Expunge.wsb");
@@ -1060,7 +1062,7 @@ pub fn start_sandbox(job: &Job, work_dir: &Path) -> Result<()> {
 }
 
 pub fn read_status(work_dir: &Path) -> Option<Status> {
-    serde_json::from_slice(&std::fs::read(work_dir.join("status.json")).ok()?).ok()
+    crate::json::compat::from_slice(&std::fs::read(work_dir.join("status.json")).ok()?).ok()
 }
 
 /// After a sandbox capture: move the package from the work folder to the

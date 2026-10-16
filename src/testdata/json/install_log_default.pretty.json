@@ -1,0 +1,21 @@
+{
+  "id": "",
+  "name": "",
+  "publisher": "",
+  "version": "",
+  "created": "",
+  "installer": "",
+  "uninstall_key": "",
+  "notes": "",
+  "group": "",
+  "changes": {
+    "keys_added": [],
+    "keys_removed": [],
+    "values_added": [],
+    "values_removed": [],
+    "values_modified": [],
+    "files_added": [],
+    "files_removed": [],
+    "files_modified": []
+  }
+}
