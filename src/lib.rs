@@ -21,6 +21,7 @@ pub mod difftree;
 pub mod features;
 pub mod fswalk;
 pub mod i18n;
+pub mod json;
 pub mod leftovers;
 pub mod live;
 pub mod llm;

@@ -10,8 +10,7 @@ use windows_sys::Win32::System::Registry::{
     RegCloseKey, RegCreateKeyExW, RegDeleteTreeW, RegDeleteValueW, RegEnumKeyExW, RegEnumValueW,
     RegOpenKeyExW, RegQueryInfoKeyW, HKEY, HKEY_CLASSES_ROOT, HKEY_CURRENT_CONFIG,
     HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, HKEY_USERS, KEY_ALL_ACCESS, KEY_ENUMERATE_SUB_KEYS,
-    KEY_NOTIFY, KEY_QUERY_VALUE, KEY_READ, KEY_SET_VALUE, KEY_WOW64_64KEY,
-    REG_OPTION_NON_VOLATILE,
+    KEY_NOTIFY, KEY_QUERY_VALUE, KEY_READ, KEY_SET_VALUE, KEY_WOW64_64KEY, REG_OPTION_NON_VOLATILE,
 };
 
 use windows_sys::Win32::Foundation::{
@@ -202,7 +201,10 @@ fn open(path: &str, access: u32) -> std::io::Result<Key> {
         .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "unknown hive"))?;
     let root = hive(h);
     if rest.is_empty() {
-        return Ok(Key { h: root, owned: false });
+        return Ok(Key {
+            h: root,
+            owned: false,
+        });
     }
     let sub = wide(rest);
     let mut k: HKEY = std::ptr::null_mut();
@@ -219,7 +221,10 @@ fn create(path: &str, access: u32) -> std::io::Result<Key> {
         .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "unknown hive"))?;
     let root = hive(h);
     if rest.is_empty() {
-        return Ok(Key { h: root, owned: false });
+        return Ok(Key {
+            h: root,
+            owned: false,
+        });
     }
     let sub = wide(rest);
     let mut k: HKEY = std::ptr::null_mut();
