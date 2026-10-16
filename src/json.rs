@@ -620,7 +620,7 @@ mod tests {
     #[test]
     fn matches_serde_json_byte_for_byte() {
         // Cross-check against the library this replaces, while it's still here.
-// serde_json's Value sorts keys (derived structs keep field order,
+        // serde_json's Value sorts keys (derived structs keep field order,
         // which ours does too): keep this sample sorted.
         let sample = r#"{"a":[[],{},[1,[2]],{"k":null}],"big":18446744073709551615,"created":"2026-10-16 05:07:09",
             "f":1.5,"id":"x1","n":42,"neg":-7,"s":"tab\there \u00e9 \ud83d\ude00 \u0007","t":true,"tiny":1e-7,"whole":3.0}"#;
@@ -668,5 +668,634 @@ mod tests {
                 "{ours}"
             );
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Typed conversion
+// ---------------------------------------------------------------------------
+
+/// A value that can be written as JSON.
+pub trait ToJson {
+    fn to_json(&self) -> Value;
+    /// Whether a `skip_empty` field leaves this out.
+    fn is_empty_json(&self) -> bool {
+        false
+    }
+}
+
+/// A value that can be read from JSON.
+pub trait FromJson: Sized {
+    fn from_json(v: &Value) -> Result<Self, Error>;
+    /// The value of a field that is absent: `None` means it is required.
+    fn missing() -> Option<Self> {
+        None
+    }
+}
+
+pub fn type_error<T>(what: &str) -> Result<T, Error> {
+    Err(Error {
+        msg: format!("expected {what}"),
+        at: 0,
+    })
+}
+
+/// Add the field name to an error's message ("in `changes.keys_added`").
+pub fn in_field(e: Error, field: &str) -> Error {
+    Error {
+        msg: if e.msg.contains(" in `") {
+            e.msg.replacen(" in `", &format!(" in `{field}."), 1)
+        } else {
+            format!("{} in `{field}`", e.msg)
+        },
+        at: e.at,
+    }
+}
+
+impl ToJson for Value {
+    fn to_json(&self) -> Value {
+        self.clone()
+    }
+}
+impl FromJson for Value {
+    fn from_json(v: &Value) -> Result<Self, Error> {
+        Ok(v.clone())
+    }
+}
+
+impl ToJson for String {
+    fn to_json(&self) -> Value {
+        Value::String(self.clone())
+    }
+    fn is_empty_json(&self) -> bool {
+        self.is_empty()
+    }
+}
+impl ToJson for str {
+    fn to_json(&self) -> Value {
+        Value::String(self.to_string())
+    }
+}
+impl FromJson for String {
+    fn from_json(v: &Value) -> Result<Self, Error> {
+        v.as_str()
+            .map(str::to_string)
+            .map_or_else(|| type_error("a string"), Ok)
+    }
+}
+
+impl ToJson for bool {
+    fn to_json(&self) -> Value {
+        Value::Bool(*self)
+    }
+}
+impl FromJson for bool {
+    fn from_json(v: &Value) -> Result<Self, Error> {
+        v.as_bool().map_or_else(|| type_error("true or false"), Ok)
+    }
+}
+
+macro_rules! json_int {
+    ($($t:ty),*) => {$(
+        impl ToJson for $t {
+            fn to_json(&self) -> Value {
+                match i64::try_from(*self) {
+                    Ok(i) => Value::Int(i),
+                    Err(_) => Value::UInt(*self as u64),
+                }
+            }
+        }
+        impl FromJson for $t {
+            fn from_json(v: &Value) -> Result<Self, Error> {
+                let n = match *v {
+                    Value::Int(i) => <$t>::try_from(i).ok(),
+                    Value::UInt(u) => <$t>::try_from(u).ok(),
+                    _ => None,
+                };
+                n.map_or_else(|| type_error(concat!("a whole number (", stringify!($t), ")")), Ok)
+            }
+        }
+    )*};
+}
+json_int!(u8, u16, u32, u64, usize, i8, i16, i32, i64);
+
+impl ToJson for f64 {
+    fn to_json(&self) -> Value {
+        Value::Float(*self)
+    }
+}
+impl FromJson for f64 {
+    fn from_json(v: &Value) -> Result<Self, Error> {
+        v.as_f64().map_or_else(|| type_error("a number"), Ok)
+    }
+}
+impl ToJson for f32 {
+    /// Written with the shortest digits that read back as this `f32`
+    /// (`0.1`, not its 64-bit widening), as before.
+    fn to_json(&self) -> Value {
+        if !self.is_finite() {
+            return Value::Null;
+        }
+        let short: f64 = format!("{self:e}").parse().unwrap_or(*self as f64);
+        Value::Float(short)
+    }
+}
+impl FromJson for f32 {
+    fn from_json(v: &Value) -> Result<Self, Error> {
+        v.as_f64()
+            .map(|f| f as f32)
+            .map_or_else(|| type_error("a number"), Ok)
+    }
+}
+
+impl<T: ToJson> ToJson for Option<T> {
+    fn to_json(&self) -> Value {
+        match self {
+            Some(x) => x.to_json(),
+            None => Value::Null,
+        }
+    }
+    fn is_empty_json(&self) -> bool {
+        self.is_none()
+    }
+}
+impl<T: FromJson> FromJson for Option<T> {
+    fn from_json(v: &Value) -> Result<Self, Error> {
+        if v.is_null() {
+            Ok(None)
+        } else {
+            T::from_json(v).map(Some)
+        }
+    }
+    fn missing() -> Option<Self> {
+        Some(None)
+    }
+}
+
+impl<T: ToJson> ToJson for Box<T> {
+    fn to_json(&self) -> Value {
+        (**self).to_json()
+    }
+}
+impl<T: FromJson> FromJson for Box<T> {
+    fn from_json(v: &Value) -> Result<Self, Error> {
+        T::from_json(v).map(Box::new)
+    }
+}
+
+impl<T: ToJson> ToJson for Vec<T> {
+    fn to_json(&self) -> Value {
+        Value::Array(self.iter().map(ToJson::to_json).collect())
+    }
+    fn is_empty_json(&self) -> bool {
+        self.is_empty()
+    }
+}
+impl<T: ToJson> ToJson for [T] {
+    fn to_json(&self) -> Value {
+        Value::Array(self.iter().map(ToJson::to_json).collect())
+    }
+}
+impl<T: FromJson> FromJson for Vec<T> {
+    fn from_json(v: &Value) -> Result<Self, Error> {
+        let Some(a) = v.as_array() else {
+            return type_error("a list");
+        };
+        a.iter()
+            .enumerate()
+            .map(|(i, x)| T::from_json(x).map_err(|e| in_field(e, &format!("[{i}]"))))
+            .collect()
+    }
+}
+
+impl<A: ToJson, B: ToJson> ToJson for (A, B) {
+    fn to_json(&self) -> Value {
+        Value::Array(vec![self.0.to_json(), self.1.to_json()])
+    }
+}
+impl<A: FromJson, B: FromJson> FromJson for (A, B) {
+    fn from_json(v: &Value) -> Result<Self, Error> {
+        match v.as_array() {
+            Some([a, b]) => Ok((A::from_json(a)?, B::from_json(b)?)),
+            _ => type_error("a pair"),
+        }
+    }
+}
+impl<A: ToJson, B: ToJson, C: ToJson> ToJson for (A, B, C) {
+    fn to_json(&self) -> Value {
+        Value::Array(vec![self.0.to_json(), self.1.to_json(), self.2.to_json()])
+    }
+}
+impl<A: FromJson, B: FromJson, C: FromJson> FromJson for (A, B, C) {
+    fn from_json(v: &Value) -> Result<Self, Error> {
+        match v.as_array() {
+            Some([a, b, c]) => Ok((A::from_json(a)?, B::from_json(b)?, C::from_json(c)?)),
+            _ => type_error("three values"),
+        }
+    }
+}
+
+impl<T: ToJson> ToJson for std::collections::BTreeMap<String, T> {
+    fn to_json(&self) -> Value {
+        Value::Object(self.iter().map(|(k, v)| (k.clone(), v.to_json())).collect())
+    }
+    fn is_empty_json(&self) -> bool {
+        self.is_empty()
+    }
+}
+impl<T: FromJson> FromJson for std::collections::BTreeMap<String, T> {
+    fn from_json(v: &Value) -> Result<Self, Error> {
+        let Some(m) = v.as_object() else {
+            return type_error("an object");
+        };
+        m.iter()
+            .map(|(k, x)| {
+                T::from_json(x)
+                    .map(|t| (k.clone(), t))
+                    .map_err(|e| in_field(e, k))
+            })
+            .collect()
+    }
+}
+impl<T: ToJson> ToJson for std::collections::HashMap<String, T> {
+    /// Keys sorted, so the file is the same every time.
+    fn to_json(&self) -> Value {
+        let mut keys: Vec<&String> = self.keys().collect();
+        keys.sort();
+        Value::Object(
+            keys.into_iter()
+                .map(|k| (k.clone(), self[k].to_json()))
+                .collect(),
+        )
+    }
+    fn is_empty_json(&self) -> bool {
+        self.is_empty()
+    }
+}
+impl<T: FromJson> FromJson for std::collections::HashMap<String, T> {
+    fn from_json(v: &Value) -> Result<Self, Error> {
+        let Some(m) = v.as_object() else {
+            return type_error("an object");
+        };
+        m.iter()
+            .map(|(k, x)| {
+                T::from_json(x)
+                    .map(|t| (k.clone(), t))
+                    .map_err(|e| in_field(e, k))
+            })
+            .collect()
+    }
+}
+impl ToJson for std::collections::BTreeSet<String> {
+    fn to_json(&self) -> Value {
+        Value::Array(self.iter().map(|s| Value::String(s.clone())).collect())
+    }
+    fn is_empty_json(&self) -> bool {
+        self.is_empty()
+    }
+}
+impl FromJson for std::collections::BTreeSet<String> {
+    fn from_json(v: &Value) -> Result<Self, Error> {
+        Vec::<String>::from_json(v).map(|v| v.into_iter().collect())
+    }
+}
+
+/// Bytes as lower-case hex text (how registry data is stored).
+pub fn hex_to_json(b: &[u8]) -> Value {
+    Value::String(crate::model::hexbytes::to_hex(b))
+}
+
+pub fn hex_from_json(v: &Value) -> Result<Vec<u8>, Error> {
+    let s = v.as_str().map_or_else(|| type_error("hex text"), Ok)?;
+    crate::model::hexbytes::from_hex(s).map_err(|e| Error {
+        msg: e.to_string(),
+        at: 0,
+    })
+}
+
+/// Look a field up in an object's entries.
+pub fn field<'a>(obj: &'a [(String, Value)], name: &str) -> Option<&'a Value> {
+    obj.iter().find(|(k, _)| k == name).map(|(_, v)| v)
+}
+
+/// Write any value as one-line JSON.
+pub fn to_json_string<T: ToJson + ?Sized>(v: &T) -> String {
+    to_string(&v.to_json())
+}
+
+/// Write any value as indented JSON.
+pub fn to_json_string_pretty<T: ToJson + ?Sized>(v: &T) -> String {
+    to_string_pretty(&v.to_json())
+}
+
+/// Read any value from JSON text.
+pub fn from_json_str<T: FromJson>(text: &str) -> Result<T, Error> {
+    T::from_json(&parse(text)?)
+}
+
+pub fn from_json_slice<T: FromJson>(b: &[u8]) -> Result<T, Error> {
+    T::from_json(&parse_bytes(b)?)
+}
+
+/// `ToJson`/`FromJson` for a struct, field by field, in the order written:
+///
+/// ```ignore
+/// json_struct!(Settings, default, { language, zoom, tags [skip_empty] });
+/// json_struct!(RegValue, { name, kind, data [hex] });
+/// ```
+///
+/// `default` takes absent fields from `Type::default()`; without it absent
+/// fields are an error (except `Option`s, which become `None`). Per field:
+/// `[default]` (absent: the type's default), `[or = path]` (absent: the
+/// function's result), `[skip_empty]` (not written when empty, absent:
+/// default) and `[hex]` (bytes as hex text). Unknown fields are ignored.
+#[macro_export]
+macro_rules! json_struct {
+    ($ty:ident, default, { $($f:ident $([$($m:tt)*])?),* $(,)? }) => {
+        $crate::json_struct!(@impl $ty, base, __base, { $($f $([$($m)*])?),* });
+    };
+    ($ty:ident, { $($f:ident $([$($m:tt)*])?),* $(,)? }) => {
+        $crate::json_struct!(@impl $ty, strict, __base, { $($f $([$($m)*])?),* });
+    };
+    (@impl $ty:ident, $mode:ident, $bind:ident, { $($f:ident $([$($m:tt)*])?),* }) => {
+        impl $crate::json::ToJson for $ty {
+            fn to_json(&self) -> $crate::json::Value {
+                let mut __o: Vec<(String, $crate::json::Value)> = Vec::new();
+                $( $crate::json_struct!(@put __o, self, $f $(, $($m)*)?); )*
+                $crate::json::Value::Object(__o)
+            }
+        }
+        impl $crate::json::FromJson for $ty {
+            #[allow(unused_variables, unused_mut)]
+            fn from_json(__v: &$crate::json::Value) -> Result<Self, $crate::json::Error> {
+                let Some(__obj) = __v.as_object() else {
+                    return $crate::json::type_error(concat!("an object (", stringify!($ty), ")"));
+                };
+                $crate::json_struct!(@bind $mode, $bind, $ty);
+                Ok($ty {
+                    $( $f: $crate::json_struct!(@get __obj, ($mode $bind), $f $(, $($m)*)?), )*
+                })
+            }
+        }
+    };
+    // Writing.
+    (@put $o:ident, $s:ident, $f:ident) => {
+        $o.push((stringify!($f).to_string(), $crate::json::ToJson::to_json(&$s.$f)));
+    };
+    (@put $o:ident, $s:ident, $f:ident, default) => { $crate::json_struct!(@put $o, $s, $f); };
+    (@put $o:ident, $s:ident, $f:ident, or = $d:path) => { $crate::json_struct!(@put $o, $s, $f); };
+    (@put $o:ident, $s:ident, $f:ident, skip_empty) => {
+        if !$crate::json::ToJson::is_empty_json(&$s.$f) {
+            $crate::json_struct!(@put $o, $s, $f);
+        }
+    };
+    (@put $o:ident, $s:ident, $f:ident, hex) => {
+        $o.push((stringify!($f).to_string(), $crate::json::hex_to_json(&$s.$f)));
+    };
+    // Reading.
+    (@read $x:expr, $f:ident) => {
+        $crate::json::FromJson::from_json($x).map_err(|e| $crate::json::in_field(e, stringify!($f)))?
+    };
+    (@get $obj:ident, $mode:tt, $f:ident, hex) => {
+        match $crate::json::field($obj, stringify!($f)) {
+            Some(x) => $crate::json::hex_from_json(x).map_err(|e| $crate::json::in_field(e, stringify!($f)))?,
+            None => $crate::json_struct!(@absent $mode, $f),
+        }
+    };
+    (@get $obj:ident, $mode:tt, $f:ident, default) => {
+        match $crate::json::field($obj, stringify!($f)) {
+            Some(x) => $crate::json_struct!(@read x, $f),
+            None => Default::default(),
+        }
+    };
+    (@get $obj:ident, $mode:tt, $f:ident, skip_empty) => {
+        $crate::json_struct!(@get $obj, $mode, $f, default)
+    };
+    (@get $obj:ident, $mode:tt, $f:ident, or = $d:path) => {
+        match $crate::json::field($obj, stringify!($f)) {
+            Some(x) => $crate::json_struct!(@read x, $f),
+            None => $d(),
+        }
+    };
+    (@get $obj:ident, $mode:tt, $f:ident) => {
+        match $crate::json::field($obj, stringify!($f)) {
+            Some(x) => $crate::json_struct!(@read x, $f),
+            None => $crate::json_struct!(@absent $mode, $f),
+        }
+    };
+    (@bind base, $b:ident, $ty:ident) => { let $b = <$ty as Default>::default(); };
+    (@bind strict, $b:ident, $ty:ident) => {};
+    (@absent (base $b:ident), $f:ident) => { $b.$f };
+    (@absent (strict $b:ident), $f:ident) => {
+        match $crate::json::FromJson::missing() {
+            Some(v) => v,
+            None => {
+                return Err($crate::json::Error {
+                    msg: concat!("missing field `", stringify!($f), "`").to_string(),
+                    at: 0,
+                })
+            }
+        }
+    };
+}
+
+/// `ToJson`/`FromJson` for an enum of unit and struct variants, in the
+/// externally tagged layout earlier versions wrote: `"Unit"` and
+/// `{"Variant": {"field": ...}}`.
+///
+/// ```ignore
+/// json_enum!(Trust { Signed { signer }, Unsigned, Missing });
+/// ```
+#[macro_export]
+macro_rules! json_enum {
+    ($ty:ident { $($var:ident $({ $($f:ident $([$($m:tt)*])?),* $(,)? })?),* $(,)? }) => {
+        impl $crate::json::ToJson for $ty {
+            #[allow(unused_variables)]
+            fn to_json(&self) -> $crate::json::Value {
+                match self {
+                    $( $crate::json_enum!(@pat $ty, $var $({ $($f),* })?) =>
+                        $crate::json_enum!(@to $var $({ $($f $([$($m)*])?),* })?), )*
+                }
+            }
+        }
+        impl $crate::json::FromJson for $ty {
+            fn from_json(__v: &$crate::json::Value) -> Result<Self, $crate::json::Error> {
+                // A unit variant is a string; a struct variant a one-key object.
+                let (__tag, __body) = match __v {
+                    $crate::json::Value::String(s) => (s.as_str(), None),
+                    $crate::json::Value::Object(m) if m.len() == 1 => (m[0].0.as_str(), Some(&m[0].1)),
+                    _ => return $crate::json::type_error(concat!("a ", stringify!($ty))),
+                };
+                $(
+                    if __tag == stringify!($var) {
+                        return $crate::json_enum!(@from $ty, $var, __body $({ $($f $([$($m)*])?),* })?);
+                    }
+                )*
+                Err($crate::json::Error {
+                    msg: format!(concat!("unknown ", stringify!($ty), " `{}`"), __tag),
+                    at: 0,
+                })
+            }
+        }
+    };
+    (@pat $ty:ident, $var:ident) => { $ty::$var };
+    (@pat $ty:ident, $var:ident { $($f:ident),* }) => { $ty::$var { $($f),* } };
+    (@to $var:ident) => { $crate::json::Value::String(stringify!($var).to_string()) };
+    (@to $var:ident { $($f:ident $([$($m:tt)*])?),* }) => {{
+        let mut __o: Vec<(String, $crate::json::Value)> = Vec::new();
+        $( $crate::json_enum!(@put __o, $f $(, $($m)*)?); )*
+        $crate::json::Value::Object(vec![(stringify!($var).to_string(), $crate::json::Value::Object(__o))])
+    }};
+    (@put $o:ident, $f:ident) => {
+        $o.push((stringify!($f).to_string(), $crate::json::ToJson::to_json($f)));
+    };
+    (@put $o:ident, $f:ident, hex) => {
+        $o.push((stringify!($f).to_string(), $crate::json::hex_to_json($f)));
+    };
+    (@put $o:ident, $f:ident, default) => { $crate::json_enum!(@put $o, $f); };
+    (@from $ty:ident, $var:ident, $body:ident) => { Ok($ty::$var) };
+    (@from $ty:ident, $var:ident, $body:ident { $($f:ident $([$($m:tt)*])?),* }) => {{
+        let Some(__obj) = $body.and_then(|b| b.as_object()) else {
+            return $crate::json::type_error(concat!("the fields of ", stringify!($var)));
+        };
+        Ok($ty::$var {
+            $( $f: $crate::json_struct!(@get __obj, (strict __unused), $f $(, $($m)*)?), )*
+        })
+    }};
+}
+
+#[cfg(test)]
+mod typed_tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Clone)]
+    #[serde(default)]
+    struct Loose {
+        name: String,
+        n: u32,
+        big: u64,
+        neg: i64,
+        zoom: f32,
+        ratio: f64,
+        on: bool,
+        opt: Option<String>,
+        list: Vec<u64>,
+        map: BTreeMap<String, Vec<String>>,
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        tags: Vec<String>,
+        inner: Strict,
+        kinds: Vec<Kind>,
+    }
+    crate::json_struct!(Loose, default, {
+        name, n, big, neg, zoom, ratio, on, opt, list, map, tags [skip_empty], inner, kinds
+    });
+
+    #[derive(serde::Serialize, serde::Deserialize, Default, Debug, PartialEq, Clone)]
+    struct Strict {
+        id: String,
+        #[serde(with = "crate::model::hexbytes")]
+        data: Vec<u8>,
+        maybe: Option<u32>,
+        #[serde(default = "seven")]
+        seven: u32,
+    }
+    fn seven() -> u32 {
+        7
+    }
+    crate::json_struct!(Strict, { id, data [hex], maybe, seven [or = seven] });
+
+    #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Clone)]
+    enum Kind {
+        Plain,
+        WithFields { path: String, size: Option<u64> },
+        Nested { item: Strict },
+    }
+    crate::json_enum!(Kind { Plain, WithFields { path, size }, Nested { item } });
+
+    fn sample() -> Loose {
+        let mut map = BTreeMap::new();
+        map.insert("b".to_string(), vec!["x".to_string()]);
+        map.insert("a".to_string(), vec![]);
+        Loose {
+            name: "Ünï \"code\"\n".into(),
+            n: 4_000_000_000,
+            big: u64::MAX,
+            neg: i64::MIN,
+            zoom: 1.1,
+            ratio: 1e-7,
+            on: true,
+            opt: None,
+            list: vec![1, 2, 3],
+            map,
+            tags: vec![],
+            inner: Strict {
+                id: "s".into(),
+                data: vec![0, 15, 255],
+                maybe: Some(3),
+                seven: 9,
+            },
+            kinds: vec![
+                Kind::Plain,
+                Kind::WithFields {
+                    path: "C:\\x".into(),
+                    size: None,
+                },
+                Kind::Nested {
+                    item: Strict::default(),
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn writes_exactly_what_serde_wrote() {
+        let s = sample();
+        assert_eq!(to_json_string(&s), serde_json::to_string(&s).unwrap());
+        assert_eq!(
+            to_json_string_pretty(&s),
+            serde_json::to_string_pretty(&s).unwrap()
+        );
+        let mut t = s.clone();
+        t.tags = vec!["kept".into()];
+        t.opt = Some("o".into());
+        assert_eq!(
+            to_json_string_pretty(&t),
+            serde_json::to_string_pretty(&t).unwrap()
+        );
+    }
+
+    #[test]
+    fn reads_what_serde_wrote_and_the_other_way_round() {
+        let s = sample();
+        let ours: Loose = from_json_str(&serde_json::to_string_pretty(&s).unwrap()).unwrap();
+        assert_eq!(ours, s);
+        let theirs: Loose = serde_json::from_str(&to_json_string(&s)).unwrap();
+        assert_eq!(theirs, s);
+    }
+
+    #[test]
+    fn absent_fields_follow_the_same_rules() {
+        // Struct-wide default: everything absent is the default.
+        let l: Loose = from_json_str("{}").unwrap();
+        assert_eq!(l, Loose::default());
+        // Strict: a missing required field is an error, Options become
+        // None, and `or = ...` supplies its own value.
+        let s: Strict = from_json_str(r#"{"id":"a","data":"00ff"}"#).unwrap();
+        assert_eq!((s.maybe, s.seven, s.data), (None, 7, vec![0, 255]));
+        let e = from_json_str::<Strict>(r#"{"data":""}"#).unwrap_err();
+        assert!(e.msg.contains("missing field `id`"), "{e}");
+        // Unknown fields are ignored; wrong types say where.
+        assert!(from_json_str::<Strict>(r#"{"id":"a","data":"","extra":1}"#).is_ok());
+        let e = from_json_str::<Loose>(r#"{"inner":{"id":5,"data":""}}"#).unwrap_err();
+        assert!(e.msg.contains("in `inner.id`"), "{e}");
+        let e = from_json_str::<Loose>(r#"{"n":-1}"#).unwrap_err();
+        assert!(
+            e.msg.contains("whole number") && e.msg.contains("`n`"),
+            "{e}"
+        );
+        assert!(from_json_str::<Strict>(r#"{"id":"a","data":"0g"}"#).is_err());
+        assert!(from_json_str::<Kind>(r#""Nope""#).is_err());
+        assert!(from_json_str::<Kind>(r#"{"Plain":{},"WithFields":{}}"#).is_err());
     }
 }
