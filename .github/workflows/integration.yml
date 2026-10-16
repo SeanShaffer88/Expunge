@@ -186,18 +186,17 @@ jobs:
           $out = (Get-Content out.txt) + (Get-Content err.txt)
           $out | ForEach-Object { Write-Host $_ }
           if ($p.ExitCode -ne 0) {
-            $out | Select-Object -First 25 | ForEach-Object { Write-Output "::error::$_" }
-            # Why: what the removal said about each leftover, and what is inside.
-            $left = $out | Select-String -Pattern '^- Delete (folder|file) (.+)$' | ForEach-Object { $_.Matches[0].Groups[2].Value }
-            foreach ($l in $left | Select-Object -First 8) {
-              Get-Content revert.txt | Select-String -SimpleMatch $l | Select-Object -First 2 | ForEach-Object { Write-Output "::error title=Removal said::$($_.Line)" }
-              if (Test-Path $l -PathType Container) {
-                Get-ChildItem $l -Recurse -Force | Select-Object -First 6 | ForEach-Object { Write-Output "::error title=Still inside::$($_.FullName) ($($_.Length) bytes, $($_.LastWriteTime))" }
-              }
-            }
+            # GitHub keeps only 10 annotations per step: explanations first.
+            $left = @($out | Select-String -Pattern '^- Delete (folder|file) (.+)$' | ForEach-Object { $_.Matches[0].Groups[2].Value })
+            $why = @(Get-Content revert.txt | Select-String -Pattern 'restart|in use|kept|held by|still running|Close' | Select-Object -First 4)
+            $why | ForEach-Object { Write-Output "::error title=Removal said::$($_.Line)" }
             $dirs = @($left | Where-Object { Test-Path $_ -PathType Container })
-            Get-Process | Where-Object { $p = $_.Path; $p -and ($dirs | Where-Object { $p.StartsWith($_, 'OrdinalIgnoreCase') }) } |
-              ForEach-Object { Write-Output "::error title=Still running::$($_.ProcessName) ($($_.Id)) $($_.Path)" }
+            $running = @(Get-Process | Where-Object { $pp = $_.Path; $pp -and ($dirs | Where-Object { $pp.StartsWith($_, 'OrdinalIgnoreCase') }) })
+            $running | Select-Object -First 2 | ForEach-Object { Write-Output "::error title=Still running::$($_.ProcessName) ($($_.Id)) $($_.Path)" }
+            $inside = @($dirs | ForEach-Object { Get-ChildItem $_ -Recurse -Force -File -ErrorAction SilentlyContinue } | Select-Object -First 2)
+            $inside | ForEach-Object { Write-Output "::error title=Still inside::$($_.FullName) ($($_.Length) bytes, $($_.LastWriteTime))" }
+            if (-not $inside) { Write-Output "::error title=Still inside::nothing: the leftover folders are empty ($($dirs.Count) exist)" }
+            $out | Where-Object { $_ -match '^- ' } | Select-Object -First 2 | ForEach-Object { Write-Output "::error::$_" }
             throw "leftovers remain"
           }
           $still = ./it/Expunge.exe programs | Out-String -Stream | Select-String -SimpleMatch "${{ steps.monitor.outputs.name }}"
