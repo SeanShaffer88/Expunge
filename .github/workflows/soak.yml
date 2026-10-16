@@ -1,0 +1,45 @@
+name: Soak
+
+# Install, remove and verify real programs over and over for hours, with the
+# background watcher running, to catch leftovers that build up, watcher
+# misfires and resource leaks. Hosted runners allow up to six hours; for a
+# multi-day run use scripts/soak.ps1 on a test VM.
+on:
+  schedule:
+    - cron: '23 3 * * 6'
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: Hours to run (at most 5.5)
+        default: '5'
+
+jobs:
+  soak:
+    runs-on: windows-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release --locked
+      - name: Soak
+        shell: pwsh
+        run: |
+          $hours = [double]('${{ inputs.hours }}' -replace '^$', '5')
+          if ($hours -gt 5.5) { $hours = 5.5 }
+          ./scripts/soak.ps1 -Expunge target/release/expunge.exe -Hours $hours -Work "$env:RUNNER_TEMP\soak"
+      - name: Summary
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path "$env:RUNNER_TEMP\soak\soak-summary.md") {
+            Get-Content "$env:RUNNER_TEMP\soak\soak-summary.md" | Out-File -Append $env:GITHUB_STEP_SUMMARY
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: soak-results
+          path: |
+            ${{ runner.temp }}/soak/soak.csv
+            ${{ runner.temp }}/soak/soak-summary.md
