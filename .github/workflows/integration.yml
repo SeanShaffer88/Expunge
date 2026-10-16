@@ -15,8 +15,24 @@ on:
         default: ''
 
 jobs:
+  # One build shared by every test job (each used to build its own).
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --profile ci --locked
+      - uses: actions/upload-artifact@v4
+        with:
+          name: expunge-ci
+          path: target/ci/expunge.exe
+          retention-days: 1
+
   installer:
     name: ${{ matrix.name }}
+    needs: build
     runs-on: windows-latest
     timeout-minutes: 45
     env:
@@ -73,15 +89,11 @@ jobs:
             args: ${{ vars.WISE_ARGS || '/s' }}
             needs_var: WISE_URL
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         if: env.SELECTED == 'true'
-      - uses: dtolnay/rust-toolchain@stable
-        if: env.SELECTED == 'true'
-      - uses: Swatinem/rust-cache@v2
-        if: env.SELECTED == 'true'
-      - name: Build
-        if: env.SELECTED == 'true'
-        run: cargo build --release --locked
+        with:
+          name: expunge-ci
+          path: target/release
       - name: Portable Expunge with a focused monitoring scope
         if: env.SELECTED == 'true'
         shell: pwsh
@@ -212,6 +224,7 @@ jobs:
   portable:
     name: Portable App Builder (${{ matrix.name }})
     if: ${{ !inputs.only }}
+    needs: build
     runs-on: windows-latest
     timeout-minutes: 45
     strategy:
@@ -235,11 +248,10 @@ jobs:
             app: Greenshot
             exe: Greenshot.exe
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Build
-        run: cargo build --release --locked
+      - uses: actions/download-artifact@v4
+        with:
+          name: expunge-ci
+          path: target/release
       - name: Download installer
         shell: pwsh
         run: |
