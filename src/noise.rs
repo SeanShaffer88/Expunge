@@ -113,6 +113,9 @@ pub const FILE_PATTERNS: &[&str] = &[
 /// Registry areas Windows rewrites constantly (most-recently-used lists,
 /// folder views, usage statistics, caches).
 pub const REGISTRY_PATTERNS: &[&str] = &[
+    // Windows text input statistics (typing insights, input personalization).
+    "HKCU\\Software\\Microsoft\\input",
+    "HKCU\\Software\\Microsoft\\InputPersonalization",
     "HKCU\\Software\\Microsoft\\Windows\\Shell\\BagMRU",
     "HKCU\\Software\\Microsoft\\Windows\\Shell\\Bags",
     "HKCU\\Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\Shell",
