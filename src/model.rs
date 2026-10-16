@@ -254,33 +254,345 @@ pub struct FileEntry {
     pub mtime: i64,
 }
 
+/// A run of text or bytes in one of a [`Snapshot`]'s pools.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Span {
+    pub off: u32,
+    pub len: u32,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct FileRec {
+    pub path: Span,
+    pub size: u64,
+    pub mtime: i64,
+    pub is_dir: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct KeyRec {
+    pub path: Span,
+    /// Its values: `vals[first..first + count]`.
+    pub first: u32,
+    pub count: u32,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ValRec {
+    pub name: Span,
+    pub kind: u32,
+    pub data: Span,
+}
+
+/// Compare two paths or names the way Windows does (case-insensitively),
+/// without allocating.
+pub fn cmp_fold(a: &str, b: &str) -> std::cmp::Ordering {
+    if a.is_ascii() && b.is_ascii() {
+        let (x, y) = (a.as_bytes(), b.as_bytes());
+        for (p, q) in x.iter().zip(y) {
+            let (p, q) = (p.to_ascii_lowercase(), q.to_ascii_lowercase());
+            if p != q {
+                return p.cmp(&q);
+            }
+        }
+        return x.len().cmp(&y.len());
+    }
+    a.chars()
+        .flat_map(char::to_lowercase)
+        .cmp(b.chars().flat_map(char::to_lowercase))
+}
+
 /// A point-in-time capture of the parts of the system Expunge watches.
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+///
+/// Stored as arenas: every path and value name lives in one text pool and
+/// every value's data in one byte pool, referenced by fixed-size records,
+/// so a capture of millions of entries costs a handful of allocations
+/// rather than several per entry. [`Snapshot::finish`] sorts the records
+/// (case-insensitively) so two captures compare in one linear merge.
+#[derive(Clone, Debug, Default)]
 pub struct Snapshot {
     pub created: String,
     pub computer: String,
     pub user: String,
-    /// Registry keys keyed by folded path.
-    pub registry: BTreeMap<String, KeyData>,
-    /// Files and directories keyed by folded path.
-    pub files: BTreeMap<String, FileEntry>,
     /// Things that could not be read (access denied etc.).
-    #[serde(default)]
     pub warnings: Vec<String>,
+    pub(crate) text: String,
+    pub(crate) bytes: Vec<u8>,
+    pub(crate) files: Vec<FileRec>,
+    pub(crate) keys: Vec<KeyRec>,
+    pub(crate) vals: Vec<ValRec>,
+    /// Records are sorted and free of duplicates.
+    pub(crate) sorted: bool,
+}
+
+/// A file or folder in a [`Snapshot`], borrowed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FileView<'a> {
+    pub path: &'a str,
+    pub is_dir: bool,
+    pub size: u64,
+    pub mtime: i64,
+}
+
+impl FileView<'_> {
+    pub fn to_entry(&self) -> FileEntry {
+        FileEntry {
+            path: self.path.to_string(),
+            is_dir: self.is_dir,
+            size: self.size,
+            mtime: self.mtime,
+        }
+    }
+}
+
+/// A registry value in a [`Snapshot`], borrowed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ValueView<'a> {
+    pub name: &'a str,
+    pub kind: u32,
+    pub data: &'a [u8],
+}
+
+impl ValueView<'_> {
+    pub fn to_value(&self) -> RegValue {
+        RegValue {
+            name: self.name.to_string(),
+            kind: self.kind,
+            data: self.data.to_vec(),
+        }
+    }
 }
 
 impl Snapshot {
-    pub fn insert_key(&mut self, k: KeyData) {
-        self.registry.insert(fold(&k.path), k);
+    fn put_text(&mut self, s: &str) -> Span {
+        let off = self.text.len();
+        self.text.push_str(s);
+        Span {
+            off: off as u32,
+            len: s.len() as u32,
+        }
+    }
+
+    fn put_bytes(&mut self, b: &[u8]) -> Span {
+        let off = self.bytes.len();
+        self.bytes.extend_from_slice(b);
+        Span {
+            off: off as u32,
+            len: b.len() as u32,
+        }
+    }
+
+    pub(crate) fn text_of(&self, s: Span) -> &str {
+        &self.text[s.off as usize..(s.off + s.len) as usize]
+    }
+
+    pub(crate) fn bytes_of(&self, s: Span) -> &[u8] {
+        &self.bytes[s.off as usize..(s.off + s.len) as usize]
+    }
+
+    /// Whether the pools still fit 32-bit offsets after adding this much.
+    pub(crate) fn has_room(&self, text: usize, bytes: usize) -> bool {
+        self.text.len() + text <= u32::MAX as usize && self.bytes.len() + bytes <= u32::MAX as usize
+    }
+
+    /// Record a file or folder (copied into the pool; nothing else is
+    /// allocated once the pools have grown).
+    pub fn push_file(&mut self, path: &str, is_dir: bool, size: u64, mtime: i64) {
+        if !self.has_room(path.len(), 0) {
+            return;
+        }
+        let path = self.put_text(path);
+        self.files.push(FileRec {
+            path,
+            size,
+            mtime,
+            is_dir,
+        });
+        self.sorted = false;
+    }
+
+    /// Start a registry key; the values pushed next belong to it.
+    pub fn begin_key(&mut self, path: &str) {
+        if !self.has_room(path.len(), 0) {
+            return;
+        }
+        let path = self.put_text(path);
+        self.keys.push(KeyRec {
+            path,
+            first: self.vals.len() as u32,
+            count: 0,
+        });
+        self.sorted = false;
+    }
+
+    /// Add a value to the key last started with [`Snapshot::begin_key`].
+    pub fn push_value(&mut self, name: &str, kind: u32, data: &[u8]) {
+        if self.keys.is_empty() || !self.has_room(name.len(), data.len()) {
+            return;
+        }
+        let name = self.put_text(name);
+        let data = self.put_bytes(data);
+        self.vals.push(ValRec { name, kind, data });
+        if let Some(k) = self.keys.last_mut() {
+            k.count += 1;
+        }
     }
 
     pub fn insert_file(&mut self, f: FileEntry) {
-        self.files.insert(fold(&f.path), f);
+        self.push_file(&f.path, f.is_dir, f.size, f.mtime);
+    }
+
+    pub fn insert_key(&mut self, k: KeyData) {
+        self.begin_key(&k.path);
+        for v in k.values.values() {
+            self.push_value(&v.name, v.kind, &v.data);
+        }
+    }
+
+    /// Append another capture's records (from a worker thread).
+    pub fn absorb(&mut self, other: Snapshot) {
+        let (t, b, v) = (
+            self.text.len() as u32,
+            self.bytes.len() as u32,
+            self.vals.len() as u32,
+        );
+        if !self.has_room(other.text.len(), other.bytes.len()) {
+            self.warnings
+                .push("The capture is too large; part of it was left out".into());
+            return;
+        }
+        self.text.push_str(&other.text);
+        self.bytes.extend_from_slice(&other.bytes);
+        let shift = |s: Span, by: u32| Span {
+            off: s.off + by,
+            len: s.len,
+        };
+        self.files.extend(other.files.into_iter().map(|f| FileRec {
+            path: shift(f.path, t),
+            ..f
+        }));
+        self.keys.extend(other.keys.into_iter().map(|k| KeyRec {
+            path: shift(k.path, t),
+            first: k.first + v,
+            ..k
+        }));
+        self.vals.extend(other.vals.into_iter().map(|x| ValRec {
+            name: shift(x.name, t),
+            kind: x.kind,
+            data: shift(x.data, b),
+        }));
+        self.warnings.extend(other.warnings);
+        self.sorted = false;
+    }
+
+    /// Sort the records case-insensitively and drop duplicates (the later
+    /// capture of the same path wins). Comparing needs this; capture and
+    /// loading do it.
+    pub fn finish(&mut self) {
+        if self.sorted {
+            return;
+        }
+        let text = std::mem::take(&mut self.text);
+        let at = |s: Span| &text[s.off as usize..(s.off + s.len) as usize];
+        // Stable sorts keep insertion order among equal paths, so keeping
+        // the last of each run keeps the latest capture.
+        self.files.sort_by(|a, b| cmp_fold(at(a.path), at(b.path)));
+        dedup_keep_last(&mut self.files, |a, b| {
+            cmp_fold(at(a.path), at(b.path)).is_eq()
+        });
+        self.keys.sort_by(|a, b| cmp_fold(at(a.path), at(b.path)));
+        dedup_keep_last(&mut self.keys, |a, b| {
+            cmp_fold(at(a.path), at(b.path)).is_eq()
+        });
+        for k in &self.keys {
+            let r = k.first as usize..(k.first + k.count) as usize;
+            self.vals[r].sort_by(|a, b| cmp_fold(at(a.name), at(b.name)));
+        }
+        self.text = text;
+        self.sorted = true;
+    }
+
+    pub fn file_count(&self) -> usize {
+        self.files.len()
+    }
+
+    pub fn key_count(&self) -> usize {
+        self.keys.len()
     }
 
     pub fn value_count(&self) -> usize {
-        self.registry.values().map(|k| k.values.len()).sum()
+        self.keys.iter().map(|k| k.count as usize).sum()
     }
+
+    pub fn file(&self, i: usize) -> FileView<'_> {
+        let f = &self.files[i];
+        FileView {
+            path: self.text_of(f.path),
+            is_dir: f.is_dir,
+            size: f.size,
+            mtime: f.mtime,
+        }
+    }
+
+    pub fn files(&self) -> impl Iterator<Item = FileView<'_>> + '_ {
+        (0..self.files.len()).map(|i| self.file(i))
+    }
+
+    pub fn key_path(&self, i: usize) -> &str {
+        self.text_of(self.keys[i].path)
+    }
+
+    pub fn key_values(&self, i: usize) -> impl Iterator<Item = ValueView<'_>> + '_ {
+        let k = self.keys[i];
+        (k.first..k.first + k.count).map(move |j| {
+            let v = &self.vals[j as usize];
+            ValueView {
+                name: self.text_of(v.name),
+                kind: v.kind,
+                data: self.bytes_of(v.data),
+            }
+        })
+    }
+
+    pub fn key_data(&self, i: usize) -> KeyData {
+        let mut k = KeyData::new(self.key_path(i));
+        for v in self.key_values(i) {
+            k.values.insert(fold(v.name), v.to_value());
+        }
+        k
+    }
+
+    /// Index of a file by path (case-insensitive). Needs [`Snapshot::finish`].
+    pub fn find_file(&self, path: &str) -> Option<usize> {
+        debug_assert!(self.sorted);
+        self.files
+            .binary_search_by(|f| cmp_fold(self.text_of(f.path), path))
+            .ok()
+    }
+
+    /// Index of a key by path (case-insensitive). Needs [`Snapshot::finish`].
+    pub fn find_key(&self, path: &str) -> Option<usize> {
+        debug_assert!(self.sorted);
+        self.keys
+            .binary_search_by(|k| cmp_fold(self.text_of(k.path), path))
+            .ok()
+    }
+}
+
+/// Remove consecutive duplicates, keeping the last of each run.
+fn dedup_keep_last<T: Copy>(v: &mut Vec<T>, same: impl Fn(&T, &T) -> bool) {
+    if v.len() < 2 {
+        return;
+    }
+    let mut w = 0usize;
+    for r in 0..v.len() {
+        if r + 1 < v.len() && same(&v[r], &v[r + 1]) {
+            continue;
+        }
+        v[w] = v[r];
+        w += 1;
+    }
+    v.truncate(w);
 }
 
 /// A registry value located in a specific key.

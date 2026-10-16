@@ -344,8 +344,8 @@ fn snapshot_now(
     let s = take_snapshot(reg, &settings, &p)?;
     eprintln!(
         "  {} registry keys, {} files and folders",
-        s.registry.len(),
-        s.files.len()
+        s.key_count(),
+        s.file_count()
     );
     // Anything unreadable is missing from the snapshot, and so from any
     // log made from it: say so.

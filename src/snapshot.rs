@@ -98,9 +98,10 @@ pub fn take_snapshot(
         anyhow::bail!("cancelled");
     }
     for part in parts {
-        snap.files.extend(part.files);
-        snap.warnings.extend(part.warnings);
+        snap.absorb(part);
     }
+    progress.set_phase("Sorting");
+    snap.finish();
     progress.set_phase("Done");
     Ok(snap)
 }
@@ -113,29 +114,7 @@ pub fn capture_registry(
     snap: &mut Snapshot,
     progress: &Progress,
 ) {
-    let excl = Exclusions::new(excl);
-    let mut stack = vec![root.to_string()];
-    while let Some(path) = stack.pop() {
-        if progress.cancelled() {
-            return;
-        }
-        if excl.matches(&path) {
-            continue;
-        }
-        match reg.read_key(&path) {
-            Some(k) => {
-                snap.insert_key(k);
-                progress.tick();
-            }
-            None => {
-                snap.warnings.push(format!("Could not read {path}"));
-                continue;
-            }
-        }
-        for sub in reg.subkeys(&path) {
-            stack.push(format!("{path}\\{sub}"));
-        }
-    }
+    reg.capture(root, &Exclusions::new(excl), snap, progress);
 }
 
 fn mtime_of(meta: &std::fs::Metadata) -> i64 {
@@ -146,7 +125,8 @@ fn mtime_of(meta: &std::fs::Metadata) -> i64 {
         .unwrap_or(0)
 }
 
-/// Record every file and folder under `root` (not following links/junctions).
+/// Record every file and folder under `root` (not following links or
+/// junctions). Excluded locations are neither recorded nor entered.
 pub fn capture_files(
     root: &Path,
     recursive: bool,
@@ -155,103 +135,191 @@ pub fn capture_files(
     progress: &Progress,
 ) {
     let excl = Exclusions::new(excl);
-    let walker = walkdir::WalkDir::new(root)
-        .min_depth(1)
-        .max_depth(if recursive { usize::MAX } else { 1 })
-        .follow_links(false)
-        .into_iter()
-        .filter_entry(|e| !excl.matches(&e.path().to_string_lossy()));
-    for entry in walker {
-        if progress.cancelled() {
-            return;
-        }
-        let entry = match entry {
-            Ok(e) => e,
-            Err(e) => {
-                if let Some(p) = e.path() {
-                    snap.warnings
-                        .push(format!("Could not read {}", p.display()));
+    let mut folded = String::new();
+    let mut chars = Vec::new();
+    #[cfg(windows)]
+    {
+        let root = root.to_string_lossy();
+        let mut warnings = Vec::new();
+        platform::windows::walk_files(
+            &root,
+            recursive,
+            &mut |path, is_dir, size, mtime| {
+                if progress.cancelled() {
+                    return platform::windows::Walk::Stop;
                 }
-                continue;
+                crate::util::fold_into(path, &mut folded);
+                if excl.matches_folded(&folded, &mut chars) {
+                    return platform::windows::Walk::Skip;
+                }
+                snap.push_file(path, is_dir, size, mtime);
+                progress.tick();
+                platform::windows::Walk::Continue
+            },
+            &mut |path| warnings.push(format!("Could not read {path}")),
+        );
+        snap.warnings.extend(warnings);
+    }
+    #[cfg(not(windows))]
+    {
+        // Development builds: plain std walk (allocates per entry).
+        let mut stack = vec![(root.to_path_buf(), 0usize)];
+        while let Some((dir, depth)) = stack.pop() {
+            let rd = match std::fs::read_dir(&dir) {
+                Ok(r) => r,
+                Err(_) => {
+                    snap.warnings
+                        .push(format!("Could not read {}", dir.display()));
+                    continue;
+                }
+            };
+            for e in rd.flatten() {
+                if progress.cancelled() {
+                    return;
+                }
+                let Ok(ft) = e.file_type() else { continue };
+                if ft.is_symlink() {
+                    continue;
+                }
+                let p = e.path();
+                let ps = p.to_string_lossy();
+                crate::util::fold_into(&ps, &mut folded);
+                if excl.matches_folded(&folded, &mut chars) {
+                    continue;
+                }
+                let Ok(meta) = e.metadata() else { continue };
+                let is_dir = meta.is_dir();
+                snap.push_file(
+                    &ps,
+                    is_dir,
+                    if is_dir { 0 } else { meta.len() },
+                    mtime_of(&meta),
+                );
+                progress.tick();
+                if is_dir && recursive {
+                    stack.push((p, depth + 1));
+                }
             }
-        };
-        if entry.path_is_symlink() {
-            continue;
         }
-        let Ok(meta) = entry.metadata() else { continue };
-        let is_dir = meta.is_dir();
-        snap.insert_file(FileEntry {
-            path: entry.path().to_string_lossy().to_string(),
-            is_dir,
-            size: if is_dir { 0 } else { meta.len() },
-            mtime: mtime_of(&meta),
-        });
-        progress.tick();
     }
 }
 
-/// Compare two snapshots. Results are sorted by path.
+fn sorted(s: &Snapshot) -> std::borrow::Cow<'_, Snapshot> {
+    if s.sorted {
+        std::borrow::Cow::Borrowed(s)
+    } else {
+        let mut c = s.clone();
+        c.finish();
+        std::borrow::Cow::Owned(c)
+    }
+}
+
+/// Compare two snapshots in one merge over their sorted records.
+/// Results are sorted by path.
 pub fn diff(before: &Snapshot, after: &Snapshot) -> ChangeSet {
+    use std::cmp::Ordering::*;
+    let (b, a) = (sorted(before), sorted(after));
+    let (b, a) = (b.as_ref(), a.as_ref());
     let mut cs = ChangeSet::default();
 
-    for (fk, ak) in &after.registry {
-        match before.registry.get(fk) {
-            None => cs.keys_added.push(ak.clone()),
-            Some(bk) => {
-                for (fv, av) in &ak.values {
-                    match bk.values.get(fv) {
-                        None => cs.values_added.push(ValueRef {
-                            key: ak.path.clone(),
-                            value: av.clone(),
-                        }),
-                        Some(bv) if bv.kind != av.kind || bv.data != av.data => {
-                            cs.values_modified.push(ValueChange {
-                                key: ak.path.clone(),
-                                before: bv.clone(),
-                                after: av.clone(),
-                            })
-                        }
-                        _ => {}
-                    }
-                }
-                for (fv, bv) in &bk.values {
-                    if !ak.values.contains_key(fv) {
-                        cs.values_removed.push(ValueRef {
-                            key: ak.path.clone(),
-                            value: bv.clone(),
-                        });
-                    }
-                }
+    let (mut i, mut j) = (0usize, 0usize);
+    while i < b.key_count() || j < a.key_count() {
+        let ord = match (i < b.key_count(), j < a.key_count()) {
+            (true, true) => cmp_fold(b.key_path(i), a.key_path(j)),
+            (true, false) => Less,
+            _ => Greater,
+        };
+        match ord {
+            Less => {
+                cs.keys_removed.push(b.key_data(i));
+                i += 1;
+            }
+            Greater => {
+                cs.keys_added.push(a.key_data(j));
+                j += 1;
+            }
+            Equal => {
+                diff_values(b, i, a, j, &mut cs);
+                i += 1;
+                j += 1;
             }
         }
     }
-    for (fk, bk) in &before.registry {
-        if !after.registry.contains_key(fk) {
-            cs.keys_removed.push(bk.clone());
-        }
-    }
 
-    for (fp, af) in &after.files {
-        match before.files.get(fp) {
-            None => cs.files_added.push(af.clone()),
-            Some(bf) => {
+    let (mut i, mut j) = (0usize, 0usize);
+    while i < b.file_count() || j < a.file_count() {
+        let ord = match (i < b.file_count(), j < a.file_count()) {
+            (true, true) => cmp_fold(b.file(i).path, a.file(j).path),
+            (true, false) => Less,
+            _ => Greater,
+        };
+        match ord {
+            Less => {
+                cs.files_removed.push(b.file(i).to_entry());
+                i += 1;
+            }
+            Greater => {
+                cs.files_added.push(a.file(j).to_entry());
+                j += 1;
+            }
+            Equal => {
+                let (bf, af) = (b.file(i), a.file(j));
                 // Folder timestamps change whenever their contents do; only
                 // files count as modified.
                 if !af.is_dir && (bf.size != af.size || bf.mtime != af.mtime || bf.is_dir) {
                     cs.files_modified.push(FileChange {
-                        before: bf.clone(),
-                        after: af.clone(),
+                        before: bf.to_entry(),
+                        after: af.to_entry(),
+                    });
+                }
+                i += 1;
+                j += 1;
+            }
+        }
+    }
+    cs
+}
+
+/// The value differences of one key present in both snapshots.
+fn diff_values(b: &Snapshot, bi: usize, a: &Snapshot, ai: usize, cs: &mut ChangeSet) {
+    use std::cmp::Ordering::*;
+    let mut bv = b.key_values(bi).peekable();
+    let mut av = a.key_values(ai).peekable();
+    let path = a.key_path(ai);
+    loop {
+        let ord = match (bv.peek(), av.peek()) {
+            (Some(x), Some(y)) => cmp_fold(x.name, y.name),
+            (Some(_), None) => Less,
+            (None, Some(_)) => Greater,
+            (None, None) => break,
+        };
+        match ord {
+            Less => {
+                let x = bv.next().unwrap();
+                cs.values_removed.push(ValueRef {
+                    key: path.to_string(),
+                    value: x.to_value(),
+                });
+            }
+            Greater => {
+                let y = av.next().unwrap();
+                cs.values_added.push(ValueRef {
+                    key: path.to_string(),
+                    value: y.to_value(),
+                });
+            }
+            Equal => {
+                let (x, y) = (bv.next().unwrap(), av.next().unwrap());
+                if x.kind != y.kind || x.data != y.data {
+                    cs.values_modified.push(ValueChange {
+                        key: path.to_string(),
+                        before: x.to_value(),
+                        after: y.to_value(),
                     });
                 }
             }
         }
     }
-    for (fp, bf) in &before.files {
-        if !after.files.contains_key(fp) {
-            cs.files_removed.push(bf.clone());
-        }
-    }
-    cs
 }
 
 /// Drop changes matching exclusion patterns after the fact (used when the
@@ -328,24 +396,265 @@ pub fn detect_program(cs: &ChangeSet) -> Option<DetectedProgram> {
     found.into_iter().next()
 }
 
-/// Save a snapshot as gzip-compressed JSON.
+const MAGIC: &[u8; 8] = b"EXSNAP2\n";
+
+fn put_u32(out: &mut Vec<u8>, v: u32) {
+    out.extend_from_slice(&v.to_le_bytes());
+}
+fn put_u64(out: &mut Vec<u8>, v: u64) {
+    out.extend_from_slice(&v.to_le_bytes());
+}
+fn put_str(out: &mut Vec<u8>, s: &str) {
+    put_u64(out, s.len() as u64);
+    out.extend_from_slice(s.as_bytes());
+}
+
+/// Save a snapshot: a compact binary layout of its pools and records,
+/// gzip-compressed. Written to a temporary file and renamed into place, so
+/// an interrupted save never leaves a damaged snapshot behind.
 pub fn save_snapshot(path: &Path, snap: &Snapshot) -> Result<()> {
     if let Some(p) = path.parent() {
         std::fs::create_dir_all(p)?;
     }
-    let f = std::fs::File::create(path).with_context(|| format!("create {}", path.display()))?;
-    let mut gz =
-        flate2::write::GzEncoder::new(std::io::BufWriter::new(f), flate2::Compression::fast());
-    serde_json::to_writer(&mut gz, snap)?;
-    gz.finish()?.flush()?;
+    let snap = sorted(snap);
+    let s = snap.as_ref();
+    let tmp = path.with_extension("snap.tmp");
+    {
+        let f = std::fs::File::create(&tmp).with_context(|| format!("create {}", tmp.display()))?;
+        let mut gz =
+            flate2::write::GzEncoder::new(std::io::BufWriter::new(f), flate2::Compression::fast());
+        let mut head = Vec::with_capacity(4096);
+        head.extend_from_slice(MAGIC);
+        put_str(&mut head, &s.created);
+        put_str(&mut head, &s.computer);
+        put_str(&mut head, &s.user);
+        put_u64(&mut head, s.warnings.len() as u64);
+        for w in &s.warnings {
+            put_str(&mut head, w);
+        }
+        put_u64(&mut head, s.text.len() as u64);
+        gz.write_all(&head)?;
+        gz.write_all(s.text.as_bytes())?;
+        let mut buf = Vec::with_capacity(64 * 1024);
+        put_u64(&mut buf, s.bytes.len() as u64);
+        gz.write_all(&buf)?;
+        gz.write_all(&s.bytes)?;
+        // Records go out through one reused buffer.
+        let flush = |gz: &mut flate2::write::GzEncoder<_>, buf: &mut Vec<u8>| -> Result<()> {
+            gz.write_all(buf)?;
+            buf.clear();
+            Ok(())
+        };
+        buf.clear();
+        put_u64(&mut buf, s.files.len() as u64);
+        for f in &s.files {
+            put_u32(&mut buf, f.path.off);
+            put_u32(&mut buf, f.path.len);
+            put_u64(&mut buf, f.size);
+            put_u64(&mut buf, f.mtime as u64);
+            buf.push(f.is_dir as u8);
+            if buf.len() > 60 * 1024 {
+                flush(&mut gz, &mut buf)?;
+            }
+        }
+        put_u64(&mut buf, s.keys.len() as u64);
+        for k in &s.keys {
+            put_u32(&mut buf, k.path.off);
+            put_u32(&mut buf, k.path.len);
+            put_u32(&mut buf, k.first);
+            put_u32(&mut buf, k.count);
+            if buf.len() > 60 * 1024 {
+                flush(&mut gz, &mut buf)?;
+            }
+        }
+        put_u64(&mut buf, s.vals.len() as u64);
+        for v in &s.vals {
+            put_u32(&mut buf, v.name.off);
+            put_u32(&mut buf, v.name.len);
+            put_u32(&mut buf, v.kind);
+            put_u32(&mut buf, v.data.off);
+            put_u32(&mut buf, v.data.len);
+            if buf.len() > 60 * 1024 {
+                flush(&mut gz, &mut buf)?;
+            }
+        }
+        flush(&mut gz, &mut buf)?;
+        gz.finish()?.flush()?;
+    }
+    std::fs::rename(&tmp, path).with_context(|| format!("save {}", path.display()))?;
     Ok(())
+}
+
+/// Reads the binary layout back, checking every record against its pools.
+struct Reader<'a> {
+    b: &'a [u8],
+    at: usize,
+}
+
+impl<'a> Reader<'a> {
+    fn take(&mut self, n: usize) -> Result<&'a [u8]> {
+        let end = self
+            .at
+            .checked_add(n)
+            .filter(|e| *e <= self.b.len())
+            .ok_or_else(|| anyhow::anyhow!("the snapshot is damaged (cut off)"))?;
+        let s = &self.b[self.at..end];
+        self.at = end;
+        Ok(s)
+    }
+    fn u32(&mut self) -> Result<u32> {
+        Ok(u32::from_le_bytes(self.take(4)?.try_into().unwrap()))
+    }
+    fn u64(&mut self) -> Result<u64> {
+        Ok(u64::from_le_bytes(self.take(8)?.try_into().unwrap()))
+    }
+    fn len(&mut self) -> Result<usize> {
+        usize::try_from(self.u64()?).map_err(|_| anyhow::anyhow!("the snapshot is damaged"))
+    }
+    fn string(&mut self) -> Result<String> {
+        let n = self.len()?;
+        Ok(std::str::from_utf8(self.take(n)?)?.to_string())
+    }
+    fn count(&mut self, rec: usize) -> Result<usize> {
+        let n = self.len()?;
+        if n.saturating_mul(rec) > self.b.len() - self.at {
+            anyhow::bail!("the snapshot is damaged (bad record count)");
+        }
+        Ok(n)
+    }
+}
+
+fn parse_binary(b: &[u8]) -> Result<Snapshot> {
+    let mut r = Reader { b, at: MAGIC.len() };
+    let mut s = Snapshot {
+        created: r.string()?,
+        computer: r.string()?,
+        user: r.string()?,
+        ..Default::default()
+    };
+    for _ in 0..r.count(8)? {
+        s.warnings.push(r.string()?);
+    }
+    let n = r.len()?;
+    s.text = std::str::from_utf8(r.take(n)?)?.to_string();
+    let n = r.len()?;
+    s.bytes = r.take(n)?.to_vec();
+    let text_ok = |sp: Span, text: &str| -> bool {
+        let (a, e) = (sp.off as usize, sp.off as usize + sp.len as usize);
+        e <= text.len() && text.is_char_boundary(a) && text.is_char_boundary(e)
+    };
+    let n = r.count(25)?;
+    s.files.reserve_exact(n);
+    for _ in 0..n {
+        let path = Span {
+            off: r.u32()?,
+            len: r.u32()?,
+        };
+        let size = r.u64()?;
+        let mtime = r.u64()? as i64;
+        let is_dir = r.take(1)?[0] != 0;
+        if !text_ok(path, &s.text) {
+            anyhow::bail!("the snapshot is damaged (file record)");
+        }
+        s.files.push(FileRec {
+            path,
+            size,
+            mtime,
+            is_dir,
+        });
+    }
+    let n = r.count(16)?;
+    s.keys.reserve_exact(n);
+    for _ in 0..n {
+        let k = KeyRec {
+            path: Span {
+                off: r.u32()?,
+                len: r.u32()?,
+            },
+            first: r.u32()?,
+            count: r.u32()?,
+        };
+        if !text_ok(k.path, &s.text) {
+            anyhow::bail!("the snapshot is damaged (key record)");
+        }
+        s.keys.push(k);
+    }
+    let n = r.count(20)?;
+    s.vals.reserve_exact(n);
+    for _ in 0..n {
+        let v = ValRec {
+            name: Span {
+                off: r.u32()?,
+                len: r.u32()?,
+            },
+            kind: r.u32()?,
+            data: Span {
+                off: r.u32()?,
+                len: r.u32()?,
+            },
+        };
+        if !text_ok(v.name, &s.text) || (v.data.off as usize + v.data.len as usize) > s.bytes.len()
+        {
+            anyhow::bail!("the snapshot is damaged (value record)");
+        }
+        s.vals.push(v);
+    }
+    if s.keys
+        .iter()
+        .any(|k| (k.first as usize + k.count as usize) > s.vals.len())
+    {
+        anyhow::bail!("the snapshot is damaged (key values)");
+    }
+    // Written sorted; sort again only if it wasn't (cheap check).
+    s.sorted = false;
+    s.finish();
+    Ok(s)
+}
+
+/// The JSON layout earlier versions saved.
+#[derive(serde::Deserialize)]
+struct LegacySnapshot {
+    #[serde(default)]
+    created: String,
+    #[serde(default)]
+    computer: String,
+    #[serde(default)]
+    user: String,
+    #[serde(default)]
+    registry: std::collections::BTreeMap<String, KeyData>,
+    #[serde(default)]
+    files: std::collections::BTreeMap<String, FileEntry>,
+    #[serde(default)]
+    warnings: Vec<String>,
 }
 
 pub fn load_snapshot(path: &Path) -> Result<Snapshot> {
     let f = std::fs::File::open(path).with_context(|| format!("open {}", path.display()))?;
-    let mut s = String::new();
-    flate2::read::GzDecoder::new(std::io::BufReader::new(f)).read_to_string(&mut s)?;
-    Ok(serde_json::from_str(&s)?)
+    let mut raw = Vec::new();
+    flate2::read::GzDecoder::new(std::io::BufReader::new(f))
+        .read_to_end(&mut raw)
+        .with_context(|| format!("read {}", path.display()))?;
+    if raw.starts_with(MAGIC) {
+        return parse_binary(&raw).with_context(|| format!("read {}", path.display()));
+    }
+    // Saved by an earlier version.
+    let old: LegacySnapshot = serde_json::from_slice(&raw)?;
+    drop(raw);
+    let mut s = Snapshot {
+        created: old.created,
+        computer: old.computer,
+        user: old.user,
+        warnings: old.warnings,
+        ..Default::default()
+    };
+    for k in old.registry.into_values() {
+        s.insert_key(k);
+    }
+    for f in old.files.into_values() {
+        s.insert_file(f);
+    }
+    s.finish();
+    Ok(s)
 }
 
 #[cfg(test)]
@@ -425,15 +734,174 @@ mod tests {
         assert_eq!(d.publisher, "FooCorp");
     }
 
+    fn sample() -> Snapshot {
+        let mut s = Snapshot {
+            created: "2026-10-16 05:00:00".into(),
+            computer: "PC".into(),
+            user: "Sean".into(),
+            warnings: vec!["Could not read X".into()],
+            ..Default::default()
+        };
+        s.insert_key(
+            KeyData::new("HKCU\\Software\\Zeta")
+                .with(RegValue::string("", "default"))
+                .with(RegValue {
+                    name: "Bin".into(),
+                    kind: reg_type::BINARY,
+                    data: vec![0, 1, 2, 255],
+                }),
+        );
+        s.insert_key(KeyData::new("HKCU\\Software\\Ärger").with(RegValue::string("ü", "ö")));
+        s.insert_file(FileEntry {
+            path: "C:\\Program Files\\App\\b.exe".into(),
+            is_dir: false,
+            size: 1 << 33,
+            mtime: -5,
+        });
+        s.insert_file(FileEntry {
+            path: "C:\\Program Files\\App".into(),
+            is_dir: true,
+            size: 0,
+            mtime: 1_700_000_000,
+        });
+        s.finish();
+        s
+    }
+
+    fn keys_of(s: &Snapshot) -> Vec<KeyData> {
+        (0..s.key_count()).map(|i| s.key_data(i)).collect()
+    }
+
+    fn files_of(s: &Snapshot) -> Vec<FileEntry> {
+        s.files().map(|f| f.to_entry()).collect()
+    }
+
     #[test]
     fn snapshot_save_load() {
         let tmp = tempfile::tempdir().unwrap();
-        let mut s = Snapshot::default();
-        s.insert_key(KeyData::new("HKCU\\Software\\A").with(RegValue::string("x", "y")));
+        let s = sample();
         let p = tmp.path().join("a.snap");
         save_snapshot(&p, &s).unwrap();
         let l = load_snapshot(&p).unwrap();
-        assert_eq!(l.registry, s.registry);
+        assert_eq!(keys_of(&l), keys_of(&s));
+        assert_eq!(files_of(&l), files_of(&s));
+        assert_eq!(
+            (l.created.as_str(), l.computer.as_str(), l.user.as_str()),
+            ("2026-10-16 05:00:00", "PC", "Sean")
+        );
+        assert_eq!(l.warnings, s.warnings);
+        assert!(!p.with_extension("snap.tmp").exists());
+    }
+
+    #[test]
+    fn snapshots_from_earlier_versions_still_load() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path().join("old.snap");
+        let json = r#"{"created":"c","computer":"pc","user":"u",
+            "registry":{"hkcu\\software\\a":{"path":"HKCU\\Software\\A","values":{"x":{"name":"x","kind":1,"data":"790000"}}}},
+            "files":{"c:\\a.txt":{"path":"C:\\a.txt","is_dir":false,"size":3,"mtime":9}}}"#;
+        let f = std::fs::File::create(&p).unwrap();
+        let mut gz = flate2::write::GzEncoder::new(f, flate2::Compression::fast());
+        gz.write_all(json.as_bytes()).unwrap();
+        gz.finish().unwrap();
+        let l = load_snapshot(&p).unwrap();
+        assert_eq!(l.key_count(), 1);
+        assert_eq!(l.key_data(0).get_string("x").as_deref(), Some("y"));
+        assert_eq!(files_of(&l)[0].size, 3);
+    }
+
+    #[test]
+    fn a_damaged_snapshot_is_refused_not_misread() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path().join("a.snap");
+        save_snapshot(&p, &sample()).unwrap();
+        let mut raw = Vec::new();
+        flate2::read::GzDecoder::new(std::fs::File::open(&p).unwrap())
+            .read_to_end(&mut raw)
+            .unwrap();
+        for cut in [raw.len() - 3, raw.len() / 2, 12] {
+            assert!(parse_binary(&raw[..cut]).is_err(), "cut at {cut}");
+        }
+        // A record pointing outside its pool.
+        let mut bad = raw.clone();
+        let n = bad.len();
+        bad[n - 20..n - 16].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert!(parse_binary(&bad).is_err());
+    }
+
+    #[test]
+    fn duplicates_keep_the_latest_capture_and_order_ignores_case() {
+        let mut s = Snapshot::default();
+        s.push_file("C:\\b", false, 1, 0);
+        s.push_file("C:\\A", false, 1, 0);
+        s.push_file("c:\\B", false, 2, 0);
+        s.finish();
+        let got: Vec<(String, u64)> = s.files().map(|f| (f.path.to_string(), f.size)).collect();
+        assert_eq!(got, [("C:\\A".to_string(), 1), ("c:\\B".to_string(), 2)]);
+        assert!(s.find_file("c:\\a").is_some() && s.find_file("C:\\c").is_none());
+    }
+
+    #[test]
+    fn diff_merges_regardless_of_case_and_insertion_order() {
+        let mut a = Snapshot::default();
+        a.insert_key(
+            KeyData::new("HKCU\\Software\\Keep")
+                .with(RegValue::string("V", "1"))
+                .with(RegValue::string("Gone", "x")),
+        );
+        a.insert_key(KeyData::new("HKCU\\Software\\Old"));
+        a.push_file("C:\\App\\same.txt", false, 1, 1);
+        a.push_file("C:\\App\\changed.txt", false, 1, 1);
+        a.push_file("C:\\App\\removed.txt", false, 1, 1);
+        let mut b = Snapshot::default();
+        b.push_file("C:\\app\\NEW.txt", false, 1, 1);
+        b.push_file("C:\\APP\\SAME.TXT", false, 1, 1);
+        b.push_file("C:\\App\\changed.txt", false, 2, 1);
+        b.insert_key(KeyData::new("HKCU\\Software\\New"));
+        b.insert_key(
+            KeyData::new("hkcu\\software\\keep")
+                .with(RegValue::string("v", "2"))
+                .with(RegValue::string("Added", "y")),
+        );
+        // Unsorted inputs are sorted for the comparison.
+        let cs = diff(&a, &b);
+        let names = |v: &Vec<FileEntry>| v.iter().map(|f| f.path.clone()).collect::<Vec<_>>();
+        assert_eq!(names(&cs.files_added), ["C:\\app\\NEW.txt"]);
+        assert_eq!(names(&cs.files_removed), ["C:\\App\\removed.txt"]);
+        assert_eq!(cs.files_modified.len(), 1);
+        assert_eq!(
+            cs.keys_added
+                .iter()
+                .map(|k| k.path.as_str())
+                .collect::<Vec<_>>(),
+            ["HKCU\\Software\\New"]
+        );
+        assert_eq!(
+            cs.keys_removed
+                .iter()
+                .map(|k| k.path.as_str())
+                .collect::<Vec<_>>(),
+            ["HKCU\\Software\\Old"]
+        );
+        assert_eq!(
+            cs.values_added
+                .iter()
+                .map(|v| v.value.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Added"]
+        );
+        assert_eq!(
+            cs.values_removed
+                .iter()
+                .map(|v| v.value.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Gone"]
+        );
+        assert_eq!(cs.values_modified.len(), 1);
+        assert_eq!(
+            cs.values_modified[0].after.as_string().as_deref(),
+            Some("2")
+        );
     }
 
     #[test]

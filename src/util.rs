@@ -105,8 +105,9 @@ fn glob_chars(p: &[char], t: &[char]) -> bool {
 enum Pat {
     /// No wildcards: the location itself and everything beneath it.
     Path(String),
-    /// `*.ext`-style: any path ending with the suffix.
-    Suffix(String),
+    /// `*.ext`-style: any path ending with the suffix (`dir` is the
+    /// suffix followed by `\`, for locations beneath a match).
+    Suffix { s: String, dir: String },
     /// General glob. `prefix` (text before the first wildcard) must start
     /// the path, which rejects most paths without running the glob.
     Glob {
@@ -138,9 +139,10 @@ impl Exclusions {
             let wild = pat.find(['*', '?']);
             match wild {
                 None => pats.push(Pat::Path(pat)),
-                Some(0) if !pat[1..].contains(['*', '?', '\\']) => {
-                    pats.push(Pat::Suffix(pat[1..].to_string()))
-                }
+                Some(0) if !pat[1..].contains(['*', '?', '\\']) => pats.push(Pat::Suffix {
+                    s: pat[1..].to_string(),
+                    dir: format!("{}\\", &pat[1..]),
+                }),
                 Some(i) => pats.push(Pat::Glob {
                     prefix: pat[..i].to_string(),
                     exact: pat.chars().collect(),
@@ -160,13 +162,20 @@ impl Exclusions {
         if self.pats.is_empty() {
             return false;
         }
-        let f = fold(path);
-        let mut chars: Option<Vec<char>> = None;
+        let mut chars = Vec::new();
+        self.matches_folded(&fold(path), &mut chars)
+    }
+
+    /// [`Exclusions::matches`] for a path already folded with
+    /// [`fold_into`], reusing `chars` as scratch space: allocates nothing
+    /// once the buffers have grown, for use in snapshot walks.
+    pub fn matches_folded(&self, f: &str, chars: &mut Vec<char>) -> bool {
+        let mut filled = false;
         self.pats.iter().any(|p| match p {
             Pat::Path(p) => {
                 f.starts_with(p.as_str()) && (f.len() == p.len() || f.as_bytes()[p.len()] == b'\\')
             }
-            Pat::Suffix(s) => f.ends_with(s.as_str()) || f.contains(&format!("{s}\\")),
+            Pat::Suffix { s, dir } => f.ends_with(s.as_str()) || f.contains(dir.as_str()),
             Pat::Glob {
                 prefix,
                 exact,
@@ -175,10 +184,26 @@ impl Exclusions {
                 if !f.starts_with(prefix.as_str()) {
                     return false;
                 }
-                let t = chars.get_or_insert_with(|| f.chars().collect());
-                glob_chars(exact, t) || glob_chars(below, t)
+                if !filled {
+                    chars.clear();
+                    chars.extend(f.chars());
+                    filled = true;
+                }
+                glob_chars(exact, chars) || glob_chars(below, chars)
             }
         })
+    }
+}
+
+/// Case-fold `src` into `dst` (replacing its contents) exactly as
+/// [`fold`] does, reusing `dst`'s allocation.
+pub fn fold_into(src: &str, dst: &mut String) {
+    dst.clear();
+    if src.is_ascii() {
+        dst.push_str(src);
+        dst.make_ascii_lowercase();
+    } else {
+        dst.push_str(&src.to_lowercase());
     }
 }
 

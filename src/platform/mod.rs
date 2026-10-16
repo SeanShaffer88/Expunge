@@ -49,6 +49,40 @@ pub trait Registry: Send + Sync {
     fn delete_value(&self, key: &str, name: &str) -> Result<()>;
     /// Delete a key and everything beneath it.
     fn delete_tree(&self, path: &str) -> Result<()>;
+
+    /// Record `root` and every key beneath it (except excluded branches)
+    /// into a snapshot. The Windows registry overrides this with a walk
+    /// that reuses its buffers; this version suits in-memory registries.
+    fn capture(
+        &self,
+        root: &str,
+        excl: &crate::util::Exclusions,
+        snap: &mut crate::model::Snapshot,
+        progress: &crate::snapshot::Progress,
+    ) {
+        let mut stack = vec![root.to_string()];
+        while let Some(path) = stack.pop() {
+            if progress.cancelled() {
+                return;
+            }
+            if excl.matches(&path) {
+                continue;
+            }
+            match self.read_key(&path) {
+                Some(k) => {
+                    snap.insert_key(k);
+                    progress.tick();
+                }
+                None => {
+                    snap.warnings.push(format!("Could not read {path}"));
+                    continue;
+                }
+            }
+            for sub in self.subkeys(&path) {
+                stack.push(format!("{path}\\{sub}"));
+            }
+        }
+    }
 }
 
 /// Canonical short hive names.

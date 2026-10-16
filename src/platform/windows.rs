@@ -82,6 +82,16 @@ fn open(path: &str, access: u32) -> std::io::Result<RegKey> {
 pub struct WinRegistry;
 
 impl Registry for WinRegistry {
+    fn capture(
+        &self,
+        root: &str,
+        excl: &crate::util::Exclusions,
+        snap: &mut crate::model::Snapshot,
+        progress: &crate::snapshot::Progress,
+    ) {
+        self.capture_native(root, excl, snap, progress);
+    }
+
     fn exists(&self, path: &str) -> bool {
         open(path, KEY_READ).is_ok()
     }
@@ -1551,6 +1561,387 @@ impl RegistryWatch {
                 Ok(WatchEvent::Changed)
             }
             other => Err(anyhow!("unexpected wait result {other}")),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Snapshot walks: files and registry, reusing buffers
+// ---------------------------------------------------------------------------
+
+/// What a walk does with the entry it just reported.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Walk {
+    /// Record it, and enter it if it is a folder.
+    Continue,
+    /// Leave it (and everything inside) out.
+    Skip,
+    /// End the walk now.
+    Stop,
+}
+
+struct FindHandle(HANDLE);
+
+impl Drop for FindHandle {
+    fn drop(&mut self) {
+        unsafe { windows_sys::Win32::Storage::FileSystem::FindClose(self.0) };
+    }
+}
+
+/// Seconds since 1970 from a FILETIME (100 ns ticks since 1601).
+fn filetime_secs(ft: &windows_sys::Win32::Foundation::FILETIME) -> i64 {
+    let t = ((ft.dwHighDateTime as u64) << 32) | ft.dwLowDateTime as u64;
+    (t as i64 - 116_444_736_000_000_000) / 10_000_000
+}
+
+/// Append UTF-16 `w` (up to its NUL) to `s` without allocating beyond growth.
+fn push_utf16(s: &mut String, w: &[u16]) {
+    let end = w.iter().position(|&c| c == 0).unwrap_or(w.len());
+    s.extend(char::decode_utf16(w[..end].iter().copied()).map(|r| r.unwrap_or('\u{FFFD}')));
+}
+
+/// Walk every file and folder under `root` (not the root itself), without
+/// following links or junctions, through one `\\?\` path buffer and one
+/// display buffer that grow once and are reused for every entry. Each entry
+/// is reported as (path, is_dir, size, mtime); `unreadable` gets folders
+/// that couldn't be listed.
+pub fn walk_files(
+    root: &str,
+    recursive: bool,
+    visit: &mut dyn FnMut(&str, bool, u64, i64) -> Walk,
+    unreadable: &mut dyn FnMut(&str),
+) {
+    use windows_sys::Win32::Storage::FileSystem::{
+        FindExInfoBasic, FindExSearchNameMatch, FindFirstFileExW, FindNextFileW,
+        FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT, FIND_FIRST_EX_LARGE_FETCH,
+        WIN32_FIND_DATAW,
+    };
+    let root = root.trim_end_matches('\\');
+    // Long-path form for the API; the plain form for reporting.
+    let mut wide_path: Vec<u16> = Vec::with_capacity(1024);
+    if let Some(unc) = root.strip_prefix("\\\\").filter(|r| !r.starts_with("?\\")) {
+        wide_path.extend("\\\\?\\UNC\\".encode_utf16());
+        wide_path.extend(unc.encode_utf16());
+    } else if root.starts_with("\\\\?\\") {
+        wide_path.extend(root.encode_utf16());
+    } else {
+        wide_path.extend("\\\\?\\".encode_utf16());
+        wide_path.extend(root.encode_utf16());
+    }
+    let mut display = String::with_capacity(1024);
+    display.push_str(root);
+
+    struct Level {
+        handle: FindHandle,
+        wide_len: usize,
+        display_len: usize,
+    }
+    let open = |wide_path: &mut Vec<u16>, data: &mut WIN32_FIND_DATAW| -> Option<FindHandle> {
+        let base = wide_path.len();
+        wide_path.extend("\\*\0".encode_utf16());
+        let h = unsafe {
+            FindFirstFileExW(
+                wide_path.as_ptr(),
+                FindExInfoBasic,
+                data as *mut _ as *mut core::ffi::c_void,
+                FindExSearchNameMatch,
+                std::ptr::null(),
+                FIND_FIRST_EX_LARGE_FETCH,
+            )
+        };
+        wide_path.truncate(base);
+        (h != INVALID_HANDLE).then_some(FindHandle(h))
+    };
+
+    let mut data: WIN32_FIND_DATAW = unsafe { std::mem::zeroed() };
+    let mut stack: Vec<Level> = Vec::with_capacity(64);
+    match open(&mut wide_path, &mut data) {
+        Some(h) => stack.push(Level {
+            handle: h,
+            wide_len: wide_path.len(),
+            display_len: display.len(),
+        }),
+        None => {
+            unreadable(root);
+            return;
+        }
+    }
+    // `data` holds the current entry of the top level.
+    loop {
+        let top_wide = stack.last().unwrap().wide_len;
+        let top_disp = stack.last().unwrap().display_len;
+        let name = &data.cFileName;
+        let is_dot =
+            name[0] == b'.' as u16 && (name[1] == 0 || (name[1] == b'.' as u16 && name[2] == 0));
+        let attrs = data.dwFileAttributes;
+        let mut entered = false;
+        if !is_dot && attrs & FILE_ATTRIBUTE_REPARSE_POINT == 0 {
+            wide_path.truncate(top_wide);
+            wide_path.push(b'\\' as u16);
+            let end = name.iter().position(|&c| c == 0).unwrap_or(name.len());
+            wide_path.extend_from_slice(&name[..end]);
+            display.truncate(top_disp);
+            display.push('\\');
+            push_utf16(&mut display, name);
+            let is_dir = attrs & FILE_ATTRIBUTE_DIRECTORY != 0;
+            let size = if is_dir {
+                0
+            } else {
+                ((data.nFileSizeHigh as u64) << 32) | data.nFileSizeLow as u64
+            };
+            match visit(&display, is_dir, size, filetime_secs(&data.ftLastWriteTime)) {
+                Walk::Stop => return,
+                Walk::Skip => {}
+                Walk::Continue if is_dir && recursive => match open(&mut wide_path, &mut data) {
+                    Some(h) => {
+                        stack.push(Level {
+                            handle: h,
+                            wide_len: wide_path.len(),
+                            display_len: display.len(),
+                        });
+                        entered = true;
+                    }
+                    None => unreadable(&display),
+                },
+                Walk::Continue => {}
+            }
+        }
+        if entered {
+            continue; // `data` now holds the new folder's first entry
+        }
+        // Next entry, climbing out of finished folders.
+        loop {
+            let Some(top) = stack.last() else { return };
+            if unsafe { FindNextFileW(top.handle.0, &mut data) } != 0 {
+                break;
+            }
+            stack.pop();
+            if stack.is_empty() {
+                return;
+            }
+        }
+    }
+}
+
+impl WinRegistry {
+    /// Zero-copy-per-entry registry walk for snapshots: one open key per
+    /// level, name, value-name and data buffers reused throughout.
+    fn capture_native(
+        &self,
+        root: &str,
+        excl: &crate::util::Exclusions,
+        snap: &mut crate::model::Snapshot,
+        progress: &crate::snapshot::Progress,
+    ) {
+        use windows_sys::Win32::System::Registry::{
+            RegEnumKeyExW, RegEnumValueW, RegOpenKeyExW, RegQueryInfoKeyW, HKEY, HKEY_CLASSES_ROOT,
+            HKEY_CURRENT_CONFIG, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, HKEY_USERS, KEY_READ,
+            KEY_WOW64_64KEY,
+        };
+        const ERROR_NO_MORE_ITEMS: u32 = 259;
+        const ERROR_MORE_DATA_REG: u32 = 234;
+        let Some((hive, rest)) = super::split_hive(root) else {
+            return;
+        };
+        let base: HKEY = match hive {
+            "HKLM" => HKEY_LOCAL_MACHINE,
+            "HKCU" => HKEY_CURRENT_USER,
+            "HKU" => HKEY_USERS,
+            "HKCR" => HKEY_CLASSES_ROOT,
+            _ => HKEY_CURRENT_CONFIG,
+        };
+        let mut path = String::with_capacity(512);
+        path.push_str(hive);
+        if !rest.is_empty() {
+            path.push('\\');
+            path.push_str(rest);
+        }
+        let mut folded = String::with_capacity(512);
+        let mut chars: Vec<char> = Vec::with_capacity(512);
+        let mut name_buf: Vec<u16> = vec![0; 256];
+        let mut sub_buf: Vec<u16> = vec![0; 256];
+        let mut data_buf: Vec<u8> = vec![0; 4096];
+        let mut text = String::with_capacity(256);
+
+        let open_key = |parent: HKEY, sub: &[u16]| -> Option<OwnedKey> {
+            let mut k: HKEY = std::ptr::null_mut();
+            let rc = unsafe {
+                RegOpenKeyExW(parent, sub.as_ptr(), 0, KEY_READ | KEY_WOW64_64KEY, &mut k)
+            };
+            (rc == 0).then_some(OwnedKey(k))
+        };
+        let rest_w: Vec<u16> = rest.encode_utf16().chain(std::iter::once(0)).collect();
+
+        struct Level {
+            key: OwnedKey,
+            path_len: usize,
+            next_sub: u32,
+        }
+        let mut stack: Vec<Level> = Vec::with_capacity(32);
+
+        // Record one opened key (its values), returning whether it was recorded.
+        let mut record = |key: &OwnedKey,
+                          path: &str,
+                          snap: &mut crate::model::Snapshot,
+                          name_buf: &mut Vec<u16>,
+                          sub_buf: &mut Vec<u16>,
+                          data_buf: &mut Vec<u8>,
+                          text: &mut String| {
+            let (mut max_sub, mut max_name, mut max_data) = (0u32, 0u32, 0u32);
+            unsafe {
+                RegQueryInfoKeyW(
+                    key.0,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null(),
+                    std::ptr::null_mut(),
+                    &mut max_sub,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    &mut max_name,
+                    &mut max_data,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                )
+            };
+            if sub_buf.len() < max_sub as usize + 1 {
+                sub_buf.resize(max_sub as usize + 1, 0);
+            }
+            if name_buf.len() < max_name as usize + 1 {
+                name_buf.resize(max_name as usize + 1, 0);
+            }
+            if data_buf.len() < max_data as usize {
+                data_buf.resize(max_data as usize, 0);
+            }
+            snap.begin_key(path);
+            let mut i = 0u32;
+            loop {
+                let mut nlen = name_buf.len() as u32;
+                let mut dlen = data_buf.len() as u32;
+                let mut kind = 0u32;
+                let rc = unsafe {
+                    RegEnumValueW(
+                        key.0,
+                        i,
+                        name_buf.as_mut_ptr(),
+                        &mut nlen,
+                        std::ptr::null(),
+                        &mut kind,
+                        data_buf.as_mut_ptr(),
+                        &mut dlen,
+                    )
+                };
+                if rc == ERROR_MORE_DATA_REG {
+                    // Changed while we read it: grow and retry this index.
+                    let n = (name_buf.len() * 2).max(nlen as usize + 1);
+                    name_buf.resize(n, 0);
+                    let d = (data_buf.len() * 2).max(dlen as usize);
+                    data_buf.resize(d, 0);
+                    continue;
+                }
+                if rc != 0 {
+                    break; // ERROR_NO_MORE_ITEMS or the key went away
+                }
+                text.clear();
+                push_utf16(text, &name_buf[..nlen as usize]);
+                snap.push_value(text, kind, &data_buf[..dlen as usize]);
+                i += 1;
+            }
+        };
+
+        let Some(rootkey) = (if rest.is_empty() {
+            None
+        } else {
+            open_key(base, &rest_w)
+        })
+        .or_else(|| {
+            rest.is_empty().then(|| {
+                // A whole hive: open it with an empty subkey.
+                open_key(base, &[0]).unwrap_or(OwnedKey(std::ptr::null_mut()))
+            })
+        })
+        .filter(|k| !k.0.is_null()) else {
+            snap.warnings.push(format!("Could not read {path}"));
+            return;
+        };
+        crate::util::fold_into(&path, &mut folded);
+        if excl.matches_folded(&folded, &mut chars) {
+            return;
+        }
+        record(
+            &rootkey,
+            &path,
+            snap,
+            &mut name_buf,
+            &mut sub_buf,
+            &mut data_buf,
+            &mut text,
+        );
+        progress.tick();
+        stack.push(Level {
+            key: rootkey,
+            path_len: path.len(),
+            next_sub: 0,
+        });
+
+        while let Some(top) = stack.last_mut() {
+            if progress.cancelled() {
+                return;
+            }
+            let mut slen = sub_buf.len() as u32;
+            let rc = unsafe {
+                RegEnumKeyExW(
+                    top.key.0,
+                    top.next_sub,
+                    sub_buf.as_mut_ptr(),
+                    &mut slen,
+                    std::ptr::null(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                )
+            };
+            if rc == ERROR_MORE_DATA_REG {
+                let n = sub_buf.len() * 2;
+                sub_buf.resize(n, 0);
+                continue;
+            }
+            if rc != 0 {
+                let _ = ERROR_NO_MORE_ITEMS;
+                stack.pop();
+                continue;
+            }
+            top.next_sub += 1;
+            let parent_len = top.path_len;
+            let parent = top.key.0;
+            path.truncate(parent_len);
+            path.push('\\');
+            push_utf16(&mut path, &sub_buf[..slen as usize]);
+            crate::util::fold_into(&path, &mut folded);
+            if excl.matches_folded(&folded, &mut chars) {
+                continue;
+            }
+            sub_buf[slen as usize] = 0;
+            match open_key(parent, &sub_buf[..=slen as usize]) {
+                Some(child) => {
+                    record(
+                        &child,
+                        &path,
+                        snap,
+                        &mut name_buf,
+                        &mut sub_buf,
+                        &mut data_buf,
+                        &mut text,
+                    );
+                    progress.tick();
+                    stack.push(Level {
+                        key: child,
+                        path_len: path.len(),
+                        next_sub: 0,
+                    });
+                }
+                None => snap.warnings.push(format!("Could not read {path}")),
+            }
         }
     }
 }
