@@ -347,6 +347,14 @@ fn snapshot_now(
         s.registry.len(),
         s.files.len()
     );
+    // Anything unreadable is missing from the snapshot, and so from any
+    // log made from it: say so.
+    if !s.warnings.is_empty() {
+        eprintln!("  {} places could not be read:", s.warnings.len());
+        for w in s.warnings.iter().take(10) {
+            eprintln!("    {w}");
+        }
+    }
     Ok(s)
 }
 

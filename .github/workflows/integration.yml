@@ -158,6 +158,9 @@ jobs:
           "Recorded $($log.name) $($log.version): $($log.stats | ConvertTo-Json -Compress)"
           if (-not $log.uninstall_key) { throw "the installation registered no uninstall entry" }
           "id=$($log.id)" >> $env:GITHUB_OUTPUT
+          "finished=$((Get-Date).ToString('o'))" >> $env:GITHUB_OUTPUT
+          $warn = @(Get-Content err.txt | Select-String 'could not be read|Could not read' | Select-Object -First 3)
+          $warn | ForEach-Object { Write-Output "::warning title=Snapshot::$($_.Line)" }
           "name=$($log.name)" >> $env:GITHUB_OUTPUT
       - name: Make a silent installer from the log
         if: env.SELECTED == 'true' && steps.download.outputs.skip != 'true'
@@ -197,7 +200,7 @@ jobs:
             $inside | ForEach-Object {
               $said = Get-Content revert.txt | Select-String -SimpleMatch $_.FullName | Select-Object -First 1
               $note = if ($said) { "removal said: $($said.Line)" } else { 'not in the install log' }
-              Write-Output "::error title=Still inside::$($_.FullName) ($($_.Length) bytes, $($_.LastWriteTime)); $note"
+              Write-Output "::error title=Still inside::$($_.FullName) (created $($_.CreationTime.ToString('o')), monitoring finished ${{ steps.monitor.outputs.finished }}); $note"
             }
             if (-not $inside) { Write-Output "::error title=Still inside::nothing: the leftover folders are empty ($($dirs.Count) exist)" }
             $out | Where-Object { $_ -match '^- ' } | Select-Object -First 2 | ForEach-Object { Write-Output "::error::$_" }
