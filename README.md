@@ -125,6 +125,7 @@ Record an installation so it can be removed precisely later.
 - **Live activity:** files being added, changed, and removed stream in while the installer runs, and registry areas report when something under them changes.
 - **Restart-safe:** monitoring survives restarts, so installers that need a reboot are captured completely.
 - **Review before saving:** inspect every captured change and discard background noise with one click.
+- **Installer Decrapifier:** the review lists every service, scheduled task, autorun and Startup shortcut the installer added, judged *Required*, *Optional* or *Bloatware / telemetry / silent updater* with the reasons, for example "Discord added 6 things that run in the background; 2 look like telemetry or silent updaters". Ticked items are removed (backed up) when you save. Built-in rules judge most of them; for the rest you can ask a language model running on your own PC (Ollama, llama.cpp, LM Studio). Nothing leaves your computer.
 - **Automatic detection** of the program's name, publisher, and version.
 - **Automatic exclusions:** temporary files, logs, and browser and application caches are ignored, so each log contains only the installer's real changes. **Learn background noise** (Settings) finds what your PC changes on its own and excludes that too.
 - **Monitoring profiles:** save scopes under a name, for example a quick one for Program Files only and a deep one for the whole system, and switch between them before monitoring.
@@ -290,6 +291,7 @@ expunge monitor --name "Photo Editor" -- C:\Downloads\setup.exe
 expunge logs [--group G] [--tag T] [--json]
 expunge revert <log-id> --dry-run
 expunge revert <log-id> --close-programs --restart-explorer
+expunge components <log-id> [--json] [--ask-model] [--strike]
 expunge export <log-id> xml changes.xml
 expunge export <log-id> portable PhotoEditorPortable.ini
 expunge repackage <log-id> D:\Deploy\PhotoEditor

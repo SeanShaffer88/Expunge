@@ -526,6 +526,87 @@ pub fn remove_from_log(cs: &mut ChangeSet, c: &Component) {
     }
 }
 
+/// The program's identity and folders, from its install log: its
+/// Uninstall entry's `InstallLocation`, and the top folders it created.
+pub fn context_for(log: &crate::model::InstallLog) -> Context {
+    let cs = &log.changes;
+    let mut dirs: Vec<String> = Vec::new();
+    if !log.uninstall_key.is_empty() {
+        let key = fold(&log.uninstall_key);
+        if let Some(k) = cs.keys_added.iter().find(|k| fold(&k.path) == key) {
+            if let Some(loc) = k.get_string("InstallLocation") {
+                let loc = loc
+                    .trim()
+                    .trim_matches('"')
+                    .trim_end_matches('\\')
+                    .to_string();
+                if !loc.is_empty() {
+                    dirs.push(loc);
+                }
+            }
+        }
+    }
+    // Folders added whose parent already existed: the program's own roots.
+    let added: std::collections::HashSet<String> = cs
+        .files_added
+        .iter()
+        .filter(|f| f.is_dir)
+        .map(|f| fold(&f.path))
+        .collect();
+    for f in cs.files_added.iter().filter(|f| f.is_dir) {
+        let parent = crate::platform::parent_path(&f.path)
+            .map(fold)
+            .unwrap_or_default();
+        if !added.contains(&parent) && !in_dirs(&f.path, &dirs) {
+            dirs.push(f.path.clone());
+        }
+    }
+    Context {
+        app_name: log.name.clone(),
+        publisher: log.publisher.clone(),
+        install_dirs: dirs,
+    }
+}
+
+/// Strike the chosen components now (everything backed up first), and
+/// take the ones that went out of the log. Returns what each step did.
+pub fn strike(
+    log: &mut crate::model::InstallLog,
+    chosen: &[&Component],
+    reg: &dyn crate::platform::Registry,
+    backup: Option<&mut crate::backup::BackupWriter>,
+) -> Vec<crate::backup::ActionResult> {
+    use crate::revert::{execute_plan, ExecOptions, Plan, PlanItem};
+    let mut plan = Plan::default();
+    let mut owner: Vec<usize> = Vec::new();
+    for (i, c) in chosen.iter().enumerate() {
+        for action in strike_actions(c) {
+            plan.items.push(PlanItem {
+                action,
+                selected: true,
+                exists: true,
+                note: String::new(),
+            });
+            owner.push(i);
+        }
+    }
+    let results = execute_plan(&plan, reg, backup, &ExecOptions::default());
+    // execute_plan runs in its own order; match results back by description.
+    let mut ok = vec![true; chosen.len()];
+    for (item, i) in plan.items.iter().zip(&owner) {
+        let desc = item.action.describe();
+        if results.iter().any(|r| r.description == desc && !r.ok) {
+            ok[*i] = false;
+        }
+    }
+    for (c, done) in chosen.iter().zip(ok) {
+        if done {
+            remove_from_log(&mut log.changes, c);
+        }
+    }
+    results
+}
+
 /// A sentence for the checklist header, e.g. "Discord installed, but
 /// added 3 autorun tasks and a telemetry agent."
 pub fn summary(app: &str, comps: &[Component]) -> String {
@@ -736,6 +817,77 @@ mod tests {
         assert_eq!(cs.keys_added[0].path, "HKLM\\SOFTWARE\\Vendor");
         assert_eq!(cs.values_added.len(), 1);
         assert_eq!(cs.values_added[0].value.name, "Keep");
+    }
+
+    #[test]
+    fn context_comes_from_install_location_and_new_top_folders() {
+        use crate::model::{FileEntry, InstallLog};
+        let mut log = InstallLog {
+            name: "Discord".into(),
+            uninstall_key: "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Discord"
+                .into(),
+            ..Default::default()
+        };
+        log.changes
+            .keys_added
+            .push(KeyData::new(&log.uninstall_key).with(RegValue::string(
+                "InstallLocation",
+                "\"C:\\Users\\a\\AppData\\Local\\Discord\\\"",
+            )));
+        let dir = |p: &str| FileEntry {
+            path: p.into(),
+            is_dir: true,
+            size: 0,
+            mtime: 0,
+        };
+        log.changes
+            .files_added
+            .push(dir("C:\\Users\\a\\AppData\\Local\\Discord"));
+        log.changes
+            .files_added
+            .push(dir("C:\\Users\\a\\AppData\\Local\\Discord\\app-1"));
+        log.changes
+            .files_added
+            .push(dir("C:\\Users\\a\\AppData\\Roaming\\discord"));
+        let c = context_for(&log);
+        assert_eq!(c.app_name, "Discord");
+        assert_eq!(
+            c.install_dirs,
+            [
+                "C:\\Users\\a\\AppData\\Local\\Discord",
+                "C:\\Users\\a\\AppData\\Roaming\\discord"
+            ]
+        );
+    }
+
+    #[test]
+    fn striking_changes_the_registry_and_the_log() {
+        use crate::model::InstallLog;
+        use crate::platform::{MemRegistry, Registry};
+        let reg = MemRegistry::new();
+        let run = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+        reg.set_value(run, &RegValue::string("VendorUpdater", "upd.exe /silent"))
+            .unwrap();
+        reg.set_value(run, &RegValue::string("Keep", "keep.exe"))
+            .unwrap();
+        let mut log = InstallLog::default();
+        log.changes
+            .values_added
+            .push(run_value(run, "VendorUpdater", "upd.exe /silent"));
+        log.changes
+            .values_added
+            .push(run_value(run, "Keep", "keep.exe"));
+        let comps = components(&log.changes, &Context::default(), &no_tasks);
+        let chosen: Vec<&Component> = comps
+            .iter()
+            .filter(|c| c.verdict.strike_by_default())
+            .collect();
+        assert_eq!(chosen.len(), 1);
+        let res = strike(&mut log, &chosen, &reg, None);
+        assert!(res.iter().all(|r| r.ok), "{res:?}");
+        let k = reg.read_key(run).unwrap();
+        assert!(k.get("VendorUpdater").is_none() && k.get("Keep").is_some());
+        assert_eq!(log.changes.values_added.len(), 1);
     }
 
     #[test]

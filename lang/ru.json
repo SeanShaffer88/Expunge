@@ -1497,5 +1497,20 @@
   "Try it, then undo": "Попробовать и отменить",
   "Installs it on this PC while recording every change, shows you what it did, then removes all of it. A restore point is made first.": "Устанавливает на этот компьютер, записывая каждое изменение, показывает, что было сделано, и затем всё удаляет. Сначала создаётся точка восстановления.",
   "Close the program if it is running": "Закрывать программу, если она запущена",
-  "Running copies of the program being removed are asked to close (so they can save their work) and its files are deleted at once. Other programs are never closed.": "Запущенным копиям удаляемой программы предлагается закрыться (чтобы они могли сохранить работу), и её файлы удаляются сразу. Другие программы никогда не закрываются."
+  "Running copies of the program being removed are asked to close (so they can save their work) and its files are deleted at once. Other programs are never closed.": "Запущенным копиям удаляемой программы предлагается закрыться (чтобы они могли сохранить работу), и её файлы удаляются сразу. Другие программы никогда не закрываются.",
+  "Startup folder shortcut": "Ярлык в папке автозагрузки",
+  "Background components": "Фоновые компоненты",
+  "{name} added {n} things that run in the background. {b} look like telemetry, silent updaters or advertising and are ticked to be struck.": "{name} добавила {n} фоновых элементов. {b} похожи на телеметрию, скрытые обновления или рекламу и отмечены для удаления.",
+  "Strike: remove it when the log is saved": "Удалить: будет убрано при сохранении журнала",
+  "Bloatware / telemetry / silent updater": "Мусор / телеметрия / скрытое обновление",
+  "Required for the program": "Нужно программе",
+  "Ask the local model about the unknown ones": "Спросить локальную модель о неизвестных",
+  "A language model on this PC can judge the unknown ones: set it in Settings.": "Языковая модель на этом компьютере может оценить неизвестные: укажите её в настройках.",
+  "Ticked items are removed when you save the log, and backed up first.": "Отмеченное удаляется при сохранении журнала, после резервного копирования.",
+  "Installer Decrapifier": "Очистка установщиков",
+  "After an installation is recorded, its services, scheduled tasks and autoruns are judged by built-in rules. For the ones the rules can't judge, you can ask a language model running on this PC (Ollama, llama.cpp, LM Studio). Only addresses on this computer are accepted, so nothing leaves it.": "После записи установки её службы, задания планировщика и автозапуск оцениваются встроенными правилами. Те, что правила оценить не могут, можно отдать языковой модели на этом компьютере (Ollama, llama.cpp, LM Studio). Принимаются только адреса этого компьютера, поэтому ничего не уходит наружу.",
+  "Model address": "Адрес модели",
+  "Model name": "Название модели",
+  "the model's address must start with http://": "Адрес модели должен начинаться с http://",
+  "only a model on this computer (localhost) can be used, so nothing leaves the PC": "Можно использовать только модель на этом компьютере (localhost), чтобы ничего не покидало ПК"
 }

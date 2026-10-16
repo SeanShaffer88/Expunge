@@ -22,6 +22,7 @@ pub mod features;
 pub mod i18n;
 pub mod leftovers;
 pub mod live;
+pub mod llm;
 pub mod locks;
 pub mod merge;
 pub mod model;

@@ -71,6 +71,11 @@ USAGE:
                                             List a program Windows doesn't know
                                             (e.g. portable) so it can be analyzed
                                             and uninstalled
+  expunge components <log-id> [--json] [--ask-model] [--strike]
+                                            Installer Decrapifier: the services,
+                                            tasks and autoruns an installation
+                                            added, judged; --strike removes the
+                                            bloat (backed up)
   expunge orphans [--json]                  List registrations left by removed
                                             programs (pointing to missing files)
   expunge uninstall <name>... [--silent] [--leftovers safe|none] [--dry-run]
@@ -1077,6 +1082,87 @@ fn run_inner(args: Vec<String>) -> anyhow::Result<i32> {
                 keys = last;
                 base_time = std::time::Instant::now();
                 stale = false;
+            }
+        }
+        "components" => {
+            // Installer Decrapifier on the command line.
+            let id = args.get(1).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "usage: expunge components <log-id> [--json] [--ask-model] [--strike]"
+                )
+            })?;
+            let st = store()?;
+            let mut log = st.load_log(id)?;
+            let ctx = expunge_core::decrap::context_for(&log);
+            let mut comps = expunge_core::decrap::components(
+                &log.changes,
+                &ctx,
+                &expunge_core::decrap::read_task_command,
+            );
+            if has(&args, "--ask-model") {
+                let s = load_settings(&st);
+                if s.local_model_url.is_empty() {
+                    anyhow::bail!("no local model is set (Settings > Installer Decrapifier)");
+                }
+                let n = expunge_core::llm::judge_unknowns(
+                    &s.local_model_url,
+                    &s.local_model_name,
+                    &log.name,
+                    &log.publisher,
+                    &mut comps,
+                )?;
+                eprintln!("The local model judged {n} component(s).");
+            }
+            if has(&args, "--json") {
+                println!("{}", serde_json::to_string_pretty(&comps)?);
+            } else {
+                println!("{}", expunge_core::decrap::summary(&log.name, &comps));
+                for c in &comps {
+                    println!(
+                        "[{}] {:<24} {} — {}",
+                        if c.verdict.strike_by_default() {
+                            "x"
+                        } else {
+                            " "
+                        },
+                        c.kind.label(),
+                        c.name,
+                        c.verdict.label()
+                    );
+                    for r in &c.reasons {
+                        println!("      {r}");
+                    }
+                }
+            }
+            if has(&args, "--strike") {
+                let chosen: Vec<&expunge_core::decrap::Component> = comps
+                    .iter()
+                    .filter(|c| c.verdict.strike_by_default())
+                    .collect();
+                if chosen.is_empty() {
+                    println!("Nothing to strike.");
+                } else {
+                    let mut w = BackupWriter::new(
+                        &st.backups_dir(),
+                        &format!("Strike background items of {}", log.name),
+                    )?;
+                    let results =
+                        expunge_core::decrap::strike(&mut log, &chosen, reg.as_ref(), Some(&mut w));
+                    let b = w.finish()?;
+                    for r in &results {
+                        println!(
+                            "[{}] {} — {}",
+                            if r.ok { " OK " } else { "FAIL" },
+                            r.description,
+                            r.message
+                        );
+                    }
+                    st.save_log(&log)?;
+                    println!("Backup: {} (restore with: expunge restore {})", b.id, b.id);
+                    if results.iter().any(|r| !r.ok) {
+                        return Ok(2);
+                    }
+                }
             }
         }
         "check-clean" => {

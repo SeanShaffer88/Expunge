@@ -1497,5 +1497,20 @@
   "Try it, then undo": "Probar y deshacer",
   "Installs it on this PC while recording every change, shows you what it did, then removes all of it. A restore point is made first.": "Lo instala en este PC registrando cada cambio, te muestra lo que hizo y luego lo elimina todo. Antes se crea un punto de restauración.",
   "Close the program if it is running": "Cerrar el programa si se está ejecutando",
-  "Running copies of the program being removed are asked to close (so they can save their work) and its files are deleted at once. Other programs are never closed.": "Se pide a las copias en ejecución del programa que se va a quitar que se cierren (para que puedan guardar su trabajo) y sus archivos se eliminan al momento. Nunca se cierran otros programas."
+  "Running copies of the program being removed are asked to close (so they can save their work) and its files are deleted at once. Other programs are never closed.": "Se pide a las copias en ejecución del programa que se va a quitar que se cierren (para que puedan guardar su trabajo) y sus archivos se eliminan al momento. Nunca se cierran otros programas.",
+  "Startup folder shortcut": "Acceso directo de la carpeta Inicio",
+  "Background components": "Componentes en segundo plano",
+  "{name} added {n} things that run in the background. {b} look like telemetry, silent updaters or advertising and are ticked to be struck.": "{name} añadió {n} cosas que se ejecutan en segundo plano. {b} parecen telemetría, actualizadores silenciosos o publicidad y están marcadas para quitarlas.",
+  "Strike: remove it when the log is saved": "Quitar: se elimina al guardar el registro",
+  "Bloatware / telemetry / silent updater": "Bloatware / telemetría / actualizador silencioso",
+  "Required for the program": "Necesario para el programa",
+  "Ask the local model about the unknown ones": "Preguntar al modelo local por los desconocidos",
+  "A language model on this PC can judge the unknown ones: set it in Settings.": "Un modelo de lenguaje en este PC puede juzgar los desconocidos: configúralo en Ajustes.",
+  "Ticked items are removed when you save the log, and backed up first.": "Lo marcado se elimina al guardar el registro, y antes se hace una copia de seguridad.",
+  "Installer Decrapifier": "Limpiador de instaladores",
+  "After an installation is recorded, its services, scheduled tasks and autoruns are judged by built-in rules. For the ones the rules can't judge, you can ask a language model running on this PC (Ollama, llama.cpp, LM Studio). Only addresses on this computer are accepted, so nothing leaves it.": "Tras registrar una instalación, sus servicios, tareas programadas y entradas de inicio se juzgan con reglas integradas. Para los que las reglas no pueden juzgar, puedes preguntar a un modelo de lenguaje que se ejecute en este PC (Ollama, llama.cpp, LM Studio). Solo se aceptan direcciones de este equipo, así que nada sale de él.",
+  "Model address": "Dirección del modelo",
+  "Model name": "Nombre del modelo",
+  "the model's address must start with http://": "La dirección del modelo debe empezar por http://",
+  "only a model on this computer (localhost) can be used, so nothing leaves the PC": "Solo se puede usar un modelo de este equipo (localhost), para que nada salga del PC"
 }

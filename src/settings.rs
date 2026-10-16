@@ -52,6 +52,11 @@ pub struct Settings {
     pub restart_explorer: bool,
     /// Close running copies of a program before removing it.
     pub close_programs: bool,
+    /// Installer Decrapifier: an OpenAI-compatible chat endpoint on this
+    /// computer for components the rules can't judge ("" = rules only).
+    pub local_model_url: String,
+    /// The model to ask at that endpoint.
+    pub local_model_name: String,
     /// Show entries flagged as SystemComponent in the program list.
     pub show_system_components: bool,
     /// Show Microsoft Store apps in the program list.
@@ -187,6 +192,8 @@ impl Default for Settings {
             use_recycle_bin: false,
             restart_explorer: true,
             close_programs: true,
+            local_model_url: String::new(),
+            local_model_name: String::new(),
             show_system_components: false,
             show_store_apps: false,
             advanced_mode: false,

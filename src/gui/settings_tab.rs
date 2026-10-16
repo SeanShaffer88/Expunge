@@ -434,6 +434,35 @@ impl App {
                         small_muted(ui, t("Simple mode always backs up before removing and asks before deleting. Options that could harm Windows or slow your PC are only in Advanced mode."));
                     }
                 });
+                if self.settings.advanced_mode {
+                    ui.add_space(10.0);
+                    theme::card(ui, |ui| {
+                        ui.label(RichText::new(t("Installer Decrapifier")).heading());
+                        small_muted(ui, t("After an installation is recorded, its services, scheduled tasks and autoruns are judged by built-in rules. For the ones the rules can't judge, you can ask a language model running on this PC (Ollama, llama.cpp, LM Studio). Only addresses on this computer are accepted, so nothing leaves it."));
+                        ui.add_space(4.0);
+                        egui::Grid::new("local_model").num_columns(2).spacing([10.0, 6.0]).show(ui, |ui| {
+                            ui.label(t("Model address"));
+                            changed |= ui
+                                .add(egui::TextEdit::singleline(&mut self.settings.local_model_url)
+                                    .hint_text("http://localhost:11434/v1/chat/completions")
+                                    .desired_width(360.0))
+                                .changed();
+                            ui.end_row();
+                            ui.label(t("Model name"));
+                            changed |= ui
+                                .add(egui::TextEdit::singleline(&mut self.settings.local_model_name)
+                                    .hint_text("llama3.2")
+                                    .desired_width(200.0))
+                                .changed();
+                            ui.end_row();
+                        });
+                        if !self.settings.local_model_url.is_empty() {
+                            if let Err(e) = expunge_core::llm::parse_local_url(&self.settings.local_model_url) {
+                                theme::warning_banner(ui, t(&e.to_string()));
+                            }
+                        }
+                    });
+                }
                 ui.add_space(10.0);
                 theme::card(ui, |ui| {
                     ui.label(RichText::new(t("Program list")).heading());

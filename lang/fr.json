@@ -1497,5 +1497,20 @@
   "Try it, then undo": "Essayer, puis annuler",
   "Installs it on this PC while recording every change, shows you what it did, then removes all of it. A restore point is made first.": "L'installe sur ce PC en enregistrant chaque modification, vous montre ce qu'il a fait, puis supprime tout. Un point de restauration est créé avant.",
   "Close the program if it is running": "Fermer le programme s'il est en cours d'exécution",
-  "Running copies of the program being removed are asked to close (so they can save their work) and its files are deleted at once. Other programs are never closed.": "Les copies en cours du programme supprimé sont invitées à se fermer (pour pouvoir enregistrer leur travail) et ses fichiers sont effacés immédiatement. Les autres programmes ne sont jamais fermés."
+  "Running copies of the program being removed are asked to close (so they can save their work) and its files are deleted at once. Other programs are never closed.": "Les copies en cours du programme supprimé sont invitées à se fermer (pour pouvoir enregistrer leur travail) et ses fichiers sont effacés immédiatement. Les autres programmes ne sont jamais fermés.",
+  "Startup folder shortcut": "Raccourci du dossier Démarrage",
+  "Background components": "Composants en arrière-plan",
+  "{name} added {n} things that run in the background. {b} look like telemetry, silent updaters or advertising and are ticked to be struck.": "{name} a ajouté {n} éléments qui tournent en arrière-plan. {b} ressemblent à de la télémétrie, des mises à jour silencieuses ou de la publicité et sont cochés pour être supprimés.",
+  "Strike: remove it when the log is saved": "Supprimer : retiré lors de l'enregistrement du journal",
+  "Bloatware / telemetry / silent updater": "Logiciel indésirable / télémétrie / mise à jour silencieuse",
+  "Required for the program": "Nécessaire au programme",
+  "Ask the local model about the unknown ones": "Demander au modèle local pour les inconnus",
+  "A language model on this PC can judge the unknown ones: set it in Settings.": "Un modèle de langage sur ce PC peut juger les inconnus : à régler dans les Paramètres.",
+  "Ticked items are removed when you save the log, and backed up first.": "Les éléments cochés sont retirés à l'enregistrement du journal, après une sauvegarde.",
+  "Installer Decrapifier": "Nettoyeur d'installateurs",
+  "After an installation is recorded, its services, scheduled tasks and autoruns are judged by built-in rules. For the ones the rules can't judge, you can ask a language model running on this PC (Ollama, llama.cpp, LM Studio). Only addresses on this computer are accepted, so nothing leaves it.": "Une fois une installation enregistrée, ses services, tâches planifiées et lancements au démarrage sont jugés par des règles intégrées. Pour ceux que les règles ne savent pas juger, vous pouvez interroger un modèle de langage qui tourne sur ce PC (Ollama, llama.cpp, LM Studio). Seules les adresses de cet ordinateur sont acceptées : rien ne le quitte.",
+  "Model address": "Adresse du modèle",
+  "Model name": "Nom du modèle",
+  "the model's address must start with http://": "L'adresse du modèle doit commencer par http://",
+  "only a model on this computer (localhost) can be used, so nothing leaves the PC": "Seul un modèle sur cet ordinateur (localhost) peut être utilisé, pour que rien ne quitte le PC"
 }

@@ -5,6 +5,7 @@ use super::theme;
 use super::widgets::*;
 use super::Job;
 use egui::RichText;
+use expunge_core::decrap::{self, Component, Verdict};
 use expunge_core::i18n::{t, tf};
 use expunge_core::model::{human_size, InstallLog};
 use expunge_core::platform::{self, ChildProcess};
@@ -40,6 +41,11 @@ pub struct MonitorState {
     pub error: String,
     /// "Try it, then undo": everything recorded is removed after review.
     pub trial: bool,
+    /// Installer Decrapifier checklist for the log under review: each
+    /// background component and whether it is ticked to be struck.
+    pub decrap: Option<Vec<(Component, bool)>>,
+    pub decrap_job: Option<Job<Result<Vec<Component>, String>>>,
+    pub decrap_note: String,
 }
 
 impl MonitorState {
@@ -165,6 +171,27 @@ impl App {
     }
 
     pub fn poll_monitor(&mut self, ctx: &egui::Context) {
+        if let Some(r) = self.monitor.decrap_job.as_ref().and_then(|j| j.poll()) {
+            self.monitor.decrap_job = None;
+            match r {
+                Ok(judged) => {
+                    if let Some(list) = &mut self.monitor.decrap {
+                        for (c, ticked) in list.iter_mut() {
+                            if let Some(n) =
+                                judged.iter().find(|n| n.kind == c.kind && n.name == c.name)
+                            {
+                                if c.verdict == Verdict::Unknown && n.verdict != Verdict::Unknown {
+                                    *ticked = n.verdict.strike_by_default();
+                                }
+                                *c = n.clone();
+                            }
+                        }
+                    }
+                    self.monitor.decrap_note.clear();
+                }
+                Err(e) => self.monitor.decrap_note = e,
+            }
+        }
         if let Some(r) = self.monitor.save_job.as_ref().and_then(|j| j.poll()) {
             self.monitor.save_job = None;
             match r {
@@ -431,6 +458,23 @@ impl App {
             return;
         }
         let trial = self.monitor.trial;
+        if self.monitor.decrap.is_none() {
+            if let Some(log) = &self.monitor.review {
+                let ctx = decrap::context_for(log);
+                let comps = decrap::components(&log.changes, &ctx, &decrap::read_task_command);
+                self.monitor.decrap = Some(
+                    comps
+                        .into_iter()
+                        .map(|c| {
+                            let tick = c.verdict.strike_by_default();
+                            (c, tick)
+                        })
+                        .collect(),
+                );
+            }
+        }
+        let model_url = self.settings.local_model_url.clone();
+        let model_name = self.settings.local_model_name.clone();
         let Some(log) = &mut self.monitor.review else {
             return;
         };
@@ -492,6 +536,103 @@ impl App {
             );
             theme::badge(ui, human_size(st.bytes_added), theme::MUTED);
         });
+        let mut ask_model = false;
+        if let (false, Some(list)) = (trial, self.monitor.decrap.as_mut()) {
+            if !list.is_empty() {
+                ui.add_space(6.0);
+                theme::card(ui, |ui| {
+                    ui.label(RichText::new(t("Background components")).heading());
+                    let bloat = list
+                        .iter()
+                        .filter(|(c, _)| c.verdict == Verdict::Bloat)
+                        .count();
+                    small_muted(
+                        ui,
+                        tf(
+                            "{name} added {n} things that run in the background. {b} look like telemetry, silent updaters or advertising and are ticked to be struck.",
+                            &[
+                                ("name", log.name.clone()),
+                                ("n", list.len().to_string()),
+                                ("b", bloat.to_string()),
+                            ],
+                        ),
+                    );
+                    ui.add_space(4.0);
+                    for (c, ticked) in list.iter_mut() {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.checkbox(ticked, "")
+                                .on_hover_text(t("Strike: remove it when the log is saved"));
+                            let (col, label) = match c.verdict {
+                                Verdict::Bloat => {
+                                    (theme::BAD, t("Bloatware / telemetry / silent updater"))
+                                }
+                                Verdict::Optional => (theme::WARN, t("Optional")),
+                                Verdict::Required => (theme::OK, t("Required for the program")),
+                                Verdict::Unknown => (theme::MUTED, t("Unknown")),
+                            };
+                            theme::badge(ui, label, col);
+                            small_muted(ui, t(c.kind.label()));
+                            ui.label(RichText::new(&c.name).strong()).on_hover_text(
+                                if c.command.is_empty() {
+                                    c.location.clone()
+                                } else {
+                                    c.command.clone()
+                                },
+                            );
+                        });
+                        if let Some(r) = c.reasons.first() {
+                            small_muted(ui, r);
+                        }
+                    }
+                    ui.add_space(4.0);
+                    let unknown = list.iter().any(|(c, _)| c.verdict == Verdict::Unknown);
+                    ui.horizontal_wrapped(|ui| {
+                        if unknown && !model_url.is_empty() {
+                            let busy = self.monitor.decrap_job.is_some();
+                            if ui
+                                .add_enabled(!busy, egui::Button::new(t("Ask the local model about the unknown ones")))
+                                .clicked()
+                            {
+                                ask_model = true;
+                            }
+                            if busy {
+                                spinner(ui);
+                            }
+                        } else if unknown {
+                            small_muted(ui, t("A language model on this PC can judge the unknown ones: set it in Settings."));
+                        }
+                    });
+                    if !self.monitor.decrap_note.is_empty() {
+                        theme::warning_banner(ui, self.monitor.decrap_note.clone());
+                    }
+                    small_muted(
+                        ui,
+                        t("Ticked items are removed when you save the log, and backed up first."),
+                    );
+                });
+            }
+        }
+        if ask_model {
+            let comps: Vec<Component> = self
+                .monitor
+                .decrap
+                .as_ref()
+                .map(|l| l.iter().map(|(c, _)| c.clone()).collect())
+                .unwrap_or_default();
+            let (app, publisher) = (log.name.clone(), log.publisher.clone());
+            self.monitor.decrap_job = Some(Job::spawn(&self.ctx, move |_| {
+                let mut comps = comps;
+                expunge_core::llm::judge_unknowns(
+                    &model_url,
+                    &model_name,
+                    &app,
+                    &publisher,
+                    &mut comps,
+                )
+                .map(|_| comps)
+                .map_err(|e| e.to_string())
+            }));
+        }
         small_muted(ui, t("Remove anything that isn't part of this program (background noise) with ✖ before saving."));
         ui.separator();
         let h = ui.available_height() - 44.0;
@@ -536,13 +677,64 @@ impl App {
             save = true;
         }
         if save && self.monitor.save_job.is_none() {
-            let log = self.monitor.review.take().unwrap();
+            let mut log = self.monitor.review.take().unwrap();
             let store = self.store.clone();
-            self.monitor.save_job =
-                Some(Job::spawn(&self.ctx, move |_| match store.save_log(&log) {
+            // Struck background components go first (backed up), unless
+            // this is a trial being undone, which removes everything anyway.
+            let chosen: Vec<Component> = if self.monitor.trial {
+                Vec::new()
+            } else {
+                self.monitor
+                    .decrap
+                    .as_ref()
+                    .map(|l| {
+                        l.iter()
+                            .filter(|(_, t)| *t)
+                            .map(|(c, _)| c.clone())
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            };
+            let reg = self.reg.clone();
+            let backup_on = self.settings.backup_enabled();
+            self.monitor.save_job = Some(Job::spawn(&self.ctx, move |_| {
+                if !chosen.is_empty() {
+                    let mut writer = if backup_on {
+                        expunge_core::backup::BackupWriter::new(
+                            &store.backups_dir(),
+                            &format!("Strike background items of {}", log.name),
+                        )
+                        .ok()
+                    } else {
+                        None
+                    };
+                    let refs: Vec<&Component> = chosen.iter().collect();
+                    let results = decrap::strike(&mut log, &refs, reg.as_ref(), writer.as_mut());
+                    if let Some(w) = writer {
+                        let _ = w.finish();
+                    }
+                    let struck: Vec<&str> = chosen
+                        .iter()
+                        .filter(|c| {
+                            !results
+                                .iter()
+                                .any(|r| !r.ok && r.description.contains(&c.name))
+                        })
+                        .map(|c| c.name.as_str())
+                        .collect();
+                    if !struck.is_empty() {
+                        if !log.notes.is_empty() {
+                            log.notes.push_str("; ");
+                        }
+                        log.notes
+                            .push_str(&format!("Struck at install: {}", struck.join(", ")));
+                    }
+                }
+                match store.save_log(&log) {
                     Ok(()) => Ok(log),
                     Err(e) => Err((log, e.to_string())),
-                }));
+                }
+            }));
         } else if discard {
             self.monitor.cancel(&self.store);
         }

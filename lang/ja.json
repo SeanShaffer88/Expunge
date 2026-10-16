@@ -1497,5 +1497,20 @@
   "Try it, then undo": "試してから元に戻す",
   "Installs it on this PC while recording every change, shows you what it did, then removes all of it. A restore point is made first.": "すべての変更を記録しながらこの PC にインストールし、何をしたかを表示してから、すべて削除します。先に復元ポイントを作成します。",
   "Close the program if it is running": "実行中のプログラムを閉じる",
-  "Running copies of the program being removed are asked to close (so they can save their work) and its files are deleted at once. Other programs are never closed.": "削除するプログラムの実行中のコピーに終了を求め (作業を保存できます)、そのファイルをすぐに削除します。ほかのプログラムが閉じられることはありません。"
+  "Running copies of the program being removed are asked to close (so they can save their work) and its files are deleted at once. Other programs are never closed.": "削除するプログラムの実行中のコピーに終了を求め (作業を保存できます)、そのファイルをすぐに削除します。ほかのプログラムが閉じられることはありません。",
+  "Startup folder shortcut": "スタートアップ フォルダーのショートカット",
+  "Background components": "バックグラウンド コンポーネント",
+  "{name} added {n} things that run in the background. {b} look like telemetry, silent updaters or advertising and are ticked to be struck.": "{name} はバックグラウンドで動くものを {n} 個追加しました。{b} 個はテレメトリ、サイレント アップデーター、広告のようなので、削除の対象にチェックしてあります。",
+  "Strike: remove it when the log is saved": "削除: ログの保存時に取り除きます",
+  "Bloatware / telemetry / silent updater": "ブロートウェア / テレメトリ / サイレント アップデーター",
+  "Required for the program": "プログラムに必要",
+  "Ask the local model about the unknown ones": "不明なものをローカル モデルに尋ねる",
+  "A language model on this PC can judge the unknown ones: set it in Settings.": "この PC 上の言語モデルで不明なものを判定できます: 設定で指定してください。",
+  "Ticked items are removed when you save the log, and backed up first.": "チェックした項目はログの保存時に、先にバックアップしてから取り除かれます。",
+  "Installer Decrapifier": "インストーラー クリーナー",
+  "After an installation is recorded, its services, scheduled tasks and autoruns are judged by built-in rules. For the ones the rules can't judge, you can ask a language model running on this PC (Ollama, llama.cpp, LM Studio). Only addresses on this computer are accepted, so nothing leaves it.": "インストールを記録すると、追加されたサービス、タスク、自動起動が組み込みのルールで判定されます。ルールで判定できないものは、この PC で動く言語モデル (Ollama、llama.cpp、LM Studio) に尋ねられます。このコンピューター上のアドレスだけを受け付けるので、何も外に出ません。",
+  "Model address": "モデルのアドレス",
+  "Model name": "モデル名",
+  "the model's address must start with http://": "モデルのアドレスは http:// で始めてください",
+  "only a model on this computer (localhost) can be used, so nothing leaves the PC": "何も PC の外に出ないよう、このコンピューター上 (localhost) のモデルだけを使えます"
 }
